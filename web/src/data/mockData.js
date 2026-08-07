@@ -124,6 +124,24 @@ export const dashboard = {
   searchPlaceholder: "예: 화장품, 가전제품...",
   recentSearches: [{ label: "최근 검색: 화장품 미국 수출", query: "화장품" }],
   popularKeywords: [{ label: "인기: K-푸드 동남아", query: "K-푸드" }],
+  availablePrograms: 128,
+  announcementsLabel: "지원사업공고",
+  programStats: [
+    { label: "최신공고", count: 12 },
+    { label: "마감임박", count: 5 },
+    { label: "인기공고", count: 8 },
+  ],
+  cardNewsLabel: "지원사업 카드뉴스",
+  featuresTitle: "JB-XPORT는 이런 기능을 제공해요",
+  featuresDescription:
+    "소상공인의 해외 수출을 돕는 AI 에이전트입니다. 상품명이나 사진만 검색하면 잘 팔리는 국가·카테고리·시즌을 AI가 한 문장으로 분석해드리고, 신청 가능한 정부 지원사업 매칭부터 필요한 수출 서류 준비까지 한 곳에서 진행할 수 있어요.",
+  features: [
+    { icon: "search", title: "AI 시장 분석", description: "상품명이나 사진 검색만으로 잘 팔리는 국가·카테고리·성수기를 AI가 분석해드려요." },
+    { icon: "projects", title: "정부 지원사업 매칭", description: "분석 결과를 바탕으로 지금 신청 가능한 정부 지원사업을 자동으로 찾아드려요." },
+    { icon: "documents", title: "수출 서류 자동화", description: "지원사업별로 필요한 서류를 확인하고 AI로 자동 완성할 수 있어요." },
+  ],
+  itemCategoriesTitle: "품목별 지원사업 공고",
+  itemCategoriesAll: "전체",
 };
 
 export const login = {

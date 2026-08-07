@@ -1,3 +1,5 @@
+import { forwardRef } from "react";
+
 export function Badge({ children, tone = "neutral", className = "" }) {
   const tones = {
     neutral: "bg-slate-100 text-slate-700",
@@ -13,13 +15,13 @@ export function Badge({ children, tone = "neutral", className = "" }) {
   );
 }
 
-export function Card({ children, className = "", ...props }) {
+export const Card = forwardRef(function Card({ children, className = "", ...props }, ref) {
   return (
-    <div className={`rounded-2xl border border-slate-200 bg-white shadow-sm ${className}`} {...props}>
+    <div ref={ref} className={`rounded-2xl border border-slate-200 bg-white shadow-sm ${className}`} {...props}>
       {children}
     </div>
   );
-}
+});
 
 export function Button({ children, variant = "primary", className = "", ...props }) {
   const variants = {

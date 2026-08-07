@@ -48,7 +48,7 @@ export default function SearchBar({
 
   return (
     <form onSubmit={handleSubmit} className="flex w-full flex-col items-center">
-      <h1 className="mb-2 text-center text-4xl font-bold text-brand-800">{heading}</h1>
+      <h1 className="mb-2 text-center text-5xl font-extrabold tracking-tight text-brand-800 md:text-6xl">{heading}</h1>
       {subtitle && <p className="mb-8 text-center text-base font-medium text-brand-600">{subtitle}</p>}
       <div className="relative w-full max-w-2xl">
         <Icon

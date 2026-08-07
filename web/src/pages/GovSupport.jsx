@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import Icon from "../components/Icon";
 import { Badge, Card, Button } from "../components/ui";
 import { govSupport as gs } from "../data/mockData";
@@ -9,7 +9,16 @@ import { useAuth } from "../context/AuthContext";
 export default function GovSupport() {
   const { isLoggedIn, lastQuery } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [showLoginNotice, setShowLoginNotice] = useState(false);
+  const highlightId = location.state?.highlightId ?? null;
+  const highlightRef = useRef(null);
+
+  useEffect(() => {
+    if (highlightId && highlightRef.current) {
+      highlightRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [highlightId]);
 
   const analysis = useMemo(() => {
     if (!isLoggedIn || !lastQuery) return null;
@@ -79,8 +88,11 @@ export default function GovSupport() {
           return (
             <Card
               key={p.id}
+              ref={p.id === highlightId ? highlightRef : null}
               onClick={() => handleCardClick(p)}
-              className={`cursor-pointer overflow-hidden transition-shadow hover:shadow-md ${p.highMatch ? "border-amber-200" : ""}`}
+              className={`cursor-pointer overflow-hidden transition-shadow hover:shadow-md ${p.highMatch ? "border-amber-200" : ""} ${
+                p.id === highlightId ? "ring-2 ring-brand-400" : ""
+              }`}
             >
               <div className={`h-1 w-full ${p.highMatch ? "bg-amber-400" : "bg-transparent"}`} />
               <div className="p-5">
