@@ -7,18 +7,35 @@ import { useAuth } from "../context/AuthContext";
 
 export default function Login() {
   const [remember, setRemember] = useState(false);
+  const [accountType, setAccountType] = useState("user");
   const { login: signIn } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
+  const goAfterLogin = () => navigate(location.state?.from || "/gov-support");
+
   const handleLogin = (e) => {
     e.preventDefault();
-    signIn();
-    navigate(location.state?.from || "/");
+    signIn({ remember, accountType });
+    goAfterLogin();
+  };
+
+  const handleSocialLogin = (url) => {
+    window.open(url, "_blank", "noopener,noreferrer");
+    signIn({ remember, accountType });
+    goAfterLogin();
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-brand-50 via-white to-amber-50 px-4">
+    <div className="relative flex min-h-screen items-center justify-center bg-gradient-to-br from-brand-50 via-white to-amber-50 px-4">
+      <Link
+        to="/"
+        className="absolute left-4 top-4 flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-slate-500 hover:bg-white/60 hover:text-slate-800"
+      >
+        <Icon name="arrowLeft" className="h-4 w-4" />
+        {login.backLabel}
+      </Link>
+
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
           <h1 className="text-4xl font-extrabold tracking-tight text-brand-700">{brand.name}</h1>
@@ -27,6 +44,26 @@ export default function Login() {
 
         <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
           <form className="space-y-5" onSubmit={handleLogin}>
+            <div>
+              <span className="mb-1.5 block text-sm font-medium text-slate-700">{login.accountTypeLabel}</span>
+              <div className="grid grid-cols-2 gap-2 rounded-lg bg-slate-100 p-1">
+                {login.accountTypes.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setAccountType(t.id)}
+                    className={`rounded-md py-2 text-sm font-semibold transition-colors ${
+                      accountType === t.id
+                        ? "bg-white text-brand-700 shadow-sm"
+                        : "text-slate-500 hover:text-slate-700"
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium text-slate-700">아이디</span>
               <div className="relative">
@@ -60,9 +97,9 @@ export default function Login() {
                 />
                 {login.options[0]}
               </label>
-              <a href="#" className="font-medium text-brand-600 hover:underline">
+              <Link to="/reset-password" className="font-medium text-brand-600 hover:underline">
                 {login.options[1]}
-              </a>
+              </Link>
             </div>
 
             <Button type="submit" className="w-full py-3">
@@ -74,11 +111,21 @@ export default function Login() {
               <div className="absolute inset-x-0 top-1/2 -z-10 border-t border-slate-200" />
             </div>
 
-            <Button type="button" variant="secondary" className="w-full py-2.5" onClick={handleLogin}>
+            <Button
+              type="button"
+              variant="secondary"
+              className="w-full py-2.5"
+              onClick={() => handleSocialLogin(login.socialLoginUrls.google)}
+            >
               <Icon name="globe" className="h-4 w-4" />
               {login.socialLogins[0]}
             </Button>
-            <Button type="button" variant="secondary" className="w-full py-2.5" onClick={handleLogin}>
+            <Button
+              type="button"
+              variant="secondary"
+              className="w-full py-2.5"
+              onClick={() => handleSocialLogin(login.socialLoginUrls.enterprise)}
+            >
               <Icon name="building" className="h-4 w-4" />
               {login.socialLogins[1]}
             </Button>
@@ -86,9 +133,9 @@ export default function Login() {
 
           <p className="mt-6 text-center text-sm text-slate-500">
             {login.signupPrompt.text}{" "}
-            <a href="#" className="font-semibold text-brand-600 hover:underline">
+            <Link to="/signup" className="font-semibold text-brand-600 hover:underline">
               {login.signupPrompt.cta}
-            </a>
+            </Link>
           </p>
         </div>
 

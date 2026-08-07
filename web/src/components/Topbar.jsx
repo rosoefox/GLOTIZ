@@ -4,12 +4,17 @@ import { nav, login } from "../data/mockData";
 import { useAuth } from "../context/AuthContext";
 
 export default function Topbar({ showSearch = true }) {
-  const { isLoggedIn, user } = useAuth();
+  const { isLoggedIn, user, logout } = useAuth();
   const navigate = useNavigate();
 
   const goToLogin = () => {
     window.alert(login.requiredMessage);
     navigate("/login");
+  };
+
+  const handleLogout = () => {
+    logout();
+    navigate("/");
   };
 
   return (
@@ -60,11 +65,20 @@ export default function Topbar({ showSearch = true }) {
         )}
 
         {isLoggedIn ? (
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700">
-              {user.name[0]}
-            </div>
-            <span className="text-sm font-semibold text-slate-800">{user.name}님</span>
+          <div className="flex items-center gap-3">
+            <Link to="/mypage" className="flex items-center gap-2.5 hover:opacity-80">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700">
+                {user.name[0]}
+              </div>
+              <span className="text-sm font-semibold text-slate-800">마이페이지</span>
+            </Link>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+            >
+              로그아웃
+            </button>
           </div>
         ) : (
           <Link

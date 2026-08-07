@@ -7,10 +7,10 @@ import { buildAnalysis, pickDefaults, projectMatchesAnalysis } from "../data/moc
 import { useAuth } from "../context/AuthContext";
 
 export default function GovSupport() {
-  const { isLoggedIn, lastQuery } = useAuth();
+  const { isLoggedIn, lastQuery, lastFilters } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [showLoginNotice, setShowLoginNotice] = useState(false);
+  const [personalizedMode, setPersonalizedMode] = useState(false);
   const highlightId = location.state?.highlightId ?? null;
   const highlightRef = useRef(null);
 
@@ -22,18 +22,19 @@ export default function GovSupport() {
 
   const analysis = useMemo(() => {
     if (!isLoggedIn || !lastQuery) return null;
-    return buildAnalysis(lastQuery, pickDefaults(lastQuery));
-  }, [isLoggedIn, lastQuery]);
+    return buildAnalysis(lastQuery, lastFilters || pickDefaults(lastQuery));
+  }, [isLoggedIn, lastQuery, lastFilters]);
 
   const handlePersonalizedClick = () => {
     if (!isLoggedIn) {
-      setShowLoginNotice(true);
+      navigate("/login", { state: { from: "/gov-support" } });
       return;
     }
-    setShowLoginNotice(false);
+    setPersonalizedMode(true);
   };
 
-  const handleCardClick = (project) => {
+  const handleCardClick = (project, disabled) => {
+    if (disabled) return;
     if (!isLoggedIn) {
       navigate("/login", { state: { from: "/gov-support" } });
       return;
@@ -48,22 +49,13 @@ export default function GovSupport() {
           <h1 className="text-2xl font-bold text-slate-900">{gs.title}</h1>
           <p className="mt-1 max-w-xl text-sm text-slate-500">{gs.subtitle}</p>
         </div>
-        <div>
+        <div className="text-right">
           <Button onClick={handlePersonalizedClick}>
             <Icon name="sparkle" className="h-4 w-4" />
             {gs.ctaButton}
           </Button>
-          {showLoginNotice && (
-            <div className="mt-2 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-              <Icon name="lock" className="h-3.5 w-3.5 shrink-0" />
-              로그인이 필요한 기능입니다.
-              <button
-                onClick={() => navigate("/login")}
-                className="whitespace-nowrap font-semibold underline"
-              >
-                로그인하기
-              </button>
-            </div>
+          {personalizedMode && (
+            <p className="mt-2 max-w-xs text-xs text-brand-700">{gs.personalizedNotice}</p>
           )}
         </div>
       </div>
@@ -85,14 +77,16 @@ export default function GovSupport() {
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
         {gs.projects.map((p) => {
           const eligible = analysis ? projectMatchesAnalysis(p, analysis) : null;
+          const disabled = personalizedMode && eligible !== true;
           return (
             <Card
               key={p.id}
               ref={p.id === highlightId ? highlightRef : null}
-              onClick={() => handleCardClick(p)}
-              className={`cursor-pointer overflow-hidden transition-shadow hover:shadow-md ${p.highMatch ? "border-amber-200" : ""} ${
-                p.id === highlightId ? "ring-2 ring-brand-400" : ""
-              }`}
+              onClick={() => handleCardClick(p, disabled)}
+              aria-disabled={disabled}
+              className={`overflow-hidden transition-shadow ${
+                disabled ? "cursor-not-allowed opacity-40" : "cursor-pointer hover:shadow-md"
+              } ${p.highMatch ? "border-amber-200" : ""} ${p.id === highlightId ? "ring-2 ring-brand-400" : ""}`}
             >
               <div className={`h-1 w-full ${p.highMatch ? "bg-amber-400" : "bg-transparent"}`} />
               <div className="p-5">
@@ -133,8 +127,8 @@ export default function GovSupport() {
                 </div>
                 <p className="mt-3 text-xs text-slate-400">출처: {p.source}</p>
                 <p className="mt-3 flex items-center gap-1 text-xs font-medium text-brand-600">
-                  {isLoggedIn ? "필수 서류 확인하기" : "로그인하고 서류 확인하기"}
-                  <Icon name="arrowRight" className="h-3.5 w-3.5" />
+                  {disabled ? gs.disabledLabel : isLoggedIn ? "필수 서류 확인하기" : "로그인하고 서류 확인하기"}
+                  {!disabled && <Icon name="arrowRight" className="h-3.5 w-3.5" />}
                 </p>
               </div>
             </Card>

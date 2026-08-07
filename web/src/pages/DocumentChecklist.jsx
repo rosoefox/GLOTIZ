@@ -10,6 +10,12 @@ const STATUS_META = {
   manual: { label: dc.manualLabel, tone: "danger" },
 };
 
+const DOC_ICONS = {
+  "doc-invoice": "documents",
+  "doc-packing": "box",
+  "doc-co": "checkCircle",
+};
+
 function ChecklistGroup({ title, items, highlighted, relatedItem, relatedItemDestination }) {
   const navigate = useNavigate();
   const [statusMap, setStatusMap] = useState(() =>
@@ -115,6 +121,74 @@ function ChecklistGroup({ title, items, highlighted, relatedItem, relatedItemDes
   );
 }
 
+function UploadChecklistItem({ item, state, onFileSelect }) {
+  const navigate = useNavigate();
+  const status = state.status;
+  const [shortName, detail] = (() => {
+    const match = item.name.match(/^(.+?)\s*\(([^)]+)\)\s*$/);
+    return match ? [match[1], match[2]] : [item.name, item.description];
+  })();
+
+  const statusLabel =
+    status === "done" ? dc.uploadedLabel : status === "uploading" ? dc.uploadingLabel : dc.waitingLabel;
+  const statusColor =
+    status === "done" ? "text-emerald-600" : status === "uploading" ? "text-brand-600" : "text-slate-400";
+  const barColor = status === "done" ? "bg-emerald-500" : "bg-brand-600";
+
+  return (
+    <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-center gap-4">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
+          <Icon name={DOC_ICONS[item.id] || "documents"} className="h-6 w-6" />
+        </div>
+        <div>
+          <p className="text-lg font-bold text-slate-900">{shortName}</p>
+          <p className="text-xs text-slate-400">{detail}</p>
+        </div>
+      </div>
+
+      <div className="w-full sm:w-56">
+        <div className="mb-1 flex items-center justify-between text-xs font-medium">
+          <span className={`flex items-center gap-1 ${statusColor}`}>
+            {status === "done" && <Icon name="checkCircle" className="h-3.5 w-3.5" />}
+            {statusLabel}
+          </span>
+          <span className="text-slate-500">{state.progress}%</span>
+        </div>
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+          <div className={`h-1.5 rounded-full transition-all ${barColor}`} style={{ width: `${state.progress}%` }} />
+        </div>
+      </div>
+
+      <div className="flex shrink-0 gap-2">
+        <Button
+          variant="secondary"
+          className="px-3 py-2 text-xs"
+          onClick={() => navigate("/docs/preview", { state: { docName: item.name } })}
+        >
+          <Icon name="arrowRight" className="h-3.5 w-3.5" />
+          {dc.issueLinkLabel}
+        </Button>
+        <label className="flex cursor-pointer items-center gap-1.5 rounded-xl bg-brand-600 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-700">
+          {status === "uploading" ? (
+            <Icon name="history" className="h-3.5 w-3.5 animate-spin" />
+          ) : status === "done" ? (
+            <Icon name="check" className="h-3.5 w-3.5" />
+          ) : (
+            <Icon name="upload" className="h-3.5 w-3.5" />
+          )}
+          {status === "done" ? dc.reuploadButtonLabel : dc.uploadButtonLabel}
+          <input
+            type="file"
+            className="hidden"
+            onChange={(e) => onFileSelect(item.id, e.target.files?.[0])}
+          />
+        </label>
+      </div>
+    </div>
+  );
+}
+
 function ViewSelector({ groups, selected, onToggleGroup, onToggleAll }) {
   const [open, setOpen] = useState(false);
   const allSelected = selected.size === groups.length;
@@ -163,6 +237,7 @@ function ViewSelector({ groups, selected, onToggleGroup, onToggleAll }) {
 }
 
 export default function DocumentChecklist() {
+  const navigate = useNavigate();
   const location = useLocation();
   const activeProgram = location.state?.program ?? null;
   const activeItemName = location.state?.itemName ?? null;
@@ -177,6 +252,35 @@ export default function DocumentChecklist() {
       ? new Set([dc.commonGroup.id, matchedGroup.id])
       : new Set(allGroups.map((g) => g.id))
   );
+
+  const [uploadState, setUploadState] = useState(() =>
+    Object.fromEntries(
+      dc.commonGroup.items.map((it, idx) => [
+        it.id,
+        idx === 1 ? { status: "done", progress: 100 } : { status: "waiting", progress: 0 },
+      ])
+    )
+  );
+
+  const handleFileSelect = (itemId, file) => {
+    if (!file) return;
+    setUploadState((prev) => ({ ...prev, [itemId]: { status: "uploading", progress: 0 } }));
+    const interval = setInterval(() => {
+      setUploadState((prev) => {
+        const cur = prev[itemId];
+        if (!cur || cur.status !== "uploading") {
+          clearInterval(interval);
+          return prev;
+        }
+        const nextProgress = Math.min(cur.progress + 20, 100);
+        if (nextProgress >= 100) {
+          clearInterval(interval);
+          return { ...prev, [itemId]: { status: "done", progress: 100 } };
+        }
+        return { ...prev, [itemId]: { status: "uploading", progress: nextProgress } };
+      });
+    }, 200);
+  };
 
   const toggleGroup = (id) => {
     setSelectedIds((prev) => {
@@ -193,7 +297,8 @@ export default function DocumentChecklist() {
     );
   };
 
-  const visibleGroups = allGroups.filter((g) => selectedIds.has(g.id));
+  const doneCount = Object.values(uploadState).filter((s) => s.status === "done").length;
+  const overallPercent = Math.round((doneCount / dc.commonGroup.items.length) * 100);
 
   return (
     <div className="mx-auto max-w-6xl px-8 py-8">
@@ -215,16 +320,65 @@ export default function DocumentChecklist() {
         />
       </div>
 
-      {visibleGroups.map((group) => (
-        <ChecklistGroup
-          key={group.id}
-          title={group.title}
-          items={group.items}
-          highlighted={group.program === activeProgram}
-          relatedItem={group.relatedItem}
-          relatedItemDestination={group.relatedItemDestination}
-        />
-      ))}
+      {selectedIds.has(dc.commonGroup.id) && (
+        <div className="mb-8">
+          <h2 className="mb-3 text-base font-bold text-slate-900">{dc.commonGroup.title}</h2>
+          <div className="space-y-4">
+            {dc.commonGroup.items.map((item) => (
+              <UploadChecklistItem
+                key={item.id}
+                item={item}
+                state={uploadState[item.id]}
+                onFileSelect={handleFileSelect}
+              />
+            ))}
+          </div>
+
+          <Card className="mt-6 p-6">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">{dc.overallTitle}</h3>
+                <p className="mt-1 text-sm text-slate-500">{dc.overallDescription}</p>
+              </div>
+              <span className="text-2xl font-extrabold text-brand-700">
+                {overallPercent}% {dc.overallSuffix}
+              </span>
+            </div>
+            <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
+              <div
+                className="h-2.5 rounded-full bg-brand-600 transition-all"
+                style={{ width: `${overallPercent}%` }}
+              />
+            </div>
+            <div className="mt-1 flex justify-between text-xs text-slate-400">
+              <span>0%</span>
+              <span>100%</span>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {dc.programGroups
+        .filter((g) => selectedIds.has(g.id))
+        .map((group) => (
+          <ChecklistGroup
+            key={group.id}
+            title={group.title}
+            items={group.items}
+            highlighted={group.program === activeProgram}
+            relatedItem={group.relatedItem}
+            relatedItemDestination={group.relatedItemDestination}
+          />
+        ))}
+
+      <button
+        type="button"
+        onClick={() => navigate("/docs/new")}
+        className="flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-800 px-6 py-4 text-base font-bold text-white hover:bg-brand-900"
+      >
+        {dc.addDocButtonLabel}
+        <Icon name="arrowRight" className="h-5 w-5" />
+      </button>
     </div>
   );
 }

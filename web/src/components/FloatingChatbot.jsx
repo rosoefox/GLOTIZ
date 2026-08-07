@@ -1,6 +1,7 @@
 import { useState } from "react";
 import Icon from "./Icon";
 import { helpAndFaq } from "../data/mockData";
+import { useChatbot } from "../context/ChatbotContext";
 
 function findAnswer(question) {
   const trimmed = question.trim();
@@ -12,7 +13,7 @@ function findAnswer(question) {
 }
 
 export default function FloatingChatbot() {
-  const [open, setOpen] = useState(false);
+  const { open, setOpen, expanded } = useChatbot();
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const { floatingChatbot: fc, faqs } = helpAndFaq;
@@ -36,7 +37,11 @@ export default function FloatingChatbot() {
   return (
     <div className="fixed bottom-6 left-6 z-50">
       {open && (
-        <div className="mb-3 flex h-[420px] w-80 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
+        <div
+          className={`mb-3 flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl transition-all ${
+            expanded ? "h-[640px] w-[420px]" : "h-[420px] w-80"
+          }`}
+        >
           <div className="flex items-center justify-between bg-brand-600 px-4 py-3 text-white">
             <div className="flex items-center gap-2">
               <Icon name="chatbot" className="h-5 w-5" />

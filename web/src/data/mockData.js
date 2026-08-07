@@ -20,14 +20,14 @@ export const nav = {
     { path: "/gov-support", label: "정부 지원사업" },
     { path: "/my-items", label: "나의 수출품목", requiresAuth: true },
     { path: "/docs", label: "서류 관리", requiresAuth: true },
-    { path: "/marketing", label: "상세정보 사진 생성기", requiresAuth: true },
+    { path: "/marketing", label: "마케팅 이미지 생성기", requiresAuth: true },
   ],
   sidebar: [
     { path: "/analysis", label: "시장 분석", icon: "analysis" },
     { path: "/gov-support", label: "정부 지원사업", icon: "projects" },
     { path: "/my-items", label: "나의 수출품목", icon: "box", requiresAuth: true },
     { path: "/docs", label: "서류 관리", icon: "documents", requiresAuth: true },
-    { path: "/marketing", label: "상세정보 사진 생성기", icon: "marketing", requiresAuth: true },
+    { path: "/marketing", label: "마케팅 이미지 생성기", icon: "marketing", requiresAuth: true },
   ],
   bottom: [
     { path: "/help", label: "고객지원", icon: "help" },
@@ -53,6 +53,10 @@ export const myPage = {
     buttonLabel: "회원 탈퇴",
     confirmMessage: "정말로 탈퇴하시겠습니까? 이 작업은 되돌릴 수 없습니다.",
   },
+  exportItemsTitle: "나의 수출품목",
+  exportItemsSubtitle: "수출 진행 현황과 서류 제출 현황을 확인하세요.",
+  viewAllLabel: "전체 보기",
+  docStatusLabel: "서류 제출 현황",
 };
 
 export const myExportItems = {
@@ -147,15 +151,63 @@ export const dashboard = {
 export const login = {
   tagline: "안전한 본인 확인",
   requiredMessage: "로그인이 필요한 기능입니다.",
+  backLabel: "뒤로가기",
+  accountTypeLabel: "계정 유형",
+  accountTypes: [
+    { id: "user", label: "사용자" },
+    { id: "admin", label: "관리자" },
+  ],
   fields: {
     idPlaceholder: "아이디를 입력하세요",
     passwordPlaceholder: "비밀번호를 입력하세요",
   },
   options: ["로그인 상태 유지", "비밀번호를 잊으셨나요?"],
   socialLogins: ["Google로 로그인", "기업/기관 SSO 로그인"],
+  socialLoginUrls: {
+    google: "https://accounts.google.com/signin",
+    enterprise: "https://www.bizinfo.go.kr",
+  },
   signupPrompt: { text: "아직 계정이 없으신가요?", cta: "회원가입" },
   submitLabel: "로그인",
   dividerLabel: "또는 다른 방법으로 계속하기",
+};
+
+export const signup = {
+  title: "회원가입",
+  subtitle: "간단한 정보 입력 후 바로 이용할 수 있어요.",
+  fields: {
+    idLabel: "아이디",
+    idPlaceholder: "사용할 아이디를 입력하세요",
+    passwordLabel: "비밀번호",
+    passwordPlaceholder: "비밀번호를 입력하세요",
+    passwordConfirmLabel: "비밀번호 확인",
+    passwordConfirmPlaceholder: "비밀번호를 다시 입력하세요",
+    companyLabel: "회사명",
+    companyPlaceholder: "회사명을 입력하세요",
+    categoryLabel: "대표 수출 품목 카테고리",
+    countryLabel: "주요 수출 희망 국가",
+  },
+  mismatchError: "비밀번호가 일치하지 않습니다.",
+  submitLabel: "회원가입하고 시작하기",
+  loginPrompt: { text: "이미 계정이 있으신가요?", cta: "로그인" },
+};
+
+export const resetPassword = {
+  title: "비밀번호 재설정",
+  subtitle: "아이디(이메일)를 확인하고 새 비밀번호를 설정하세요.",
+  fields: {
+    idLabel: "아이디 또는 이메일",
+    idPlaceholder: "아이디 또는 이메일을 입력하세요",
+    newPasswordLabel: "새 비밀번호",
+    newPasswordPlaceholder: "새 비밀번호를 입력하세요",
+    newPasswordConfirmLabel: "새 비밀번호 확인",
+    newPasswordConfirmPlaceholder: "새 비밀번호를 다시 입력하세요",
+  },
+  mismatchError: "비밀번호가 일치하지 않습니다.",
+  submitLabel: "비밀번호 변경",
+  successTitle: "비밀번호가 변경되었습니다",
+  successMessage: "새 비밀번호로 다시 로그인해주세요.",
+  backToLoginLabel: "로그인으로 돌아가기",
 };
 
 export const marketAnalysis = {
@@ -185,6 +237,8 @@ export const govSupport = {
   title: "정부 지원사업",
   subtitle: "수출 기업을 위한 보조금·지원금·지원 프로그램을 살펴보세요.",
   ctaButton: "내가 선택할 수 있는 지원사업 보기",
+  personalizedNotice: "지금 신청 가능한 지원사업만 활성화했어요. 나머지는 비활성화됩니다.",
+  disabledLabel: "신청 불가",
   searchPlaceholder: "키워드, 업종, 지역으로 지원사업 검색...",
   filterButton: "필터",
   cardLabels: { budget: "예산 한도", deadline: "마감일" },
@@ -249,6 +303,16 @@ export const documentChecklist = {
   notStartedLabel: "미작성",
   doneLabel: "완성",
   manualLabel: "수기 작성 필요",
+  waitingLabel: "업로드 대기 중",
+  uploadingLabel: "업로드 중...",
+  uploadedLabel: "업로드 완료",
+  uploadButtonLabel: "파일 업로드",
+  reuploadButtonLabel: "다시 업로드",
+  issueLinkLabel: "발급 바로가기",
+  overallTitle: "전체 서류 준비 현황",
+  overallDescription: "모든 필수 서류가 등록되어야 다음 통관 단계로 진행할 수 있습니다.",
+  overallSuffix: "완료",
+  addDocButtonLabel: "추가 수출 제출 서류 작성하기",
   commonGroup: {
     id: "common",
     program: null,
@@ -461,11 +525,17 @@ export const documentPreview = {
     warning: "최종 제출 전 노란색으로 표시된 항목을 꼼꼼히 검토해주세요.",
   },
   actions: { submit: "제출하기", edit: "수정하기" },
+  submitted: {
+    title: "제출이 완료되었습니다",
+    message: "서류가 정상적으로 제출되었습니다. 진행 상황은 나의 수출품목에서 확인할 수 있습니다.",
+    backLabel: "서류 목록으로 돌아가기",
+    myItemsLabel: "나의 수출품목 보기",
+  },
 };
 
 export const marketingMaterialCreator = {
-  title: "상세정보 사진 생성기",
-  subtitle: "제품 상세정보 사진을 빠르게 생성하세요.",
+  title: "마케팅 이미지 생성기",
+  subtitle: "제품 마케팅 이미지를 빠르게 생성하세요.",
   actions: { loadFromDoc: "기존 서류 정보 불러오기", saveImage: "이미지 저장" },
   uploadLabel: "상품 사진 업로드",
   uploadHint: { title: "클릭하거나 파일을 끌어다 놓으세요", sub: "SVG, PNG, JPG, GIF (최대 800x400px)" },

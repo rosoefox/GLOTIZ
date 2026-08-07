@@ -57,7 +57,7 @@ function downloadReport(analysis) {
 export default function MarketAnalysis() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { isLoggedIn, setLastQuery } = useAuth();
+  const { isLoggedIn, setLastQuery, setLastFilters } = useAuth();
 
   const [query, setQuery] = useState(location.state?.query || ma.defaultQuery);
   const [isImageSearch, setIsImageSearch] = useState(!!location.state?.imageSearch);
@@ -69,7 +69,8 @@ export default function MarketAnalysis() {
 
   useEffect(() => {
     setLastQuery(query);
-  }, [query, setLastQuery]);
+    setLastFilters(filters);
+  }, [query, filters, setLastQuery, setLastFilters]);
 
   const handleSearch = (q) => {
     const nextQuery = q || ma.defaultQuery;

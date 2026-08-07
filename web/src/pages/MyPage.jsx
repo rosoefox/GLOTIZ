@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Icon from "../components/Icon";
-import { Card, Button, TextField } from "../components/ui";
-import { user, myPage as mp } from "../data/mockData";
+import { Badge, Card, Button, TextField } from "../components/ui";
+import { user, myPage as mp, myExportItems as mi } from "../data/mockData";
 import { useAuth } from "../context/AuthContext";
 
 export default function MyPage() {
@@ -102,6 +102,41 @@ export default function MyPage() {
             </div>
           </dl>
         )}
+      </Card>
+
+      <Card className="mt-6 p-6">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-bold text-slate-900">{mp.exportItemsTitle}</h2>
+            <p className="mt-0.5 text-xs text-slate-500">{mp.exportItemsSubtitle}</p>
+          </div>
+          <Button variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => navigate("/my-items")}>
+            {mp.viewAllLabel}
+            <Icon name="arrowRight" className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+
+        <div className="space-y-3">
+          {mi.items.map((item) => (
+            <div
+              key={item.id}
+              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50 px-4 py-3"
+            >
+              <div>
+                <p className="text-sm font-semibold text-slate-900">{item.name}</p>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  {item.category} · {item.destination} 수출
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge tone={mi.statusTone[item.status]}>{mi.statusLabels[item.status]}</Badge>
+                <span className="text-xs text-slate-400">
+                  {mp.docStatusLabel}: {item.basicInfoDone ? mi.basicInfoDoneLabel : mi.basicInfoPendingLabel}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
       </Card>
 
       <Card className="mt-6 border-red-100 bg-red-50/40 p-6">
