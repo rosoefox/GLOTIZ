@@ -1,0 +1,384 @@
+import { useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import Icon from "../components/Icon";
+import { Badge, Card, Button } from "../components/ui";
+import { documentChecklist as dc } from "../data/mockData";
+
+const STATUS_META = {
+  notStarted: { label: dc.notStartedLabel, tone: "neutral" },
+  done: { label: dc.doneLabel, tone: "success" },
+  manual: { label: dc.manualLabel, tone: "danger" },
+};
+
+const DOC_ICONS = {
+  "doc-invoice": "documents",
+  "doc-packing": "box",
+  "doc-co": "checkCircle",
+};
+
+function ChecklistGroup({ title, items, highlighted, relatedItem, relatedItemDestination }) {
+  const navigate = useNavigate();
+  const [statusMap, setStatusMap] = useState(() =>
+    Object.fromEntries(items.map((it) => [it.id, "notStarted"]))
+  );
+
+  const autoFillAll = () => {
+    setStatusMap((prev) => {
+      const next = { ...prev };
+      items.forEach((it) => {
+        next[it.id] = it.autoResult;
+      });
+      return next;
+    });
+  };
+
+  const autoFillOne = (item) => {
+    setStatusMap((prev) => ({ ...prev, [item.id]: item.autoResult }));
+  };
+
+  return (
+    <div className="mb-8">
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h2 className="flex items-center gap-2 text-base font-bold text-slate-900">
+            {title}
+            {highlighted && <Badge tone="brand">선택한 지원사업</Badge>}
+          </h2>
+          {relatedItem && (
+            <p className="mt-1 text-xs text-slate-500">
+              관련 품목: <span className="font-medium text-slate-700">{relatedItem}</span>
+              {relatedItemDestination && ` · ${relatedItemDestination} 수출`}
+            </p>
+          )}
+        </div>
+        <Button variant="outlineBrand" className="px-3 py-1.5 text-xs" onClick={autoFillAll}>
+          <Icon name="sparkle" className="h-3.5 w-3.5" />
+          {dc.autoFillAllLabel}
+        </Button>
+      </div>
+
+      <Card className={highlighted ? "divide-y divide-slate-100 p-2 ring-2 ring-brand-400" : "divide-y divide-slate-100 p-2"}>
+        {items.map((item) => {
+          const status = statusMap[item.id];
+          const meta = STATUS_META[status];
+          const resolved = status !== "notStarted";
+          return (
+            <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 p-4">
+              <div className="flex items-start gap-3">
+                <div
+                  className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
+                    status === "done" ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-slate-400"
+                  }`}
+                >
+                  <Icon name={status === "done" ? "checkCircle" : "documents"} className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="flex items-center gap-2 font-semibold text-slate-900">
+                    {item.name}
+                    {item.lang && (
+                      <Badge tone="neutral" className="!px-1.5 !py-0.5 !text-[10px] font-bold tracking-wide">
+                        {item.lang}
+                      </Badge>
+                    )}
+                  </p>
+                  <p className="mt-0.5 text-sm text-slate-500">{item.description}</p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  variant="secondary"
+                  className="px-3 py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-40"
+                  onClick={() => autoFillOne(item)}
+                  disabled={resolved}
+                >
+                  <Icon name="sparkle" className="h-3.5 w-3.5" />
+                  {dc.autoFillLabel}
+                </Button>
+                <Button
+                  variant="secondary"
+                  className="px-3 py-1.5 text-xs"
+                  onClick={() => navigate("/docs/preview", { state: { docName: item.name } })}
+                >
+                  <Icon name="eye" className="h-3.5 w-3.5" />
+                  미리보기
+                </Button>
+                {item.lang === "EN" && (
+                  <button
+                    onClick={() => navigate("/docs/translate", { state: { docName: item.name } })}
+                    className="text-xs font-medium text-brand-600 hover:underline"
+                  >
+                    번역된 서류입니다 · 원본 확인
+                  </button>
+                )}
+                <Badge tone={meta.tone}>{meta.label}</Badge>
+              </div>
+            </div>
+          );
+        })}
+      </Card>
+    </div>
+  );
+}
+
+function UploadChecklistItem({ item, state, onFileSelect }) {
+  const navigate = useNavigate();
+  const status = state.status;
+  const [shortName, detail] = (() => {
+    const match = item.name.match(/^(.+?)\s*\(([^)]+)\)\s*$/);
+    return match ? [match[1], match[2]] : [item.name, item.description];
+  })();
+
+  const statusLabel =
+    status === "done" ? dc.uploadedLabel : status === "uploading" ? dc.uploadingLabel : dc.waitingLabel;
+  const statusColor =
+    status === "done" ? "text-emerald-600" : status === "uploading" ? "text-brand-600" : "text-slate-400";
+  const barColor = status === "done" ? "bg-emerald-500" : "bg-brand-600";
+
+  return (
+    <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-center gap-4">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
+          <Icon name={DOC_ICONS[item.id] || "documents"} className="h-6 w-6" />
+        </div>
+        <div>
+          <p className="text-lg font-bold text-slate-900">{shortName}</p>
+          <p className="text-xs text-slate-400">{detail}</p>
+        </div>
+      </div>
+
+      <div className="w-full sm:w-56">
+        <div className="mb-1 flex items-center justify-between text-xs font-medium">
+          <span className={`flex items-center gap-1 ${statusColor}`}>
+            {status === "done" && <Icon name="checkCircle" className="h-3.5 w-3.5" />}
+            {statusLabel}
+          </span>
+          <span className="text-slate-500">{state.progress}%</span>
+        </div>
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+          <div className={`h-1.5 rounded-full transition-all ${barColor}`} style={{ width: `${state.progress}%` }} />
+        </div>
+      </div>
+
+      <div className="flex shrink-0 gap-2">
+        <Button
+          variant="secondary"
+          className="px-3 py-2 text-xs"
+          onClick={() => navigate("/docs/preview", { state: { docName: item.name } })}
+        >
+          <Icon name="arrowRight" className="h-3.5 w-3.5" />
+          {dc.issueLinkLabel}
+        </Button>
+        <label className="flex cursor-pointer items-center gap-1.5 rounded-xl bg-brand-600 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-700">
+          {status === "uploading" ? (
+            <Icon name="history" className="h-3.5 w-3.5 animate-spin" />
+          ) : status === "done" ? (
+            <Icon name="check" className="h-3.5 w-3.5" />
+          ) : (
+            <Icon name="upload" className="h-3.5 w-3.5" />
+          )}
+          {status === "done" ? dc.reuploadButtonLabel : dc.uploadButtonLabel}
+          <input
+            type="file"
+            className="hidden"
+            onChange={(e) => onFileSelect(item.id, e.target.files?.[0])}
+          />
+        </label>
+      </div>
+    </div>
+  );
+}
+
+function ViewSelector({ groups, selected, onToggleGroup, onToggleAll }) {
+  const [open, setOpen] = useState(false);
+  const allSelected = selected.size === groups.length;
+
+  return (
+    <div className="relative inline-block">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1 text-sm font-medium text-brand-600 hover:underline"
+      >
+        전체 서류 보기
+        <Icon name="chevronDown" className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-full z-10 mt-2 w-72 rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
+          <label className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+            <input
+              type="checkbox"
+              checked={allSelected}
+              onChange={onToggleAll}
+              className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+            />
+            전체 서류 보기
+          </label>
+          <div className="my-1 border-t border-slate-100" />
+          {groups.map((g) => (
+            <label
+              key={g.id}
+              className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+            >
+              <input
+                type="checkbox"
+                checked={selected.has(g.id)}
+                onChange={() => onToggleGroup(g.id)}
+                className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+              />
+              {g.program ? `${g.program} 서류 보기` : "공통 서류 보기"}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function DocumentChecklist() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const activeProgram = location.state?.program ?? null;
+  const activeItemName = location.state?.itemName ?? null;
+
+  const allGroups = [dc.commonGroup, ...dc.programGroups];
+  const matchedGroup = activeProgram
+    ? dc.programGroups.find((g) => g.program === activeProgram)
+    : null;
+
+  const [selectedIds, setSelectedIds] = useState(() =>
+    matchedGroup
+      ? new Set([dc.commonGroup.id, matchedGroup.id])
+      : new Set(allGroups.map((g) => g.id))
+  );
+
+  const [uploadState, setUploadState] = useState(() =>
+    Object.fromEntries(
+      dc.commonGroup.items.map((it, idx) => [
+        it.id,
+        idx === 1 ? { status: "done", progress: 100 } : { status: "waiting", progress: 0 },
+      ])
+    )
+  );
+
+  const handleFileSelect = (itemId, file) => {
+    if (!file) return;
+    setUploadState((prev) => ({ ...prev, [itemId]: { status: "uploading", progress: 0 } }));
+    const interval = setInterval(() => {
+      setUploadState((prev) => {
+        const cur = prev[itemId];
+        if (!cur || cur.status !== "uploading") {
+          clearInterval(interval);
+          return prev;
+        }
+        const nextProgress = Math.min(cur.progress + 20, 100);
+        if (nextProgress >= 100) {
+          clearInterval(interval);
+          return { ...prev, [itemId]: { status: "done", progress: 100 } };
+        }
+        return { ...prev, [itemId]: { status: "uploading", progress: nextProgress } };
+      });
+    }, 200);
+  };
+
+  const toggleGroup = (id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    setSelectedIds((prev) =>
+      prev.size === allGroups.length ? new Set() : new Set(allGroups.map((g) => g.id))
+    );
+  };
+
+  const doneCount = Object.values(uploadState).filter((s) => s.status === "done").length;
+  const overallPercent = Math.round((doneCount / dc.commonGroup.items.length) * 100);
+
+  return (
+    <div className="mx-auto max-w-6xl px-8 py-8">
+      <h1 className="text-2xl font-bold text-slate-900">{dc.title}</h1>
+
+      <div className="mt-1 mb-6 flex flex-wrap items-center gap-2 text-sm text-slate-500">
+        {activeItemName && (
+          <>
+            <span className="font-semibold text-slate-700">&ldquo;{activeItemName}&rdquo;</span>
+            <span>·</span>
+          </>
+        )}
+        <span>{dc.subtitle}</span>
+        <ViewSelector
+          groups={allGroups}
+          selected={selectedIds}
+          onToggleGroup={toggleGroup}
+          onToggleAll={toggleAll}
+        />
+      </div>
+
+      {selectedIds.has(dc.commonGroup.id) && (
+        <div className="mb-8">
+          <h2 className="mb-3 text-base font-bold text-slate-900">{dc.commonGroup.title}</h2>
+          <div className="space-y-4">
+            {dc.commonGroup.items.map((item) => (
+              <UploadChecklistItem
+                key={item.id}
+                item={item}
+                state={uploadState[item.id]}
+                onFileSelect={handleFileSelect}
+              />
+            ))}
+          </div>
+
+          <Card className="mt-6 p-6">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">{dc.overallTitle}</h3>
+                <p className="mt-1 text-sm text-slate-500">{dc.overallDescription}</p>
+              </div>
+              <span className="text-2xl font-extrabold text-brand-700">
+                {overallPercent}% {dc.overallSuffix}
+              </span>
+            </div>
+            <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
+              <div
+                className="h-2.5 rounded-full bg-brand-600 transition-all"
+                style={{ width: `${overallPercent}%` }}
+              />
+            </div>
+            <div className="mt-1 flex justify-between text-xs text-slate-400">
+              <span>0%</span>
+              <span>100%</span>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {dc.programGroups
+        .filter((g) => selectedIds.has(g.id))
+        .map((group) => (
+          <ChecklistGroup
+            key={group.id}
+            title={group.title}
+            items={group.items}
+            highlighted={group.program === activeProgram}
+            relatedItem={group.relatedItem}
+            relatedItemDestination={group.relatedItemDestination}
+          />
+        ))}
+
+      <button
+        type="button"
+        onClick={() => navigate("/docs/new")}
+        className="flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-800 px-6 py-4 text-base font-bold text-white hover:bg-brand-900"
+      >
+        {dc.addDocButtonLabel}
+        <Icon name="arrowRight" className="h-5 w-5" />
+      </button>
+    </div>
+  );
+}

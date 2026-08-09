@@ -1,0 +1,676 @@
+// UI 전용 더미 데이터 (백엔드/AI 연동 없음)
+export const brand = {
+  name: "JB-XPORT",
+  tagline: "AI 수출·마케팅 에이전트",
+};
+
+export const user = {
+  name: "김해피",
+  role: "대표",
+  company: "해피코스메틱",
+  avatarUrl: "",
+  loginId: "haepy2024",
+  email: "haepy@happycosmetic.co.kr",
+  phone: "010-1234-5678",
+};
+
+export const nav = {
+  top: [
+    { path: "/analysis", label: "시장 분석" },
+    { path: "/gov-support", label: "정부 지원사업" },
+    { path: "/my-items", label: "나의 수출품목", requiresAuth: true },
+    { path: "/docs", label: "서류 관리", requiresAuth: true },
+    { path: "/marketing", label: "마케팅 이미지 생성기", requiresAuth: true },
+  ],
+  sidebar: [
+    { path: "/analysis", label: "시장 분석", icon: "analysis" },
+    { path: "/gov-support", label: "정부 지원사업", icon: "projects" },
+    { path: "/my-items", label: "나의 수출품목", icon: "box", requiresAuth: true },
+    { path: "/docs", label: "서류 관리", icon: "documents", requiresAuth: true },
+    { path: "/marketing", label: "마케팅 이미지 생성기", icon: "marketing", requiresAuth: true },
+    { path: "/ai-docs", label: "AI 서식 자동 채우기", icon: "sparkle", requiresAuth: true },
+  ],
+  bottom: [
+    { path: "/help", label: "고객지원", icon: "help" },
+  ],
+};
+
+export const myPage = {
+  title: "마이페이지",
+  subtitle: "계정 정보를 확인하고 관리하세요.",
+  sectionTitle: "기본 정보",
+  fields: {
+    loginId: "아이디",
+    email: "이메일",
+    phone: "전화번호",
+    company: "회사명",
+  },
+  editButtonLabel: "정보 수정",
+  saveButtonLabel: "저장",
+  cancelButtonLabel: "취소",
+  dangerZone: {
+    title: "회원 탈퇴",
+    description: "탈퇴 시 모든 데이터가 삭제되며 복구할 수 없습니다.",
+    buttonLabel: "회원 탈퇴",
+    confirmMessage: "정말로 탈퇴하시겠습니까? 이 작업은 되돌릴 수 없습니다.",
+  },
+  exportItemsTitle: "나의 수출품목",
+  exportItemsSubtitle: "수출 진행 현황과 서류 제출 현황을 확인하세요.",
+  viewAllLabel: "전체 보기",
+  docStatusLabel: "서류 제출 현황",
+};
+
+export const myExportItems = {
+  title: "나의 수출품목",
+  subtitle: "등록한 수출 품목과 진행 상태를 한눈에 확인하세요.",
+  addButtonLabel: "새 품목 등록",
+  categoryOptions: ["생활용품", "화장품", "식품", "패션잡화", "전자기기", "기타"],
+  tableHeaders: {
+    name: "품목명",
+    basicInfo: "기본 정보 수정",
+    category: "카테고리",
+    destination: "목적국",
+    status: "진행 상태",
+    govPrograms: "진행 지원사업",
+    updatedAt: "최근 업데이트",
+    action: "액션",
+  },
+  statusLabels: {
+    inProgress: "서류 준비중",
+    ready: "제출 준비 완료",
+    submitted: "제출 완료",
+  },
+  statusTone: {
+    inProgress: "neutral",
+    ready: "warning",
+    submitted: "success",
+  },
+  basicInfoButtonLabel: "기본 정보 수정",
+  basicInfoDoneLabel: "완성",
+  basicInfoPendingLabel: "미완성",
+  actionLabel: "진행 현황 확인",
+  items: [
+    {
+      id: "item-001",
+      name: "AeroTherm Pro 스마트 보틀",
+      category: "생활용품",
+      destination: "미국",
+      status: "submitted",
+      basicInfoDone: true,
+      govPrograms: ["해외 전시회 참가 지원금"],
+      updatedAt: "2024. 10. 20",
+    },
+    {
+      id: "item-002",
+      name: "워터젤 선크림 SPF50+",
+      category: "화장품",
+      destination: "베트남",
+      status: "ready",
+      basicInfoDone: true,
+      govPrograms: ["2024년 글로벌 시장 확대 바우처 사업", "해외 인증 획득 지원사업"],
+      updatedAt: "2024. 10. 18",
+    },
+    {
+      id: "item-003",
+      name: "전통 발효 고추장 세트",
+      category: "식품",
+      destination: "태국",
+      status: "inProgress",
+      basicInfoDone: false,
+      govPrograms: ["소상공인 수출 물류비 지원사업"],
+      updatedAt: "2024. 10. 12",
+    },
+  ],
+};
+
+export const dashboard = {
+  greetingTitle: "무엇을 팔고 싶나요?",
+  greetingSubtitle: "당신의 해외 수출을 시작하세요.",
+  searchPlaceholder: "예: 화장품, 가전제품...",
+  recentSearches: [{ label: "최근 검색: 화장품 미국 수출", query: "화장품" }],
+  popularKeywords: [{ label: "인기: K-푸드 동남아", query: "K-푸드" }],
+  availablePrograms: 128,
+  announcementsLabel: "지원사업공고",
+  programStats: [
+    { label: "최신공고", count: 12 },
+    { label: "마감임박", count: 5 },
+    { label: "인기공고", count: 8 },
+  ],
+  cardNewsLabel: "지원사업 카드뉴스",
+  featuresTitle: "JB-XPORT는 이런 기능을 제공해요",
+  featuresDescription:
+    "소상공인의 해외 수출을 돕는 AI 에이전트입니다. 상품명이나 사진만 검색하면 잘 팔리는 국가·카테고리·시즌을 AI가 한 문장으로 분석해드리고, 신청 가능한 정부 지원사업 매칭부터 필요한 수출 서류 준비까지 한 곳에서 진행할 수 있어요.",
+  features: [
+    { icon: "search", title: "AI 시장 분석", description: "상품명이나 사진 검색만으로 잘 팔리는 국가·카테고리·성수기를 AI가 분석해드려요." },
+    { icon: "projects", title: "정부 지원사업 매칭", description: "분석 결과를 바탕으로 지금 신청 가능한 정부 지원사업을 자동으로 찾아드려요." },
+    { icon: "documents", title: "수출 서류 자동화", description: "지원사업별로 필요한 서류를 확인하고 AI로 자동 완성할 수 있어요." },
+  ],
+  itemCategoriesTitle: "품목별 지원사업 공고",
+  itemCategoriesAll: "전체",
+};
+
+export const login = {
+  tagline: "안전한 본인 확인",
+  requiredMessage: "로그인이 필요한 기능입니다.",
+  backLabel: "뒤로가기",
+  accountTypeLabel: "계정 유형",
+  accountTypes: [
+    { id: "user", label: "사용자" },
+    { id: "admin", label: "관리자" },
+  ],
+  fields: {
+    idPlaceholder: "아이디를 입력하세요",
+    passwordPlaceholder: "비밀번호를 입력하세요",
+  },
+  options: ["로그인 상태 유지", "비밀번호를 잊으셨나요?"],
+  socialLogins: ["Google로 로그인", "기업/기관 SSO 로그인"],
+  socialLoginUrls: {
+    google: "https://accounts.google.com/signin",
+    enterprise: "https://www.bizinfo.go.kr",
+  },
+  signupPrompt: { text: "아직 계정이 없으신가요?", cta: "회원가입" },
+  submitLabel: "로그인",
+  dividerLabel: "또는 다른 방법으로 계속하기",
+};
+
+export const signup = {
+  title: "회원가입",
+  subtitle: "간단한 정보 입력 후 바로 이용할 수 있어요.",
+  fields: {
+    idLabel: "아이디",
+    idPlaceholder: "사용할 아이디를 입력하세요",
+    passwordLabel: "비밀번호",
+    passwordPlaceholder: "비밀번호를 입력하세요",
+    passwordConfirmLabel: "비밀번호 확인",
+    passwordConfirmPlaceholder: "비밀번호를 다시 입력하세요",
+    companyLabel: "회사명",
+    companyPlaceholder: "회사명을 입력하세요",
+    categoryLabel: "대표 수출 품목 카테고리",
+    countryLabel: "주요 수출 희망 국가",
+  },
+  mismatchError: "비밀번호가 일치하지 않습니다.",
+  submitLabel: "회원가입하고 시작하기",
+  loginPrompt: { text: "이미 계정이 있으신가요?", cta: "로그인" },
+};
+
+export const resetPassword = {
+  title: "비밀번호 재설정",
+  subtitle: "아이디(이메일)를 확인하고 새 비밀번호를 설정하세요.",
+  fields: {
+    idLabel: "아이디 또는 이메일",
+    idPlaceholder: "아이디 또는 이메일을 입력하세요",
+    newPasswordLabel: "새 비밀번호",
+    newPasswordPlaceholder: "새 비밀번호를 입력하세요",
+    newPasswordConfirmLabel: "새 비밀번호 확인",
+    newPasswordConfirmPlaceholder: "새 비밀번호를 다시 입력하세요",
+  },
+  mismatchError: "비밀번호가 일치하지 않습니다.",
+  submitLabel: "비밀번호 변경",
+  successTitle: "비밀번호가 변경되었습니다",
+  successMessage: "새 비밀번호로 다시 로그인해주세요.",
+  backToLoginLabel: "로그인으로 돌아가기",
+};
+
+export const marketAnalysis = {
+  defaultQuery: "선크림",
+  pageTitle: "시장 분석 대시보드",
+  searchBar: {
+    heading: "무엇을 검색할까요?",
+    placeholder: "상품 검색...",
+  },
+  imageSearchNotice: "사진으로 검색한 결과입니다. 정확도를 높이려면 상품명을 입력해 다시 검색해보세요.",
+  aiExecutiveSummary: { badge: "AI 핵심 요약 리포트", live: "LIVE", confidence: "데이터 신뢰도 98%", updated: "방금 업데이트됨" },
+  filtersTitle: "분석 결과",
+  categoryLabel: "카테고리 (HS Code)",
+  countryLabel: "대상 국가 (동남아시아)",
+  quarterLabel: "분기별 설정",
+  allCountriesLabel: "전체 (All)",
+  chartTitleSuffix: "(2024)",
+  keyMarketDriversTitle: "핵심 시장 동인 (Key Market Drivers)",
+  downloadReportLabel: "보고서 다운로드",
+  newAnalysisLabel: "새 분석 시작",
+  newAnalysisPrompt: "새로 분석할 상품명을 검색창에 입력해주세요.",
+  checkGovSupportLabel: "지원 사업 확인하기",
+  checkGovSupportDesc: "이 분석 결과를 바탕으로 신청 가능한 정부 지원사업을 확인해보세요.",
+};
+
+export const govSupport = {
+  title: "정부 지원사업",
+  subtitle: "수출 기업을 위한 보조금·지원금·지원 프로그램을 살펴보세요.",
+  ctaButton: "내가 선택할 수 있는 지원사업 보기",
+  personalizedNotice: "지금 신청 가능한 지원사업만 활성화했어요. 나머지는 비활성화됩니다.",
+  disabledLabel: "신청 불가",
+  searchPlaceholder: "키워드, 업종, 지역으로 지원사업 검색...",
+  filterButton: "필터",
+  cardLabels: { budget: "예산 한도", deadline: "마감일" },
+  projects: [
+    {
+      id: "gov-001",
+      title: "2024년 글로벌 시장 확대 바우처 사업",
+      category: "적합도 높음",
+      highMatch: true,
+      dday: "D-14",
+      budgetLimit: "₩50,000,000",
+      deadline: "2024. 10. 31",
+      source: "기업마당",
+      matchCategories: ["cosmetics", "food"],
+      matchCountries: ["베트남", "태국"],
+    },
+    {
+      id: "gov-002",
+      title: "소상공인 수출 물류비 지원사업",
+      category: "수출 물류",
+      highMatch: false,
+      dday: "D-5",
+      budgetLimit: "₩15,000,000",
+      deadline: "2024. 10. 22",
+      source: "KOTRA 무역투자24",
+      matchCategories: ["food", "household"],
+      matchCountries: ["태국", "인도네시아"],
+    },
+    {
+      id: "gov-003",
+      title: "해외 인증 획득 지원사업",
+      category: "인증",
+      highMatch: false,
+      dday: "D-30",
+      budgetLimit: "₩30,000,000",
+      deadline: "2024. 11. 15",
+      source: "공공데이터포털",
+      matchCategories: ["cosmetics"],
+      matchCountries: ["베트남"],
+    },
+    {
+      id: "gov-004",
+      title: "해외 전시회 참가 지원금",
+      category: "마케팅",
+      highMatch: false,
+      dday: "D-1",
+      urgent: true,
+      budgetLimit: "₩20,000,000",
+      deadline: "2024. 10. 18",
+      source: "수출바우처 포털",
+      matchCategories: ["household", "electronics", "fashion"],
+      matchCountries: [],
+    },
+  ],
+};
+
+export const documentChecklist = {
+  title: "필수 수출 서류",
+  subtitle: "품목·지원사업별로 준비해야 할 서류를 확인하고 업로드해주세요.",
+  autoFillLabel: "자동완성",
+  autoFillAllLabel: "전체 서류 자동완성",
+  notStartedLabel: "미작성",
+  doneLabel: "완성",
+  manualLabel: "수기 작성 필요",
+  waitingLabel: "업로드 대기 중",
+  uploadingLabel: "업로드 중...",
+  uploadedLabel: "업로드 완료",
+  uploadButtonLabel: "파일 업로드",
+  reuploadButtonLabel: "다시 업로드",
+  issueLinkLabel: "발급 바로가기",
+  overallTitle: "전체 서류 준비 현황",
+  overallDescription: "모든 필수 서류가 등록되어야 다음 통관 단계로 진행할 수 있습니다.",
+  overallSuffix: "완료",
+  addDocButtonLabel: "추가 수출 제출 서류 작성하기",
+  commonGroup: {
+    id: "common",
+    program: null,
+    title: "공통 수출 서류",
+    items: [
+      {
+        id: "doc-invoice",
+        name: "상업송장 (Commercial Invoice)",
+        description: "수출입 통관 및 관세 부과 기준이 되는 필수 서류",
+        lang: "EN",
+        autoResult: "done",
+      },
+      {
+        id: "doc-packing",
+        name: "포장명세서 (Packing List)",
+        description: "화물의 포장 상태, 수량, 중량 등을 기재한 명세서",
+        autoResult: "done",
+      },
+      {
+        id: "doc-co",
+        name: "원산지증명서 (C/O)",
+        description: "FTA 협정세율 적용을 위한 필수 증명서",
+        lang: "EN",
+        autoResult: "manual",
+      },
+    ],
+  },
+  programGroups: [
+    {
+      id: "prog-voucher",
+      program: "2024년 글로벌 시장 확대 바우처 사업",
+      title: "2024년 글로벌 시장 확대 바우처 사업 제출서류",
+      relatedItem: "워터젤 선크림 SPF50+",
+      relatedItemDestination: "베트남",
+      items: [
+        {
+          id: "doc-voucher-app",
+          name: "사업 참여 신청서",
+          description: "바우처 사업 신청을 위한 기본 서식",
+          autoResult: "done",
+        },
+        {
+          id: "doc-voucher-biz",
+          name: "사업자등록증 사본",
+          description: "신청 자격 확인을 위한 사업자등록증",
+          autoResult: "manual",
+        },
+        {
+          id: "doc-voucher-record",
+          name: "수출 실적 증명서",
+          description: "최근 1년간 수출 실적을 증빙하는 서류",
+          autoResult: "manual",
+        },
+      ],
+    },
+    {
+      id: "prog-cert",
+      program: "해외 인증 획득 지원사업",
+      title: "해외 인증 획득 지원사업 제출서류",
+      relatedItem: "워터젤 선크림 SPF50+",
+      relatedItemDestination: "베트남",
+      items: [
+        {
+          id: "doc-cert-app",
+          name: "인증 지원 신청서",
+          description: "해외 인증 획득 지원사업 신청 서식",
+          autoResult: "done",
+        },
+        {
+          id: "doc-cert-plan",
+          name: "인증 취득 계획서",
+          description: "취득하고자 하는 인증 종류와 취득 일정 기재",
+          autoResult: "manual",
+        },
+      ],
+    },
+    {
+      id: "prog-expo",
+      program: "해외 전시회 참가 지원금",
+      title: "해외 전시회 참가 지원금 제출서류",
+      relatedItem: "AeroTherm Pro 스마트 보틀",
+      relatedItemDestination: "미국",
+      items: [
+        {
+          id: "doc-expo-app",
+          name: "전시회 참가 신청서",
+          description: "참가하고자 하는 전시회 정보 기재",
+          autoResult: "done",
+        },
+        {
+          id: "doc-expo-quote",
+          name: "부스 임차 견적서",
+          description: "전시 부스 임차 비용 견적 자료",
+          autoResult: "manual",
+        },
+      ],
+    },
+    {
+      id: "prog-logistics",
+      program: "소상공인 수출 물류비 지원사업",
+      title: "소상공인 수출 물류비 지원사업 제출서류",
+      relatedItem: "전통 발효 고추장 세트",
+      relatedItemDestination: "태국",
+      items: [
+        {
+          id: "doc-logi-app",
+          name: "물류비 지원 신청서",
+          description: "수출 물류비 지원사업 신청 서식",
+          autoResult: "done",
+        },
+        {
+          id: "doc-logi-invoice",
+          name: "운송비 견적서/영수증",
+          description: "실제 발생한 물류비를 증빙하는 자료",
+          autoResult: "manual",
+        },
+      ],
+    },
+  ],
+};
+
+export const exportDocumentForm = {
+  title: "수출 서류 정보 입력",
+  subtitle: "서류 생성에 필요한 정보를 입력해주세요.",
+  sections: {
+    exporter: {
+      title: "수출자 정보",
+      companyName: { label: "회사명", value: "테크글로벌무역㈜" },
+      taxId: { label: "사업자등록번호", value: "" },
+      address: { label: "주소", value: "" },
+    },
+    consignee: {
+      title: "수하인 정보",
+      consigneeName: { label: "수하인명", value: "" },
+      destinationCountry: { label: "목적국", value: "" },
+    },
+    items: {
+      title: "품목 상세",
+      descriptionLabel: "품목 설명",
+      hsCodeLabel: "HS코드",
+      quantityLabel: "수량",
+      removeLabel: "삭제",
+      addItemLabel: "품목 추가",
+    },
+  },
+  destinationCountryOptions: [
+    "국가를 선택하세요",
+    "미국",
+    "베트남",
+    "태국",
+    "중국",
+    "일본",
+    "독일",
+  ],
+  actions: {
+    loadPrevious: "이전 정보 불러오기",
+    preview: "서류 양식 보기",
+    generate: "서류 생성하기",
+  },
+};
+
+export const documentPreview = {
+  fileName: "상업송장_미국수출_2023.pdf",
+  badge: "AI 자동 작성",
+  zoom: "100%",
+  document: {
+    title: "상업송장 (COMMERCIAL INVOICE)",
+    shipperLabel: "수출자 (Shipper/Exporter)",
+    consigneeLabel: "수하인 (Consignee)",
+    shipper: {
+      name: "테크글로벌 인더스트리㈜",
+      address: ["혁신로 123", "서울특별시, 대한민국"],
+    },
+    consignee: {
+      name: "American Retail Partners LLC",
+      address: ["456 Commerce Blvd, Suite 200", "New York, NY 10001, USA"],
+      aiFilled: true,
+    },
+    tableHeaders: { description: "품목 설명", hsCode: "HS코드", quantity: "수량", unitPrice: "단가", total: "총액" },
+    items: [
+      {
+        description: "스마트홈 허브 v2.0",
+        hsCode: "8517.62.00",
+        quantity: "500개",
+        unitPrice: "$120.00",
+        totalValue: "$60,000.00",
+        aiFilledField: "hsCode",
+      },
+      {
+        description: "무선 센서 패키지",
+        hsCode: "8543.70.99",
+        quantity: "1,000개",
+        unitPrice: "$45.00",
+        totalValue: "$45,000.00",
+        aiFilledField: "hsCode",
+      },
+    ],
+    termsLabel: "거래 조건",
+    termsOfSale: "DDP (관세지급인도조건) New York",
+    disclaimer: "본 서류는 AI가 생성한 초안이며 전문가 검토가 필요할 수 있습니다.",
+  },
+  aiFillingComplete: {
+    title: "AI 자동 채움 완료",
+    description: "프로젝트 데이터를 기반으로 서류가 자동으로 채워졌습니다. 하이라이트된 항목을 검토해주세요.",
+    checklist: [
+      "수하인 주소 확인 완료",
+      "품목 설명 기반 HS코드 추천 완료",
+      "거래 조건(DDP) 자동 반영 완료",
+    ],
+    warning: "최종 제출 전 노란색으로 표시된 항목을 꼼꼼히 검토해주세요.",
+  },
+  actions: { submit: "제출하기", edit: "수정하기" },
+  submitted: {
+    title: "제출이 완료되었습니다",
+    message: "서류가 정상적으로 제출되었습니다. 진행 상황은 나의 수출품목에서 확인할 수 있습니다.",
+    backLabel: "서류 목록으로 돌아가기",
+    myItemsLabel: "나의 수출품목 보기",
+  },
+};
+
+export const marketingMaterialCreator = {
+  title: "마케팅 이미지 생성기",
+  subtitle: "제품 마케팅 이미지를 빠르게 생성하세요.",
+  actions: { loadFromDoc: "기존 서류 정보 불러오기", saveImage: "이미지 저장" },
+  uploadLabel: "상품 사진 업로드",
+  uploadHint: { title: "클릭하거나 파일을 끌어다 놓으세요", sub: "SVG, PNG, JPG, GIF (최대 800x400px)" },
+  templateSectionTitle: "템플릿 선택",
+  templates: {
+    categories: ["전체", "SNS", "B2B 카탈로그", "배너"],
+    items: [
+      { id: "tpl-modern-minimal", name: "모던 미니멀", selected: true },
+      { id: "tpl-b2b-spec-sheet", name: "B2B 스펙시트", selected: false },
+      { id: "tpl-promo-banner", name: "프로모션 배너", selected: false },
+    ],
+  },
+  previewTitle: "미리보기",
+  preview: {
+    sourceBadge: "문서 #892에서 자동 반영",
+    productName: "에어썸 프로 스마트 보틀",
+    description: "전문가를 위한 첨단 온도 제어 기능. 오랜 시간 완벽한 보온·보냉을 유지합니다.",
+    specs: [
+      { icon: "temperature", label: "보온 유지", value: "24시간" },
+      { icon: "weight", label: "무게", value: "320g" },
+    ],
+    brand: "JB-XPORT",
+    website: "www.jbxport.kr",
+  },
+};
+
+export const helpAndFaq = {
+  title: "무엇을 도와드릴까요?",
+  subtitle: "자주 묻는 질문을 확인하거나 AI 전문 상담사와 상담하세요.",
+  chatBanner: {
+    title: "1:1 AI 챗봇 상담",
+    description: "수출 규정, 서류 작성, 시장 진입 전략에 대해 AI로부터 즉시 맞춤 답변을 받아보세요.",
+    ctaLabel: "지금 상담 시작하기",
+  },
+  categories: [
+    { id: "market-entry", label: "시장 진입", icon: "globe" },
+    { id: "documentation", label: "서류 작성", icon: "file" },
+    { id: "tariffs-taxes", label: "관세·세금", icon: "bank" },
+    { id: "logistics", label: "물류", icon: "truck" },
+  ],
+  faqSectionTitle: "자주 묻는 질문",
+  faqs: [
+    {
+      question: "EU로 전자제품을 수출할 때 필요한 서류는 무엇인가요?",
+      answer: "일반적으로 상업송장, 포장명세서, 원산지증명서, CE 인증서가 필요합니다. 품목에 따라 추가 서류가 요구될 수 있습니다.",
+    },
+    {
+      question: "목적국의 수입 관세는 어떻게 계산하나요?",
+      answer: "HS코드와 목적국의 관세율표를 기준으로 산정하며, FTA 협정세율 적용 여부에 따라 달라질 수 있습니다.",
+    },
+    {
+      question: "AI가 상업 서류를 번역해줄 수 있나요?",
+      answer: "네, 서류 관리 메뉴에서 언어쌍을 선택한 뒤 'AI 채우기' 기능으로 상업송장 등 서류를 번역할 수 있습니다.",
+    },
+  ],
+  floatingChatbot: {
+    title: "AI 상담",
+    greeting: "안녕하세요. 해외 수출에 궁금하신 점을 물어보세요.",
+    suggestionsLabel: "자주 묻는 질문",
+    inputPlaceholder: "궁금한 점을 입력하세요...",
+    fallbackAnswer: "문의하신 내용은 확인 후 답변드릴게요. 더 자세한 상담은 고객지원 페이지를 이용해주세요.",
+  },
+};
+
+export const translationEditor = {
+  documentTitle: "상업송장 - 한국 수출용",
+  languagePairLabel: "언어쌍",
+  languagePair: { source: "영어", target: "한국어" },
+  actions: {
+    translateAll: "번역 (원문 변환)",
+    aiFill: "AI 채우기",
+    exportPdf: "PDF로 내보내기",
+    save: "변경사항 저장",
+  },
+  sourcePanelTitle: "원문 (영어)",
+  targetPanelTitle: "번역문 (한국어)",
+  targetBadge: "편집 중",
+  aiAppliedBadge: "AI 제안 적용됨",
+  aiTranslatedBadge: "AI 번역됨",
+  fieldLabels: {
+    invoiceNo: "송장 번호",
+    date: "발행일",
+    shipper: "수출자",
+    consignee: "수입자",
+    description: "품명",
+    qty: "수량",
+    unitPrice: "단가",
+    total: "총액",
+  },
+  source: {
+    invoiceNo: "INV-2023-0042",
+    date: "October 24, 2023",
+    shipper: ["Global Tech Solutions Inc.", "123 Innovation Drive", "San Francisco, CA 94105, USA"],
+    consignee: ["Seoul Electronics Ltd.", "456 Teheran-ro, Gangnam-gu", "Seoul 06164, South Korea"],
+    items: [
+      { description: "Industrial Grade Semiconductor Wafer", qty: 500, unitPrice: "$120.00", total: "$60,000.00" },
+      { description: "High-Precision Sensor Modules", qty: 250, unitPrice: "$45.00", total: "$11,250.00" },
+    ],
+  },
+  target: {
+    invoiceNo: "INV-2023-0042",
+    date: "2023년 10월 24일",
+    dateAiTranslated: true,
+    shipper: ["Global Tech Solutions Inc.", "123 Innovation Drive", "San Francisco, CA 94105, USA"],
+    consignee: ["(주)서울일렉트로닉스", "서울특별시 강남구 테헤란로 456", "우편번호 06164, 대한민국"],
+    consigneeAiTranslated: true,
+    items: [
+      { description: "산업용 반도체 웨이퍼", qty: 500, unitPrice: "$120.00", total: "$60,000.00" },
+      { description: "고정밀 센서 모듈", qty: 250, unitPrice: "$45.00", total: "$11,250.00", aiTranslated: true },
+    ],
+  },
+};
+
+export const govConsultation = {
+  title: "지자체 담당자 1:1 서류 문의",
+  subtitle: "준비한 서류가 지원사업 요건에 맞는지 담당자에게 직접 확인받으세요.",
+  inquiryTypes: ["서류 적합성 확인", "지원사업 자격 여부", "서식 오류 확인"],
+  statusLabels: { waiting: "답변 대기", done: "답변 완료" },
+  inquiries: [
+    {
+      id: "inq-001",
+      subject: "원산지증명서 서식 문의",
+      attachedDocument: "원산지증명서 (C/O)",
+      status: "답변 완료",
+      aiPreReview: "품목 설명과 HS코드가 일치하며 특이사항이 발견되지 않았습니다. 서명란 누락 여부만 확인해 주세요.",
+      officerReply: "서식은 적합하며 접수 가능합니다.",
+    },
+    {
+      id: "inq-002",
+      subject: "수출바우처 신청 자격 문의",
+      attachedDocument: "상업송장",
+      status: "답변 대기",
+      aiPreReview: "사업자등록증 상 업종 코드가 지원 대상에 포함되는지 추가 확인이 필요합니다.",
+      officerReply: null,
+    },
+  ],
+};
