@@ -12,11 +12,21 @@ git 프로젝트 메인 화면에서 초록색 CODE 버튼 클릭
 압축 풀기 ->
 압축 푼 폴더를 VS CODE에서 열기
 
+API key discord에 보낸 걸로 채우기
+backend venv 폴더에 .env 파일 만들기
+web src 폴더에 .env.local 파일 만들기 
+
 VS CODE 터미널에서 
 ```
 cd web
 npm install
 npm run dev
+```
+새 터미널 열고
+```
+cd backend
+.\venv\Scripts\Activate.ps1
+uvicorn main:app --reload --port 8000
 ```
 
 터미널에 나오는 주소(기본값 http://localhost:5173)를 브라우저에서 열면 됩니다.
