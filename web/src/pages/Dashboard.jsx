@@ -110,8 +110,12 @@ function ReviewStars({ rating }) {
 
 export default function Dashboard() {
   const navigate = useNavigate();
+<<<<<<< HEAD
   const { isLoggedIn, user, profile, logout } = useAuth();
   const avatarInitial = (profile?.company || user?.email || "U")[0].toUpperCase();
+=======
+  const { isLoggedIn, user, logout } = useAuth();
+>>>>>>> origin/main
   const [itemFilter, setItemFilter] = useState("all");
 
   const [statsRef, statsReplayKey] = useReplayOnView();
@@ -208,7 +212,11 @@ export default function Dashboard() {
           <div className="flex items-center gap-3">
             <Link to="/mypage" className="flex items-center gap-2.5 hover:opacity-80">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700">
+<<<<<<< HEAD
                 {avatarInitial}
+=======
+                {user.name[0]}
+>>>>>>> origin/main
               </div>
               <span className="text-sm font-semibold text-slate-800">마이페이지</span>
             </Link>
@@ -230,7 +238,11 @@ export default function Dashboard() {
         )}
       </header>
 
+<<<<<<< HEAD
       <div className="flex w-full flex-col items-center bg-[#deecfb] px-6 pb-24 pt-28">
+=======
+      <div className="flex w-full flex-col items-center bg-[#deecfb] px-6 pb-12 pt-16">
+>>>>>>> origin/main
         <SearchBar
           heading={dashboard.greetingTitle}
           subtitle={dashboard.greetingSubtitle}
@@ -239,7 +251,11 @@ export default function Dashboard() {
           onImageSearch={handleImageSearch}
         />
 
+<<<<<<< HEAD
         <div className="mt-8 flex flex-wrap justify-center gap-3">
+=======
+        <div className="mt-5 flex flex-wrap justify-center gap-3">
+>>>>>>> origin/main
           {[...dashboard.recentSearches, ...dashboard.popularKeywords].map((item) => (
             <button
               key={item.label}

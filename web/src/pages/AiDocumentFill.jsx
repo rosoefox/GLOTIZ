@@ -3,10 +3,27 @@ import { useLocation, useNavigate } from "react-router-dom";
 import Icon from "../components/Icon";
 import { Card, Button } from "../components/ui";
 import { supabase } from "../lib/supabase";
+<<<<<<< HEAD
 import { useAuth } from "../context/AuthContext";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
 
+=======
+
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
+
+async function getOrCreateUserId() {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (session?.user) return session.user.id;
+
+  const { data, error } = await supabase.auth.signInAnonymously();
+  if (error) throw error;
+  return data.user.id;
+}
+
+>>>>>>> origin/main
 function toOptionList(options) {
   if (!Array.isArray(options)) return [];
   return options.map((opt) =>
@@ -64,7 +81,10 @@ export default function AiDocumentFill() {
   const location = useLocation();
   const navigate = useNavigate();
   const { templateId, templateName, businessName } = location.state ?? {};
+<<<<<<< HEAD
   const { user: authUser } = useAuth();
+=======
+>>>>>>> origin/main
 
   const [fields, setFields] = useState([]);
   const [loadingFields, setLoadingFields] = useState(true);
@@ -98,6 +118,7 @@ export default function AiDocumentFill() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+<<<<<<< HEAD
     if (!authUser) {
       setError("로그인이 필요합니다.");
       return;
@@ -108,6 +129,23 @@ export default function AiDocumentFill() {
     const { data: submission, error: submissionError } = await supabase
       .from("submissions")
       .insert({ template_id: templateId, user_id: authUser.id, status: "filled" })
+=======
+    setSaving(true);
+    setError(null);
+
+    let userId;
+    try {
+      userId = await getOrCreateUserId();
+    } catch (authError) {
+      setError(authError.message);
+      setSaving(false);
+      return;
+    }
+
+    const { data: submission, error: submissionError } = await supabase
+      .from("submissions")
+      .insert({ template_id: templateId, user_id: userId, status: "filled" })
+>>>>>>> origin/main
       .select()
       .single();
 

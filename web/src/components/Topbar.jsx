@@ -4,8 +4,12 @@ import { nav, login } from "../data/mockData";
 import { useAuth } from "../context/AuthContext";
 
 export default function Topbar({ showSearch = true }) {
+<<<<<<< HEAD
   const { isLoggedIn, user, profile, logout } = useAuth();
   const avatarInitial = (profile?.company || user?.email || "U")[0].toUpperCase();
+=======
+  const { isLoggedIn, user, logout } = useAuth();
+>>>>>>> origin/main
   const navigate = useNavigate();
 
   const goToLogin = () => {
@@ -69,7 +73,11 @@ export default function Topbar({ showSearch = true }) {
           <div className="flex items-center gap-3">
             <Link to="/mypage" className="flex items-center gap-2.5 hover:opacity-80">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700">
+<<<<<<< HEAD
                 {avatarInitial}
+=======
+                {user.name[0]}
+>>>>>>> origin/main
               </div>
               <span className="text-sm font-semibold text-slate-800">마이페이지</span>
             </Link>

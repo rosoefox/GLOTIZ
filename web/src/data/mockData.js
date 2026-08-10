@@ -40,7 +40,10 @@ export const myPage = {
   sectionTitle: "기본 정보",
   fields: {
     loginId: "아이디",
+<<<<<<< HEAD
     name: "이름",
+=======
+>>>>>>> origin/main
     email: "이메일",
     phone: "전화번호",
     company: "회사명",
@@ -220,7 +223,11 @@ export const login = {
     { id: "admin", label: "관리자" },
   ],
   fields: {
+<<<<<<< HEAD
     idPlaceholder: "이메일을 입력하세요",
+=======
+    idPlaceholder: "아이디를 입력하세요",
+>>>>>>> origin/main
     passwordPlaceholder: "비밀번호를 입력하세요",
   },
   options: ["로그인 상태 유지", "비밀번호를 잊으셨나요?"],
@@ -238,6 +245,7 @@ export const signup = {
   title: "회원가입",
   subtitle: "간단한 정보 입력 후 바로 이용할 수 있어요.",
   fields: {
+<<<<<<< HEAD
     idLabel: "이메일",
     idPlaceholder: "이메일을 입력하세요",
     loginIdLabel: "아이디",
@@ -246,6 +254,10 @@ export const signup = {
     namePlaceholder: "이름을 입력하세요",
     phoneLabel: "전화번호",
     phonePlaceholder: "전화번호를 입력하세요",
+=======
+    idLabel: "아이디",
+    idPlaceholder: "사용할 아이디를 입력하세요",
+>>>>>>> origin/main
     passwordLabel: "비밀번호",
     passwordPlaceholder: "비밀번호를 입력하세요",
     passwordConfirmLabel: "비밀번호 확인",
@@ -262,22 +274,33 @@ export const signup = {
 
 export const resetPassword = {
   title: "비밀번호 재설정",
+<<<<<<< HEAD
   subtitle: "가입한 이메일로 재설정 링크를 보내드립니다.",
   fields: {
     idLabel: "이메일",
     idPlaceholder: "가입 시 사용한 이메일을 입력하세요",
+=======
+  subtitle: "아이디(이메일)를 확인하고 새 비밀번호를 설정하세요.",
+  fields: {
+    idLabel: "아이디 또는 이메일",
+    idPlaceholder: "아이디 또는 이메일을 입력하세요",
+>>>>>>> origin/main
     newPasswordLabel: "새 비밀번호",
     newPasswordPlaceholder: "새 비밀번호를 입력하세요",
     newPasswordConfirmLabel: "새 비밀번호 확인",
     newPasswordConfirmPlaceholder: "새 비밀번호를 다시 입력하세요",
   },
   mismatchError: "비밀번호가 일치하지 않습니다.",
+<<<<<<< HEAD
   submitLabel: "재설정 링크 보내기",
   updateTitle: "새 비밀번호 설정",
   updateSubtitle: "새로 사용할 비밀번호를 입력하세요.",
   updateSubmitLabel: "비밀번호 변경",
   requestSuccessTitle: "이메일을 확인해주세요",
   requestSuccessMessage: "입력하신 이메일로 비밀번호 재설정 링크를 보냈습니다.",
+=======
+  submitLabel: "비밀번호 변경",
+>>>>>>> origin/main
   successTitle: "비밀번호가 변경되었습니다",
   successMessage: "새 비밀번호로 다시 로그인해주세요.",
   backToLoginLabel: "로그인으로 돌아가기",
@@ -645,7 +668,11 @@ export const helpAndFaq = {
   },
   categories: [
     { id: "market-entry", label: "시장 진입", icon: "globe" },
+<<<<<<< HEAD
     { id: "documentation", label: "서류 작성", icon: "documents" },
+=======
+    { id: "documentation", label: "서류 작성", icon: "file" },
+>>>>>>> origin/main
     { id: "tariffs-taxes", label: "관세·세금", icon: "bank" },
     { id: "logistics", label: "물류", icon: "truck" },
   ],

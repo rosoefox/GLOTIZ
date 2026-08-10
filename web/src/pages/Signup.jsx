@@ -8,12 +8,18 @@ import { useAuth } from "../context/AuthContext";
 
 export default function Signup() {
   const navigate = useNavigate();
+<<<<<<< HEAD
   const { signup, setLastQuery, setLastFilters } = useAuth();
   const [form, setForm] = useState({
     loginId: "",
     name: "",
     email: "",
     phone: "",
+=======
+  const { login: signIn, setLastQuery, setLastFilters } = useAuth();
+  const [form, setForm] = useState({
+    id: "",
+>>>>>>> origin/main
     password: "",
     passwordConfirm: "",
     company: "",
@@ -21,18 +27,26 @@ export default function Signup() {
     country: COUNTRIES[0],
   });
   const [error, setError] = useState("");
+<<<<<<< HEAD
   const [submitting, setSubmitting] = useState(false);
   const [needsConfirmation, setNeedsConfirmation] = useState(false);
 
   const update = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
 
   const handleSubmit = async (e) => {
+=======
+
+  const update = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
+
+  const handleSubmit = (e) => {
+>>>>>>> origin/main
     e.preventDefault();
     if (form.password !== form.passwordConfirm) {
       setError(s.mismatchError);
       return;
     }
     setError("");
+<<<<<<< HEAD
     setSubmitting(true);
     try {
       const { session } = await signup({
@@ -83,6 +97,19 @@ export default function Signup() {
     );
   }
 
+=======
+    const category = CATEGORIES.find((c) => c.id === form.categoryId);
+    signIn({ remember: true, accountType: "user" });
+    setLastQuery(category?.label || "");
+    setLastFilters({
+      categoryId: form.categoryId,
+      countryIds: [form.country],
+      quarterIds: pickDefaults(category?.label || "").quarterIds,
+    });
+    navigate("/gov-support");
+  };
+
+>>>>>>> origin/main
   return (
     <div className="relative flex min-h-screen items-center justify-center bg-gradient-to-br from-brand-50 via-white to-amber-50 px-4">
       <Link
@@ -103,6 +130,7 @@ export default function Signup() {
           <h2 className="mb-5 text-lg font-bold text-slate-900">{s.title}</h2>
           <form className="space-y-4" onSubmit={handleSubmit}>
             <TextField
+<<<<<<< HEAD
               label={s.fields.loginIdLabel}
               required
               placeholder={s.fields.loginIdPlaceholder}
@@ -131,6 +159,13 @@ export default function Signup() {
               placeholder={s.fields.phonePlaceholder}
               value={form.phone}
               onChange={update("phone")}
+=======
+              label={s.fields.idLabel}
+              required
+              placeholder={s.fields.idPlaceholder}
+              value={form.id}
+              onChange={update("id")}
+>>>>>>> origin/main
             />
             <TextField
               label={s.fields.passwordLabel}
@@ -188,8 +223,13 @@ export default function Signup() {
 
             {error && <p className="text-xs font-medium text-red-500">{error}</p>}
 
+<<<<<<< HEAD
             <Button type="submit" className="w-full py-3" disabled={submitting}>
               {submitting ? "가입 처리 중..." : s.submitLabel}
+=======
+            <Button type="submit" className="w-full py-3">
+              {s.submitLabel}
+>>>>>>> origin/main
             </Button>
           </form>
 

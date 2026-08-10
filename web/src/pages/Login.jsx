@@ -6,12 +6,17 @@ import { brand, login } from "../data/mockData";
 import { useAuth } from "../context/AuthContext";
 
 export default function Login() {
+<<<<<<< HEAD
   const [accountType, setAccountType] = useState("user");
   const [remember, setRemember] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+=======
+  const [remember, setRemember] = useState(false);
+  const [accountType, setAccountType] = useState("user");
+>>>>>>> origin/main
   const { login: signIn } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -19,6 +24,7 @@ export default function Login() {
   const goAfterLogin = () =>
     navigate(location.state?.from || (accountType === "admin" ? "/admin" : "/gov-support"));
 
+<<<<<<< HEAD
   const handleLogin = async (e) => {
     e.preventDefault();
     setError("");
@@ -31,10 +37,21 @@ export default function Login() {
     } finally {
       setSubmitting(false);
     }
+=======
+  const handleLogin = (e) => {
+    e.preventDefault();
+    signIn({ remember, accountType });
+    goAfterLogin();
+>>>>>>> origin/main
   };
 
   const handleSocialLogin = (url) => {
     window.open(url, "_blank", "noopener,noreferrer");
+<<<<<<< HEAD
+=======
+    signIn({ remember, accountType });
+    goAfterLogin();
+>>>>>>> origin/main
   };
 
   return (
@@ -76,6 +93,7 @@ export default function Login() {
             </div>
 
             <label className="block">
+<<<<<<< HEAD
               <span className="mb-1.5 block text-sm font-medium text-slate-700">이메일</span>
               <div className="relative">
                 <Icon name="user" className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -84,6 +102,12 @@ export default function Login() {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+=======
+              <span className="mb-1.5 block text-sm font-medium text-slate-700">아이디</span>
+              <div className="relative">
+                <Icon name="user" className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+>>>>>>> origin/main
                   className="w-full rounded-lg border border-slate-300 py-2.5 pl-10 pr-3.5 text-sm placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
                   placeholder={login.fields.idPlaceholder}
                 />
@@ -96,9 +120,12 @@ export default function Login() {
                 <Icon name="lock" className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <input
                   type="password"
+<<<<<<< HEAD
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+=======
+>>>>>>> origin/main
                   className="w-full rounded-lg border border-slate-300 py-2.5 pl-10 pr-3.5 text-sm placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
                   placeholder={login.fields.passwordPlaceholder}
                 />
@@ -120,10 +147,15 @@ export default function Login() {
               </Link>
             </div>
 
+<<<<<<< HEAD
             {error && <p className="text-xs font-medium text-red-500">{error}</p>}
 
             <Button type="submit" className="w-full py-3" disabled={submitting}>
               {submitting ? "로그인 중..." : login.submitLabel}
+=======
+            <Button type="submit" className="w-full py-3">
+              {login.submitLabel}
+>>>>>>> origin/main
             </Button>
 
             <div className="relative py-2 text-center text-xs text-slate-400">

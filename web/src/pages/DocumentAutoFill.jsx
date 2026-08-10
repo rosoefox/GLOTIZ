@@ -3,10 +3,27 @@ import Icon from "../components/Icon";
 import { Card, Button } from "../components/ui";
 import { supabase } from "../lib/supabase";
 import { user } from "../data/mockData";
+<<<<<<< HEAD
 import { useAuth } from "../context/AuthContext";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
 
+=======
+
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
+
+async function getOrCreateUserId() {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (session?.user) return session.user.id;
+
+  const { data, error } = await supabase.auth.signInAnonymously();
+  if (error) throw error;
+  return data.user.id;
+}
+
+>>>>>>> origin/main
 function toOptionList(options) {
   if (!Array.isArray(options)) return [];
   return options.map((opt) =>
@@ -76,7 +93,10 @@ function FieldInput({ field, value, onChange }) {
 // 서류 작성 → 저장(미리보기) → AI 생성(다운로드) 3단계 흐름.
 // GovSupport → 필수 수출 서류 페이지의 "서류 작성하기" 모달 안에서 렌더링된다.
 export function DocumentAutoFillContent({ templateId, templateName, businessName, onDone }) {
+<<<<<<< HEAD
   const { user: authUser } = useAuth();
+=======
+>>>>>>> origin/main
   const [fields, setFields] = useState([]);
   const [loadingFields, setLoadingFields] = useState(true);
   const [values, setValues] = useState({});
@@ -122,6 +142,7 @@ export function DocumentAutoFillContent({ templateId, templateName, businessName
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+<<<<<<< HEAD
     if (!authUser) {
       setError("로그인이 필요합니다.");
       return;
@@ -132,6 +153,23 @@ export function DocumentAutoFillContent({ templateId, templateName, businessName
     const { data: submission, error: submissionError } = await supabase
       .from("submissions")
       .insert({ template_id: templateId, user_id: authUser.id, status: "filled" })
+=======
+    setSaving(true);
+    setError(null);
+
+    let userId;
+    try {
+      userId = await getOrCreateUserId();
+    } catch (authError) {
+      setError(authError.message);
+      setSaving(false);
+      return;
+    }
+
+    const { data: submission, error: submissionError } = await supabase
+      .from("submissions")
+      .insert({ template_id: templateId, user_id: userId, status: "filled" })
+>>>>>>> origin/main
       .select()
       .single();
 

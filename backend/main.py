@@ -6,7 +6,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
+<<<<<<< HEAD
 from fastapi import FastAPI, Header, HTTPException
+=======
+from fastapi import FastAPI, HTTPException
+>>>>>>> origin/main
 from fastapi.middleware.cors import CORSMiddleware
 from google import genai
 from google.genai import types 
@@ -42,6 +46,7 @@ class GenerateRequest(BaseModel):
     submission_id: str
 
 
+<<<<<<< HEAD
 class ChatMessage(BaseModel):
     role: str  # "user" | "ai"
     message: str
@@ -86,6 +91,8 @@ def delete_account(authorization: str | None = Header(None)):
     return {"deleted": True}
 
 
+=======
+>>>>>>> origin/main
 def build_gemini_prompt(business_name, template_name, ai_fields, user_values):
     fields_desc = []
     for f in ai_fields:

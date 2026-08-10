@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Icon from "../components/Icon";
 import { Badge, Card, Button, TextField } from "../components/ui";
+<<<<<<< HEAD
 import { myPage as mp, myExportItems as mi } from "../data/mockData";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
@@ -59,6 +60,26 @@ export default function MyPage() {
     } catch (err) {
       window.alert(err.message);
       setWithdrawing(false);
+=======
+import { user, myPage as mp, myExportItems as mi } from "../data/mockData";
+import { useAuth } from "../context/AuthContext";
+
+export default function MyPage() {
+  const navigate = useNavigate();
+  const { logout } = useAuth();
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState({
+    loginId: user.loginId,
+    email: user.email,
+    phone: user.phone,
+    company: user.company,
+  });
+
+  const handleWithdraw = () => {
+    if (window.confirm(mp.dangerZone.confirmMessage)) {
+      logout();
+      navigate("/");
+>>>>>>> origin/main
     }
   };
 
@@ -71,6 +92,7 @@ export default function MyPage() {
         <div className="mb-5 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-100 text-lg font-semibold text-brand-700">
+<<<<<<< HEAD
               {(name || company) ? (name || company)[0] : ""}
             </div>
             <div>
@@ -80,6 +102,17 @@ export default function MyPage() {
           </div>
           {!editing && (
             <Button variant="secondary" className="px-4 py-2 text-sm" onClick={startEditing}>
+=======
+              {user.name[0]}
+            </div>
+            <div>
+              <p className="font-bold text-slate-900">{user.name}</p>
+              <p className="text-xs text-slate-500">{user.role} · {user.company}</p>
+            </div>
+          </div>
+          {!editing && (
+            <Button variant="secondary" className="px-4 py-2 text-sm" onClick={() => setEditing(true)}>
+>>>>>>> origin/main
               {mp.editButtonLabel}
             </Button>
           )}
@@ -97,11 +130,14 @@ export default function MyPage() {
               onChange={(e) => setForm((f) => ({ ...f, loginId: e.target.value }))}
             />
             <TextField
+<<<<<<< HEAD
               label={mp.fields.name}
               value={form.name}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
             />
             <TextField
+=======
+>>>>>>> origin/main
               label={mp.fields.email}
               value={form.email}
               onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
@@ -120,9 +156,15 @@ export default function MyPage() {
               <Button variant="secondary" className="px-4 py-2 text-sm" onClick={() => setEditing(false)}>
                 {mp.cancelButtonLabel}
               </Button>
+<<<<<<< HEAD
               <Button className="px-4 py-2 text-sm" onClick={handleSave} disabled={saving}>
                 <Icon name="check" className="h-4 w-4" />
                 {saving ? "저장 중..." : mp.saveButtonLabel}
+=======
+              <Button className="px-4 py-2 text-sm" onClick={() => setEditing(false)}>
+                <Icon name="check" className="h-4 w-4" />
+                {mp.saveButtonLabel}
+>>>>>>> origin/main
               </Button>
             </div>
           </div>
@@ -133,10 +175,13 @@ export default function MyPage() {
               <dd className="font-medium text-slate-900">{form.loginId}</dd>
             </div>
             <div className="flex justify-between border-b border-slate-100 pb-3">
+<<<<<<< HEAD
               <dt className="text-slate-500">{mp.fields.name}</dt>
               <dd className="font-medium text-slate-900">{form.name}</dd>
             </div>
             <div className="flex justify-between border-b border-slate-100 pb-3">
+=======
+>>>>>>> origin/main
               <dt className="text-slate-500">{mp.fields.email}</dt>
               <dd className="font-medium text-slate-900">{form.email}</dd>
             </div>
@@ -194,9 +239,14 @@ export default function MyPage() {
           variant="secondary"
           className="mt-4 border-red-200 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
           onClick={handleWithdraw}
+<<<<<<< HEAD
           disabled={withdrawing}
         >
           {withdrawing ? "탈퇴 처리 중..." : mp.dangerZone.buttonLabel}
+=======
+        >
+          {mp.dangerZone.buttonLabel}
+>>>>>>> origin/main
         </Button>
       </Card>
     </div>
