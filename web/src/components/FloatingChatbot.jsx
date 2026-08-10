@@ -3,7 +3,6 @@ import Icon from "./Icon";
 import { helpAndFaq } from "../data/mockData";
 import { useChatbot } from "../context/ChatbotContext";
 
-<<<<<<< HEAD
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
 
 export default function FloatingChatbot() {
@@ -41,32 +40,6 @@ export default function FloatingChatbot() {
     } finally {
       setLoading(false);
     }
-=======
-function findAnswer(question) {
-  const trimmed = question.trim();
-  if (!trimmed) return null;
-  const exact = helpAndFaq.faqs.find((f) => f.question === trimmed);
-  if (exact) return exact.answer;
-  const loose = helpAndFaq.faqs.find((f) => f.question.includes(trimmed) || trimmed.includes(f.question.slice(0, 6)));
-  return loose ? loose.answer : helpAndFaq.floatingChatbot.fallbackAnswer;
-}
-
-export default function FloatingChatbot() {
-  const { open, setOpen, expanded } = useChatbot();
-  const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState("");
-  const { floatingChatbot: fc, faqs } = helpAndFaq;
-
-  const ask = (question) => {
-    const trimmed = question.trim();
-    if (!trimmed) return;
-    setMessages((prev) => [
-      ...prev,
-      { role: "user", message: trimmed },
-      { role: "ai", message: findAnswer(trimmed) },
-    ]);
-    setInput("");
->>>>>>> origin/main
   };
 
   const handleSubmit = (e) => {
@@ -75,19 +48,9 @@ export default function FloatingChatbot() {
   };
 
   return (
-<<<<<<< HEAD
     <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end">
       {open && (
         <div className="mb-3 flex h-[420px] w-80 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
-=======
-    <div className="fixed bottom-6 left-6 z-50">
-      {open && (
-        <div
-          className={`mb-3 flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl transition-all ${
-            expanded ? "h-[640px] w-[420px]" : "h-[420px] w-80"
-          }`}
-        >
->>>>>>> origin/main
           <div className="flex items-center justify-between bg-brand-600 px-4 py-3 text-white">
             <div className="flex items-center gap-2">
               <Icon name="chatbot" className="h-5 w-5" />
@@ -130,15 +93,12 @@ export default function FloatingChatbot() {
                 {turn.message}
               </div>
             ))}
-<<<<<<< HEAD
 
             {loading && (
               <div className="max-w-[85%] rounded-2xl rounded-tl-sm bg-white px-3 py-2 text-sm text-slate-400 shadow-sm">
                 답변을 생성하는 중...
               </div>
             )}
-=======
->>>>>>> origin/main
           </div>
 
           <form onSubmit={handleSubmit} className="flex items-center gap-2 border-t border-slate-200 p-3">
@@ -146,20 +106,13 @@ export default function FloatingChatbot() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder={fc.inputPlaceholder}
-<<<<<<< HEAD
               disabled={loading}
-=======
->>>>>>> origin/main
               className="flex-1 rounded-full border border-slate-200 bg-slate-50 px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-100"
             />
             <button
               type="submit"
-<<<<<<< HEAD
               disabled={loading}
               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50"
-=======
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-600 text-white hover:bg-brand-700"
->>>>>>> origin/main
               aria-label="질문 보내기"
             >
               <Icon name="send" className="h-4 w-4" />
