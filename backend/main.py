@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from google import genai
-from google.genai import types
+from google.genai import types 
 from pydantic import BaseModel
 from supabase import Client, create_client
 
