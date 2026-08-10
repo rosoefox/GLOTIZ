@@ -386,11 +386,21 @@ export default function Dashboard() {
                     key={`${c.id}-${idx}`}
                     className="w-64 shrink-0 cursor-default transition-transform duration-300 ease-out hover:-translate-y-2"
                   >
-                    <div
-                      className={`flex h-40 w-full items-center justify-center rounded-2xl bg-gradient-to-br shadow-lg ${CASE_TONES[c.tone]}`}
-                    >
-                      <Icon name={c.icon} className="h-12 w-12 text-white" strokeWidth={1.3} />
-                    </div>
+                    {c.image ? (
+                      <img
+                        src={c.image}
+                        alt={c.title}
+                        loading="lazy"
+                        referrerPolicy="no-referrer"
+                        className="h-40 w-full rounded-2xl object-cover shadow-lg"
+                      />
+                    ) : (
+                      <div
+                        className={`flex h-40 w-full items-center justify-center rounded-2xl bg-gradient-to-br shadow-lg ${CASE_TONES[c.tone]}`}
+                      >
+                        <Icon name={c.icon} className="h-12 w-12 text-white" strokeWidth={1.3} />
+                      </div>
+                    )}
                     <p className="mt-3 text-xs font-bold text-brand-100">{c.tag}</p>
                     <p className="mt-1 text-sm font-bold leading-snug text-white">{c.title}</p>
                   </div>
