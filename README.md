@@ -12,9 +12,11 @@ git 프로젝트 메인 화면에서 초록색 CODE 버튼 클릭
 압축 풀기 ->
 압축 푼 폴더를 VS CODE에서 열기
 
-API key discord에 보낸 걸로 채우기
-backend venv 폴더에 .env 파일 만들기
-web src 폴더에 .env.local 파일 만들기 
+API key discord에 보낸 걸로 채우기 /
+backend 폴더에.env 파일 만들기 /
+web 폴더에 .env.local 파일 만들기 
+
+Node.js, Python, Git, LibreOffice를 설치해야 작동합니다.
 
 VS CODE 터미널에서 
 ```
