@@ -18,17 +18,29 @@ export const nav = {
   top: [
     { path: "/analysis", label: "시장 분석" },
     { path: "/gov-support", label: "정부 지원사업" },
+<<<<<<< HEAD
     { path: "/my-items", label: "나의 수출품목", requiresAuth: true },
     { path: "/docs", label: "서류 관리", requiresAuth: true },
     { path: "/marketing", label: "마케팅 이미지 생성기", requiresAuth: true },
+=======
+    { path: "/docs", label: "서류 관리", requiresAuth: true },
+    { path: "/marketing", label: "마케팅 이미지 생성기", requiresAuth: true },
+    { path: "/shopee", label: "쇼피 입점 가이드", requiresAuth: true },
+>>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
   ],
   sidebar: [
     { path: "/analysis", label: "시장 분석", icon: "analysis" },
     { path: "/gov-support", label: "정부 지원사업", icon: "projects" },
+<<<<<<< HEAD
     { path: "/my-items", label: "나의 수출품목", icon: "box", requiresAuth: true },
     { path: "/docs", label: "서류 관리", icon: "documents", requiresAuth: true },
     { path: "/marketing", label: "마케팅 이미지 생성기", icon: "marketing", requiresAuth: true },
     { path: "/ai-docs", label: "AI 서식 자동 채우기", icon: "sparkle", requiresAuth: true },
+=======
+    { path: "/docs", label: "서류 관리", icon: "documents", requiresAuth: true },
+    { path: "/marketing", label: "마케팅 이미지 생성기", icon: "marketing", requiresAuth: true },
+    { path: "/shopee", label: "쇼피 입점 가이드", icon: "globe", requiresAuth: true },
+>>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
   ],
   bottom: [
     { path: "/help", label: "고객지원", icon: "help" },
@@ -124,7 +136,11 @@ export const myExportItems = {
 };
 
 export const dashboard = {
+<<<<<<< HEAD
   greetingTitle: "무엇을 팔고 싶나요?",
+=======
+  greetingTitle: "해외에 판매하고 싶은 제품은 무엇인가요?",
+>>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
   greetingSubtitle: "당신의 해외 수출을 시작하세요.",
   searchPlaceholder: "예: 화장품, 가전제품...",
   recentSearches: [{ label: "최근 검색: 화장품 미국 수출", query: "화장품" }],
@@ -137,6 +153,7 @@ export const dashboard = {
     { label: "인기공고", count: 8 },
   ],
   cardNewsLabel: "지원사업 카드뉴스",
+<<<<<<< HEAD
   featuresTitle: "JB-XPORT는 이런 기능을 제공해요",
   featuresDescription:
     "소상공인의 해외 수출을 돕는 AI 에이전트입니다. 상품명이나 사진만 검색하면 잘 팔리는 국가·카테고리·시즌을 AI가 한 문장으로 분석해드리고, 신청 가능한 정부 지원사업 매칭부터 필요한 수출 서류 준비까지 한 곳에서 진행할 수 있어요.",
@@ -145,6 +162,77 @@ export const dashboard = {
     { icon: "projects", title: "정부 지원사업 매칭", description: "분석 결과를 바탕으로 지금 신청 가능한 정부 지원사업을 자동으로 찾아드려요." },
     { icon: "documents", title: "수출 서류 자동화", description: "지원사업별로 필요한 서류를 확인하고 AI로 자동 완성할 수 있어요." },
   ],
+=======
+
+  statsHeadline: "전북 수출기업이 가장 많이 찾는 파트너, JB-XPORT",
+  stats: [
+    { label: "총 진행건수", value: 1842, suffix: "건" },
+    { label: "매칭기업수", value: 356, suffix: "개사" },
+    { label: "매칭사업건수", value: 128, suffix: "건" },
+    { label: "기업만족비율", value: 98.7, suffix: "%", decimals: 1 },
+  ],
+
+  ongoingProgramsTitle: "진행 중인 지원사업",
+  ongoingProgramsMoreLabel: "진행중인 지원사업 더보기",
+
+  featuresTitle: "JB-XPORT로 서류 작성/디자인 고민을 해결해보세요!",
+  featuresDescription:
+    "소상공인의 해외 수출을 돕는 AI 에이전트입니다. 상품명이나 사진만 검색하면 잘 팔리는 국가·카테고리·시즌을 AI가 한 문장으로 분석해드리고, 신청 가능한 정부 지원사업 매칭부터 필요한 수출 서류 준비까지 한 곳에서 진행할 수 있어요.",
+  features: [
+    {
+      icon: "search",
+      tone: "cream",
+      title: "AI 시장 분석",
+      description: "상품명이나 사진 검색만으로 잘 팔리는 국가·카테고리·성수기를 AI가 분석해드려요.",
+      linkLabel: "분석하러 가기",
+      to: "/analysis",
+    },
+    {
+      icon: "projects",
+      tone: "blue",
+      title: "정부 지원사업 매칭",
+      description: "분석 결과를 바탕으로 지금 신청 가능한 정부 지원사업을 자동으로 찾아드려요.",
+      linkLabel: "지원사업 보기",
+      to: "/gov-support",
+    },
+    {
+      icon: "documents",
+      tone: "mint",
+      title: "수출 서류 자동화",
+      description: "지원사업별로 필요한 서류를 확인하고 AI로 자동 완성할 수 있어요.",
+      linkLabel: "서류 관리하기",
+      to: "/docs",
+    },
+  ],
+
+  caseStudiesTitle: "AI · 디자인 진행 사례",
+  caseStudiesDescription: "JB-XPORT AI가 함께 완성한 서류와 디자인 결과물을 만나보세요.",
+  caseStudies: [
+    { id: "case-01", title: "워터젤 선크림 SPF50+ 패키지 디자인", tag: "패키지 디자인", tone: "sunrise", icon: "sparkle" },
+    { id: "case-02", title: "전통 발효 고추장 세트 브랜드 로고", tag: "브랜드 로고", tone: "forest", icon: "formulation" },
+    { id: "case-03", title: "AeroTherm Pro 스마트 보틀 상세페이지", tag: "상세페이지", tone: "ocean", icon: "electronics" },
+    { id: "case-04", title: "글로벌 시장 확대 바우처 참가신청서", tag: "서류 자동완성", tone: "grape", icon: "documents" },
+    { id: "case-05", title: "K-뷰티 마스크팩 수출용 라벨 디자인", tag: "라벨 디자인", tone: "sunrise", icon: "sparkle" },
+    { id: "case-06", title: "해외 전시회 부스 배너 디자인", tag: "배너 디자인", tone: "ocean", icon: "marketing" },
+    { id: "case-07", title: "원산지증명서(C/O) 자동 작성", tag: "서류 자동완성", tone: "forest", icon: "documents" },
+    { id: "case-08", title: "전통 한과 선물세트 SNS 카드뉴스", tag: "SNS 콘텐츠", tone: "grape", icon: "growth" },
+  ],
+
+  satisfactionTitle: "소상공인 · 공공기관의 이유있는 선택",
+  satisfactionRate: 98.7,
+  satisfactionSubtitle: "고객 만족도",
+  reviewMoreLabel: "더보기",
+  reviewTotalCount: 452,
+  reviews: [
+    { name: "김해피", company: "해피코스메틱", rating: 5, text: "AI가 서류 초안을 잡아줘서 신청서 작성 시간이 절반으로 줄었어요. 담당자 확인만 하면 돼서 정말 편해요." },
+    { name: "박수출", company: "미소식품", rating: 5, text: "지원사업 매칭이 정확해서 놓칠 뻔한 마감임박 공고까지 챙길 수 있었습니다." },
+    { name: "이대표", company: "그린리빙", rating: 4, text: "디자인 시안을 여러 개 받아보고 고르기만 하면 돼서 외주 맡기는 것보다 훨씬 빨랐어요." },
+    { name: "최무역", company: "코스모트레이드", rating: 5, text: "수출 서류를 하나하나 준비할 필요 없이 AI가 자동으로 채워줘서 실수도 줄었습니다." },
+    { name: "정소상", company: "우리한과", rating: 5, text: "정부 지원사업 정보를 한곳에서 볼 수 있어서 정보 찾는 시간이 크게 줄었어요." },
+    { name: "한바이어", company: "테크글로벌무역", rating: 4, text: "필수 서류 체크리스트 덕분에 빠뜨리는 서류 없이 준비할 수 있었습니다." },
+  ],
+
+>>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
   itemCategoriesTitle: "품목별 지원사업 공고",
   itemCategoriesAll: "전체",
 };
@@ -310,7 +398,11 @@ export const documentChecklist = {
   uploadButtonLabel: "파일 업로드",
   reuploadButtonLabel: "다시 업로드",
   issueLinkLabel: "발급 바로가기",
+<<<<<<< HEAD
   overallTitle: "전체 서류 준비 현황",
+=======
+  overallTitle: "필수 서류 준비 현황",
+>>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
   overallDescription: "모든 필수 서류가 등록되어야 다음 통관 단계로 진행할 수 있습니다.",
   overallSuffix: "완료",
   addDocButtonLabel: "추가 수출 제출 서류 작성하기",
@@ -674,3 +766,193 @@ export const govConsultation = {
     },
   ],
 };
+<<<<<<< HEAD
+=======
+
+export const shopeeListing = {
+  title: "쇼피 입점 가이드",
+  subtitle: "쇼피 셀러센터의 상품 등록 화면에 맞춰 필요한 정보만 정리했어요. 값을 복사해서 그대로 붙여넣으세요.",
+  introTitle: "쇼피 입점, 이렇게 진행하세요",
+  introSteps: [
+    { title: "쇼피 파트너센터 가입", description: "사업자 정보로 셀러 계정을 만들고 입점 심사를 신청하세요." },
+    { title: "상품 등록 정보 준비", description: "아래 항목을 작성하거나 AI 자동완성/이전 정보 불러오기로 채우세요." },
+    { title: "쇼피 상품 등록 화면에 붙여넣기", description: "왼쪽 화면을 참고해 항목별 복사 버튼으로 옮겨 붙이세요." },
+    { title: "검수 후 판매 시작", description: "쇼피 심사가 완료되면 등록한 상품이 바로 노출됩니다." },
+  ],
+  guideVideoLabel: "쇼피 입점 가이드 영상 보러가기",
+  guideVideoUrl: "",
+  guideVideoPendingNote: "영상 링크는 준비 중이에요. 링크가 등록되면 버튼이 바로 연결됩니다.",
+  referenceNote: "왼쪽은 쇼피 'Add a New Product' 화면 구성을 그대로 재현한 참고용 레이아웃입니다. 영문 항목명 밑에 작은 글씨로 한국어 뜻을 표기했어요.",
+  loadPreviousLabel: "이전에 등록한 품목 불러오기",
+  loadMyInfoLabel: "내 기본정보 불러오기",
+  aiFillLabel: "AI 자동완성",
+  copyLabel: "복사",
+  copiedLabel: "복사됨",
+  copyAllLabel: "전체 내용 복사",
+  imagePickerLabel: "마케팅 이미지 생성기에서 불러오기",
+  imagePickerEmpty: "마케팅 이미지 생성기에서 만든 이미지가 아직 없어요.",
+  fieldSectionLabels: {
+    basic: "Basic information",
+    specification: "Specification",
+    sales: "Sales Information",
+    shipping: "Shipping",
+  },
+  fields: [
+    { key: "productName", section: "basic", label: "상품명", enLabel: "Product Name", placeholder: "예: Dalba Waterjel Sun Cream SPF50+", required: true },
+    { key: "category", section: "basic", label: "카테고리", enLabel: "Category", placeholder: "예: Beauty > Skincare > Face Sunscreen", required: true },
+    { key: "description", section: "basic", label: "상품 설명", enLabel: "Product Description", placeholder: "최소 20자 이상 입력하세요.", required: true, multiline: true, aiFillable: true },
+    { key: "brand", section: "specification", label: "브랜드", enLabel: "Brand", placeholder: "예: Dalba" },
+    { key: "shelfLife", section: "specification", label: "유통기한", enLabel: "Shelf life", placeholder: "예: 24 Months" },
+    { key: "skinType", section: "specification", label: "피부 타입", enLabel: "Skin Type", placeholder: "예: All Skin Types" },
+    { key: "volume", section: "specification", label: "용량", enLabel: "Volume", placeholder: "예: 50ml" },
+    { key: "spf", section: "specification", label: "자외선 차단지수", enLabel: "SPF", placeholder: "예: SPF50+" },
+    { key: "price", section: "sales", label: "판매가", enLabel: "Global SKU Price", placeholder: "예: 15000", required: true },
+    { key: "stock", section: "sales", label: "재고 수량", enLabel: "Stock", placeholder: "예: 100", required: true },
+    { key: "weight", section: "shipping", label: "상품 무게(kg)", enLabel: "Weight", placeholder: "예: 0.3", required: true },
+    { key: "daysToShip", section: "shipping", label: "배송 준비 일수", enLabel: "Days to ship", placeholder: "예: 2", required: true },
+  ],
+};
+
+// 왼쪽 참고 레이아웃: 실제 쇼피 'Add a New Product' 화면 구성을 그대로 재현.
+// 영문 항목명(en) 아래 작은 한국어 뜻(ko)을 함께 표기한다.
+export const shopeeReferenceForm = {
+  breadcrumb: ["Home", "Global SKU", "Add a New Product"],
+  steps: [
+    { en: "Basic information", ko: "기본 정보" },
+    { en: "Specification", ko: "상세 스펙" },
+    { en: "Sales Information", ko: "판매 정보" },
+    { en: "Shipping", ko: "배송" },
+    { en: "Others", ko: "기타" },
+  ],
+  basic: {
+    title: "Basic information",
+    ko: "기본 정보",
+    images: {
+      en: "Product Images",
+      ko: "상품 이미지",
+      note: "Size: Max 30MB, resolution should not less than 1x1px",
+    },
+    video: {
+      en: "Product Video",
+      ko: "상품 동영상",
+      note: "Duration: 10s-60s · Format: MP4",
+    },
+    name: { key: "productName", en: "Product Name", ko: "상품명", meta: "15/180", required: true, placeholder: "예: Dalba Waterjel Sun Cream SPF50+" },
+    category: { key: "category", en: "Category", ko: "카테고리", required: true, placeholder: "예: Beauty > Skincare > Face Sunscreen" },
+    description: {
+      key: "description",
+      en: "Product Description",
+      ko: "상품 설명",
+      error: "Your product description is too short. Please input at least 20 characters.",
+      meta: "0/5000",
+      required: true,
+      multiline: true,
+      aiFillable: true,
+      placeholder: "최소 20자 이상 입력하세요.",
+    },
+  },
+  specification: {
+    title: "Specification",
+    ko: "상세 스펙",
+    completeNote: "Complete: 7/48",
+    toolbar: ["Cancel", "Create", "Create and Publish"],
+    fields: [
+      { key: "brand", en: "Brand", ko: "브랜드", required: true, placeholder: "예: Dalba" },
+      { key: "shelfLife", en: "shelf lifes", ko: "유통기한", required: true, tag: "Pre-filled", placeholder: "예: 24 Months" },
+      { en: "FDA Registration No.", ko: "FDA 등록번호" },
+      { en: "pack type", ko: "포장 유형", tag: "Pre-filled", errorTag: "1 error(s)" },
+      { en: "Ingredient Preference", ko: "성분 선호도" },
+      { key: "skinType", en: "Skin Type", ko: "피부 타입", placeholder: "예: All Skin Types" },
+      { en: "Expiry Date", ko: "유효기간" },
+      { en: "Weight", ko: "중량" },
+      { en: "Skin Care Benefits", ko: "스킨케어 효능" },
+      { en: "Specialty Type", ko: "특수 유형" },
+      { key: "volume", en: "Volume", ko: "용량", placeholder: "예: 50ml" },
+      { key: "spf", en: "SPF", ko: "자외선 차단지수", placeholder: "예: SPF50+" },
+      { en: "Condition", ko: "상태", tag: "Pre-filled" },
+      { en: "Edition Type", ko: "에디션 유형" },
+      { en: "Advertisement License No.", ko: "광고 허가번호" },
+      { en: "Ingredient", ko: "성분" },
+      { en: "Quantity", ko: "수량" },
+      { en: "Days to Expire", ko: "유효 잔여일" },
+      { en: "indication", ko: "용법/용량" },
+      { en: "Storage Condition", ko: "보관 조건", tag: "Pre-filled" },
+      { en: "Production batch number", ko: "생산 배치번호" },
+      { en: "Manufacturer/trader name", ko: "제조/유통사명" },
+      { en: "Manufacturer/trader address", ko: "제조/유통사 주소" },
+      { en: "INVIMA certification", ko: "INVIMA 인증번호" },
+      { en: "Custom Product", ko: "맞춤 제작 상품", tag: "Pre-filled" },
+      { en: "HSA Notification No.", ko: "HSA 신고번호" },
+      { en: "Labled in Chinese", ko: "중문 라벨 표기" },
+      { en: "Filed product registration or inspection permit", ko: "제품 등록/검사 허가 신고" },
+      { en: "Certificate No. (Halal)", ko: "할랄 인증번호" },
+      { en: "NA", ko: "해당 없음", tag: "Pre-filled" },
+      { en: "Item Batch code", ko: "상품 배치코드" },
+      { en: "Item Code", ko: "상품 코드" },
+      { en: "Exemption Reason", ko: "면제 사유" },
+      { en: "Alcohol Or Aerosol", ko: "알코올/에어로졸 여부" },
+      { en: "Allergen Information", ko: "알레르기 유발 정보" },
+      { en: "Franchise", ko: "프랜차이즈" },
+      { en: "Item Qty. same batch", ko: "동일 배치 수량" },
+      { en: "Expire Date", ko: "유효기한" },
+      { en: "Model", ko: "모델명" },
+      { en: "NPRA Notification", ko: "NPRA 신고번호" },
+      { en: "HALAL Certificates", ko: "할랄 인증서" },
+      { en: "Bundle", ko: "묶음 상품" },
+      { en: "Series", ko: "시리즈" },
+      { en: "Non Halal Ingredients", ko: "비할랄 성분" },
+      { en: "Cosmetic Product Notification Completed", ko: "화장품 신고 완료 여부" },
+      { en: "Product Information File (PIF) Established", ko: "제품정보파일(PIF) 구축 여부" },
+    ],
+    showLessLabel: "Show less",
+  },
+  sales: {
+    title: "Sales Information",
+    ko: "판매 정보",
+    variations: { en: "Variations", ko: "옵션(변형)", action: "Enable Variations" },
+    price: { key: "price", en: "Global SKU Price", ko: "글로벌 SKU 판매가", required: true, placeholder: "예: 15000" },
+    priceNote: "Shop SKU price is auto calculated based on the Price Calculation Formula Setting.",
+    stock: { key: "stock", en: "Stock", ko: "재고", required: true, placeholder: "예: 100" },
+  },
+  shipping: {
+    title: "Shipping",
+    ko: "배송",
+    weight: { key: "weight", en: "Weight", ko: "무게", required: true, placeholder: "예: 0.3 kg" },
+    parcelSize: { en: "Parcel Size", ko: "박스 규격 (W × L × H)" },
+    daysToShip: { key: "daysToShip", en: "Days to ship", ko: "배송 준비일", required: true, placeholder: "예: 2" },
+  },
+  others: {
+    title: "Others",
+    ko: "기타",
+    condition: { en: "Condition", ko: "상품 상태" },
+    parentSku: { en: "Parent SKU", ko: "상위 SKU" },
+  },
+  bottomToolbar: ["Cancel", "Create", "Create and Publish"],
+  bottomErrorTag: "1 error(s)",
+};
+
+export const adminPanel = {
+  title: "지원사업 신청 현황 관리",
+  subtitle: "소상공인이 제출한 지원사업 신청서와 서류를 신청자별로 확인하세요.",
+  summaryLabels: {
+    applicants: "신청 기업 수",
+    submissions: "제출 서류 수",
+    completed: "생성 완료",
+  },
+  applicantFallbackName: "익명 신청자",
+  tableHeaders: {
+    applicant: "신청 기업",
+    program: "신청 사업",
+    documents: "제출 서류",
+    lastUpdated: "최근 제출일",
+  },
+  statusLabels: {
+    generated: "완성",
+    filled: "AI 생성 대기",
+    none: "미작성",
+  },
+  emptyMessage: "아직 제출된 신청서가 없습니다.",
+  viewDocumentLabel: "제출 내용 보기",
+  downloadLabel: "다운로드",
+};
+>>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)

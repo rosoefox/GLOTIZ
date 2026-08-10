@@ -1,10 +1,61 @@
+<<<<<<< HEAD
 import { useEffect, useMemo, useRef, useState } from "react";
+=======
+import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
+>>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
 import { useLocation, useNavigate } from "react-router-dom";
 import Icon from "../components/Icon";
 import { Badge, Card, Button } from "../components/ui";
 import { govSupport as gs } from "../data/mockData";
 import { buildAnalysis, pickDefaults, projectMatchesAnalysis } from "../data/mockAnalysis";
 import { useAuth } from "../context/AuthContext";
+<<<<<<< HEAD
+=======
+import { supabase } from "../lib/supabase";
+
+const ProjectCard = forwardRef(function ProjectCard(
+  { topBarClass, badge, extraBadges, title, rows, sourceText, ctaText, disabled, onClick },
+  ref
+) {
+  return (
+    <Card
+      ref={ref}
+      onClick={onClick}
+      aria-disabled={disabled}
+      className={`overflow-hidden transition-shadow ${
+        disabled ? "cursor-not-allowed opacity-40" : "cursor-pointer hover:shadow-md"
+      }`}
+    >
+      <div className={`h-1 w-full ${topBarClass || "bg-transparent"}`} />
+      <div className="p-5">
+        <div className="mb-4 flex items-center justify-between gap-2">
+          {badge}
+          <div className="flex items-center gap-2">{extraBadges}</div>
+        </div>
+
+        <h3 className="mb-4 min-h-[3rem] text-base font-bold leading-snug text-slate-900">{title}</h3>
+
+        {rows && rows.length > 0 && (
+          <div className="space-y-2 border-t border-slate-100 pt-3 text-sm">
+            {rows.map((r) => (
+              <div key={r.label} className="flex justify-between">
+                <span className="text-slate-500">{r.label}</span>
+                <span className={`font-semibold ${r.tone || "text-slate-700"}`}>{r.value}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {sourceText && <p className="mt-3 text-xs text-slate-400">출처: {sourceText}</p>}
+        <p className="mt-3 flex items-center gap-1 text-xs font-medium text-brand-600">
+          {ctaText}
+          {!disabled && <Icon name="arrowRight" className="h-3.5 w-3.5" />}
+        </p>
+      </div>
+    </Card>
+  );
+});
+>>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
 
 export default function GovSupport() {
   const { isLoggedIn, lastQuery, lastFilters } = useAuth();
@@ -14,6 +65,25 @@ export default function GovSupport() {
   const highlightId = location.state?.highlightId ?? null;
   const highlightRef = useRef(null);
 
+<<<<<<< HEAD
+=======
+  const [announcements, setAnnouncements] = useState([]);
+  const [loadingAnnouncements, setLoadingAnnouncements] = useState(true);
+
+  useEffect(() => {
+    async function loadAnnouncements() {
+      setLoadingAnnouncements(true);
+      const { data } = await supabase
+        .from("businesses")
+        .select("*")
+        .order("created_at", { ascending: false });
+      setAnnouncements(data || []);
+      setLoadingAnnouncements(false);
+    }
+    loadAnnouncements();
+  }, []);
+
+>>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
   useEffect(() => {
     if (highlightId && highlightRef.current) {
       highlightRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -33,13 +103,21 @@ export default function GovSupport() {
     setPersonalizedMode(true);
   };
 
+<<<<<<< HEAD
   const handleCardClick = (project, disabled) => {
+=======
+  const handleAnnouncementClick = (business, disabled) => {
+>>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
     if (disabled) return;
     if (!isLoggedIn) {
       navigate("/login", { state: { from: "/gov-support" } });
       return;
     }
+<<<<<<< HEAD
     navigate("/docs", { state: { program: project.title } });
+=======
+    navigate("/docs", { state: { businessId: business.id, businessName: business.name } });
+>>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
   };
 
   return (
@@ -74,6 +152,7 @@ export default function GovSupport() {
         </Button>
       </div>
 
+<<<<<<< HEAD
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
         {gs.projects.map((p) => {
           const eligible = analysis ? projectMatchesAnalysis(p, analysis) : null;
@@ -135,6 +214,44 @@ export default function GovSupport() {
           );
         })}
       </div>
+=======
+      <h2 className="mb-3 text-base font-bold text-slate-900">추천 지원사업</h2>
+      {loadingAnnouncements ? (
+        <p className="text-sm text-slate-400">불러오는 중...</p>
+      ) : announcements.length === 0 ? (
+        <p className="text-sm text-slate-400">등록된 지원사업이 없습니다.</p>
+      ) : (
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {announcements.map((b) => {
+            const eligible = analysis ? projectMatchesAnalysis(b, analysis) : null;
+            const disabled = personalizedMode && eligible !== true;
+            return (
+              <ProjectCard
+                key={b.id}
+                ref={b.id === highlightId ? highlightRef : null}
+                topBarClass="bg-brand-400"
+                badge={<Badge tone="brand">모집 공고</Badge>}
+                extraBadges={
+                  eligible === true ? (
+                    <Badge tone="success">
+                      <Icon name="checkCircle" className="h-3 w-3" /> 가능
+                    </Badge>
+                  ) : eligible === false ? (
+                    <Badge tone="neutral">미해당</Badge>
+                  ) : null
+                }
+                title={b.name}
+                rows={b.description ? [{ label: "안내", value: b.description }] : null}
+                sourceText="전북 지원사업 포털"
+                ctaText={disabled ? gs.disabledLabel : isLoggedIn ? "필수 서류 확인하기" : "로그인하고 서류 확인하기"}
+                disabled={disabled}
+                onClick={() => handleAnnouncementClick(b, disabled)}
+              />
+            );
+          })}
+        </div>
+      )}
+>>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
     </div>
   );
 }

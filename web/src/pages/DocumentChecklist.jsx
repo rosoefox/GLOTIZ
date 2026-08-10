@@ -1,8 +1,74 @@
+<<<<<<< HEAD
 import { useState } from "react";
+=======
+import { useEffect, useState } from "react";
+>>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
 import { useLocation, useNavigate } from "react-router-dom";
 import Icon from "../components/Icon";
 import { Badge, Card, Button } from "../components/ui";
 import { documentChecklist as dc } from "../data/mockData";
+<<<<<<< HEAD
+=======
+import { supabase } from "../lib/supabase";
+import { DocumentAutoFillContent } from "./DocumentAutoFill";
+
+const GOV_STATUS_META = {
+  generated: { label: "완성", tone: "success" },
+  filled: { label: "AI 생성 대기", tone: "warning" },
+  none: { label: "미작성", tone: "neutral" },
+};
+
+function GovTemplateGroup({ title, templates, submissions, onOpenFill }) {
+  return (
+    <div className="mb-8">
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+        <h2 className="flex items-center gap-2 text-base font-bold text-slate-900">
+          {title}
+          <Badge tone="brand">선택한 지원사업</Badge>
+        </h2>
+      </div>
+
+      <Card className="divide-y divide-slate-100 p-2 ring-2 ring-brand-400">
+        {templates.map((t) => {
+          const submission = submissions[t.id];
+          const statusKey =
+            submission?.status === "generated" ? "generated" : submission?.status === "filled" ? "filled" : "none";
+          const meta = GOV_STATUS_META[statusKey];
+          return (
+            <div key={t.id} className="flex flex-wrap items-center justify-between gap-3 p-4">
+              <div className="flex items-start gap-3">
+                <div
+                  className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
+                    statusKey === "generated" ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-slate-400"
+                  }`}
+                >
+                  <Icon name={statusKey === "generated" ? "checkCircle" : "documents"} className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="font-semibold text-slate-900">{t.name}</p>
+                  {t.form_number && <p className="mt-0.5 text-sm text-slate-500">{t.form_number}</p>}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  variant="secondary"
+                  className="px-3 py-1.5 text-xs"
+                  onClick={() => onOpenFill(t)}
+                >
+                  <Icon name="sparkle" className="h-3.5 w-3.5" />
+                  서류 작성하기
+                </Button>
+                <Badge tone={meta.tone}>{meta.label}</Badge>
+              </div>
+            </div>
+          );
+        })}
+      </Card>
+    </div>
+  );
+}
+>>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
 
 const STATUS_META = {
   notStarted: { label: dc.notStartedLabel, tone: "neutral" },
@@ -164,7 +230,15 @@ function UploadChecklistItem({ item, state, onFileSelect }) {
         <Button
           variant="secondary"
           className="px-3 py-2 text-xs"
+<<<<<<< HEAD
           onClick={() => navigate("/docs/preview", { state: { docName: item.name } })}
+=======
+          onClick={() =>
+            item.id === "doc-invoice"
+              ? navigate("/docs/new")
+              : navigate("/docs/preview", { state: { docName: item.name } })
+          }
+>>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
         >
           <Icon name="arrowRight" className="h-3.5 w-3.5" />
           {dc.issueLinkLabel}
@@ -241,6 +315,47 @@ export default function DocumentChecklist() {
   const location = useLocation();
   const activeProgram = location.state?.program ?? null;
   const activeItemName = location.state?.itemName ?? null;
+<<<<<<< HEAD
+=======
+  const businessId = location.state?.businessId ?? null;
+  const businessName = location.state?.businessName ?? null;
+
+  const [govTemplates, setGovTemplates] = useState([]);
+  const [govSubmissions, setGovSubmissions] = useState({});
+  const [loadingGovTemplates, setLoadingGovTemplates] = useState(false);
+  const [fillTarget, setFillTarget] = useState(null);
+
+  const refreshGovTemplates = async () => {
+    if (!businessId) return;
+    setLoadingGovTemplates(true);
+    const { data: templates } = await supabase
+      .from("templates")
+      .select("*")
+      .eq("business_id", businessId)
+      .order("form_number");
+    setGovTemplates(templates || []);
+
+    const templateIds = (templates || []).map((t) => t.id);
+    if (templateIds.length) {
+      const { data: submissions } = await supabase
+        .from("submissions")
+        .select("*")
+        .in("template_id", templateIds)
+        .order("created_at", { ascending: false });
+      const latestByTemplate = {};
+      (submissions || []).forEach((s) => {
+        if (!latestByTemplate[s.template_id]) latestByTemplate[s.template_id] = s;
+      });
+      setGovSubmissions(latestByTemplate);
+    }
+    setLoadingGovTemplates(false);
+  };
+
+  useEffect(() => {
+    refreshGovTemplates();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [businessId]);
+>>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
 
   const allGroups = [dc.commonGroup, ...dc.programGroups];
   const matchedGroup = activeProgram
@@ -354,10 +469,41 @@ export default function DocumentChecklist() {
               <span>0%</span>
               <span>100%</span>
             </div>
+<<<<<<< HEAD
+=======
+
+            {overallPercent === 100 && (
+              <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
+                <Icon name="checkCircle" className="h-4 w-4" />
+                필수 서류 준비가 완료되었습니다.
+                <span className="ml-auto flex items-center gap-1 text-brand-700">
+                  다음 단계를 진행하세요
+                  <Icon name="arrowRight" className="h-4 w-4" />
+                </span>
+              </div>
+            )}
+>>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
           </Card>
         </div>
       )}
 
+<<<<<<< HEAD
+=======
+      {businessId &&
+        (loadingGovTemplates ? (
+          <p className="mb-8 text-sm text-slate-400">불러오는 중...</p>
+        ) : govTemplates.length > 0 ? (
+          <GovTemplateGroup
+            title={businessName ? `${businessName} 제출서류` : "필수 제출 서류"}
+            templates={govTemplates}
+            submissions={govSubmissions}
+            onOpenFill={(t) =>
+              setFillTarget({ templateId: t.id, templateName: t.name, businessId, businessName })
+            }
+          />
+        ) : null)}
+
+>>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
       {dc.programGroups
         .filter((g) => selectedIds.has(g.id))
         .map((group) => (
@@ -379,6 +525,43 @@ export default function DocumentChecklist() {
         {dc.addDocButtonLabel}
         <Icon name="arrowRight" className="h-5 w-5" />
       </button>
+<<<<<<< HEAD
+=======
+
+      {fillTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"
+          onClick={() => setFillTarget(null)}
+        >
+          <div
+            className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-slate-900">서류 작성하기</h2>
+              <button
+                type="button"
+                onClick={() => setFillTarget(null)}
+                aria-label="닫기"
+                className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+              >
+                <Icon name="x" className="h-4 w-4" />
+              </button>
+            </div>
+            <DocumentAutoFillContent
+              templateId={fillTarget.templateId}
+              templateName={fillTarget.templateName}
+              businessId={fillTarget.businessId}
+              businessName={fillTarget.businessName}
+              onDone={() => {
+                setFillTarget(null);
+                refreshGovTemplates();
+              }}
+            />
+          </div>
+        </div>
+      )}
+>>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
     </div>
   );
 }

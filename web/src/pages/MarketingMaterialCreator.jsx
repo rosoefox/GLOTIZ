@@ -2,6 +2,10 @@ import { useRef, useState } from "react";
 import Icon from "../components/Icon";
 import { Badge, Card, Button } from "../components/ui";
 import { marketingMaterialCreator as mc, documentPreview as dp } from "../data/mockData";
+<<<<<<< HEAD
+=======
+import { useMarketingImages } from "../context/MarketingImagesContext";
+>>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
 
 function downloadPreviewSummary(preview) {
   const lines = [
@@ -33,11 +37,21 @@ export default function MarketingMaterialCreator() {
   const [preview, setPreview] = useState(mc.preview);
   const [uploadedImage, setUploadedImage] = useState(null);
   const fileInputRef = useRef(null);
+<<<<<<< HEAD
+=======
+  const { addImage } = useMarketingImages();
+>>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
 
   const handleFileChange = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+<<<<<<< HEAD
     setUploadedImage(URL.createObjectURL(file));
+=======
+    const url = URL.createObjectURL(file);
+    setUploadedImage(url);
+    addImage(url, preview.productName || file.name);
+>>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
   };
 
   const loadFromDoc = () => {
