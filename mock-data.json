@@ -1,0 +1,375 @@
+{
+  "user": {
+    "name": "김해피",
+    "role": "대표",
+    "company": "해피코스메틱",
+    "avatarUrl": "/assets/avatar-default.png",
+    "isLoggedIn": true
+  },
+
+  "dashboard": {
+    "greetingTitle": "무엇을 팔고 싶나요?",
+    "searchPlaceholder": "예: 한국산 화장품, 스마트폰 부품...",
+    "recentSearches": [
+      { "label": "최근 검색: 화장품 미국 수출" }
+    ],
+    "popularKeywords": [
+      { "label": "인기: K-푸드 동남아" }
+    ],
+    "nav": ["Market Analysis", "Gov Support", "Docs", "Tools"],
+    "sidebar": ["Dashboard", "Analysis", "Projects", "Documents", "Marketing"]
+  },
+
+  "login": {
+    "productName": "ExportConnect",
+    "tagline": "Secure Identity Verification",
+    "fields": {
+      "idPlaceholder": "Enter your ID",
+      "passwordPlaceholder": "Enter your password"
+    },
+    "options": ["Remember me", "Forgot Password?"],
+    "socialLogins": ["Google Login", "Enterprise SSO"],
+    "signupPrompt": "Don't have an account? Sign up",
+    "dummyAccount": {
+      "id": "demo@jbxport.kr",
+      "password": "demo1234!"
+    }
+  },
+
+  "marketAnalysis": {
+    "query": "선크림",
+    "aiExecutiveSummary": {
+      "badge": "AI Executive Summary",
+      "headline": "선크림 (Sunscreen)은 화장품 품목이고 동남아시아에서 5월-8월에 많이 팔립니다.",
+      "body": "Based on customs data and e-commerce trends over the last 3 years, sunscreen exports to the ASEAN region peak during their hot, humid season. South Korean cosmetic formulations are highly preferred."
+    },
+    "filters": {
+      "category": [
+        { "label": "화장품 (Cosmetics - 3304.99)", "checked": true },
+        { "label": "의약외품 (Quasi-drugs)", "checked": false }
+      ],
+      "targetMarket": [
+        {
+          "label": "동남아시아 (Southeast Asia)",
+          "checked": true,
+          "children": [
+            { "label": "Vietnam", "checked": true },
+            { "label": "Thailand", "checked": true }
+          ]
+        }
+      ],
+      "peakSeasonality": [
+        { "label": "Jan-Apr", "checked": false },
+        { "label": "May-Aug", "checked": true },
+        { "label": "Sep-Dec", "checked": false }
+      ],
+      "helperText": "Selecting 'May-Aug' isolates data for the high-demand period."
+    },
+    "seasonalExportVolume": {
+      "title": "Seasonal Export Volume",
+      "subtitle": "Cosmetics (3304.99) to ASEAN Region",
+      "data": [
+        { "month": "Jan", "value": 20, "highlighted": false },
+        { "month": "Mar", "value": 32, "highlighted": false },
+        { "month": "May", "value": 68, "highlighted": true },
+        { "month": "Jul", "value": 82, "highlighted": true },
+        { "month": "Aug", "value": 55, "highlighted": true },
+        { "month": "Oct", "value": 40, "highlighted": false },
+        { "month": "Dec", "value": 25, "highlighted": false }
+      ]
+    },
+    "keyMarketDrivers": [
+      {
+        "icon": "climate",
+        "title": "Climate Necessity",
+        "description": "High UV index during May-Aug drives daily usage across all demographics in Vietnam and Thailand."
+      },
+      {
+        "icon": "formulation",
+        "title": "Formulation Preference",
+        "description": "Lightweight, non-sticky 'water-gel' sunscreens account for 68% of Korean cosmetic exports to the region."
+      },
+      {
+        "icon": "growth",
+        "title": "Growth Trend",
+        "description": "+14% YoY growth in male sunscreen products specifically in Thailand."
+      }
+    ]
+  },
+
+  "govSupport": {
+    "title": "Government Support Projects",
+    "subtitle": "Explore available grants, subsidies, and assistance programs tailored for export businesses.",
+    "ctaButton": "내가 선택할 수 있는 지원사업 보기",
+    "searchPlaceholder": "Search projects by keyword, industry, or region...",
+    "projects": [
+      {
+        "id": "gov-001",
+        "title": "2024 Global Market Expansion Voucher…",
+        "category": "High Match",
+        "highMatch": true,
+        "dday": "D-14",
+        "budgetLimit": "₩50,000,000",
+        "deadline": "Oct 31, 2024",
+        "source": "기업마당"
+      },
+      {
+        "id": "gov-002",
+        "title": "Small Business Export Logistics Subsidy",
+        "category": "Export Logistics",
+        "highMatch": false,
+        "dday": "D-5",
+        "budgetLimit": "₩15,000,000",
+        "deadline": "Oct 22, 2024",
+        "source": "KOTRA 무역투자24"
+      },
+      {
+        "id": "gov-003",
+        "title": "Overseas Certification Acquisition Support",
+        "category": "Certification",
+        "highMatch": false,
+        "dday": "D-30",
+        "budgetLimit": "₩30,000,000",
+        "deadline": "Nov 15, 2024",
+        "source": "공공데이터포털"
+      },
+      {
+        "id": "gov-004",
+        "title": "International Trade Show Participation Grant",
+        "category": "Marketing",
+        "highMatch": false,
+        "dday": "D-1",
+        "urgent": true,
+        "budgetLimit": "₩20,000,000",
+        "deadline": "Oct 18, 2024",
+        "source": "수출바우처 포털"
+      }
+    ]
+  },
+
+  "documentChecklist": {
+    "title": "필수 수출 서류",
+    "subtitle": "미국 수출 진행을 위해 아래 서류들을 확인하고 업로드해주세요.",
+    "items": [
+      {
+        "id": "doc-invoice",
+        "name": "상업송장 (Commercial Invoice)",
+        "description": "수출입 통관 및 관세 부과 기준이 되는 필수 서류",
+        "status": "업로드 완료",
+        "aiSupport": false
+      },
+      {
+        "id": "doc-packing",
+        "name": "포장명세서 (Packing List)",
+        "description": "화물의 포장 상태, 수량, 중량 등을 기재한 명세서",
+        "status": "업로드 대기",
+        "aiSupport": false
+      },
+      {
+        "id": "doc-co",
+        "name": "원산지증명서 (C/O)",
+        "description": "FTA 협정세율 적용을 위한 필수 증명서",
+        "status": "업로드 대기",
+        "aiSupport": true
+      }
+    ],
+    "addMoreButtonLabel": "추가 제출 서류 입력하기"
+  },
+
+  "exportDocumentForm": {
+    "title": "Export Document Information",
+    "subtitle": "Please fill in the required details to generate your export documentation.",
+    "exporterInformation": {
+      "companyName": "TechGlobal Export Ltd.",
+      "taxId": "",
+      "address": ""
+    },
+    "consigneeInformation": {
+      "consigneeName": "",
+      "destinationCountry": ""
+    },
+    "destinationCountryOptions": [
+      "United States", "Vietnam", "Thailand", "China", "Japan", "Germany"
+    ],
+    "itemDetails": [
+      {
+        "descriptionOfGoods": "",
+        "hsCode": "",
+        "quantity": ""
+      }
+    ],
+    "actions": ["이전 정보 불러오기", "서류 양식 보기", "서류 생성하기"]
+  },
+
+  "documentPreview": {
+    "fileName": "Commercial_Invoice_US_2023.pdf",
+    "badge": "AI Assisted",
+    "zoom": "100%",
+    "document": {
+      "title": "COMMERCIAL INVOICE",
+      "shipper": {
+        "name": "TechGlobal Industries Ltd.",
+        "address": ["123 Innovation Drive", "Seoul, South Korea"]
+      },
+      "consignee": {
+        "name": "American Retail Partners LLC",
+        "address": ["456 Commerce Blvd, Suite 200", "New York, NY 10001, USA"],
+        "aiFilled": true
+      },
+      "items": [
+        {
+          "description": "Smart Home Hub v2.0",
+          "hsCode": "8517.62.00",
+          "quantity": "500 units",
+          "unitPrice": "$120.00",
+          "totalValue": "$60,000.00",
+          "aiFilledField": "hsCode"
+        },
+        {
+          "description": "Wireless Sensor Pack",
+          "hsCode": "8543.70.99",
+          "quantity": "1000 units",
+          "unitPrice": "$45.00",
+          "totalValue": "$45,000.00",
+          "aiFilledField": "hsCode"
+        }
+      ],
+      "termsOfSale": "DDP (Delivered Duty Paid) New York",
+      "disclaimer": "본 서류는 AI가 생성한 초안이며 전문가 검토가 필요할 수 있습니다."
+    },
+    "aiFillingComplete": {
+      "title": "AI Filling Complete",
+      "description": "The document has been automatically filled based on your project data. Please review the highlighted sections.",
+      "checklist": [
+        "Consignee Address verified",
+        "HS Codes suggested based on descriptions",
+        "Incoterms applied (DDP)"
+      ],
+      "warning": "Review the yellow highlights carefully before final submission to ensure accuracy."
+    },
+    "actions": ["제출하기 (Submit)", "수정하기 (Edit)"]
+  },
+
+  "marketingMaterialCreator": {
+    "title": "Marketing Material Creator",
+    "subtitle": "Design high-impact export assets quickly.",
+    "actions": ["기존 서류 정보 불러오기", "이미지 저장"],
+    "uploadedProductImages": [
+      { "id": "img-1", "url": "/assets/product-flask-black.png" }
+    ],
+    "templates": {
+      "categories": ["All", "Social Media", "B2B Catalog", "Banners"],
+      "items": [
+        { "id": "tpl-modern-minimal", "name": "Modern Minimal", "selected": true },
+        { "id": "tpl-b2b-spec-sheet", "name": "B2B Spec Sheet", "selected": false },
+        { "id": "tpl-promo-banner", "name": "Promo Banner", "selected": false }
+      ]
+    },
+    "preview": {
+      "sourceBadge": "Auto-filled from Doc #892",
+      "productName": "AeroTherm Pro Smart Flask",
+      "description": "Advanced temperature control for professionals. Maintains perfect heat for hours.",
+      "specs": [
+        { "icon": "temperature", "label": "Retention", "value": "24 Hours" },
+        { "icon": "weight", "label": "Weight", "value": "320g" }
+      ],
+      "brand": "ExportConnect",
+      "website": "www.exportconnect.kr"
+    }
+  },
+
+  "helpAndFaq": {
+    "title": "How can we help you?",
+    "subtitle": "Find answers to common questions or consult with our AI specialist.",
+    "chatBanner": {
+      "title": "1:1 AI 챗봇 상담 (AI Chat Consultation)",
+      "description": "Get instant, personalized answers regarding export regulations, documentation, and market entry strategies from our advanced AI.",
+      "ctaLabel": "Start Chat Now"
+    },
+    "categories": [
+      { "id": "market-entry", "label": "Market Entry", "icon": "globe" },
+      { "id": "documentation", "label": "Documentation", "icon": "file" },
+      { "id": "tariffs-taxes", "label": "Tariffs & Taxes", "icon": "bank" },
+      { "id": "logistics", "label": "Logistics", "icon": "truck" }
+    ],
+    "faqs": [
+      {
+        "question": "What documents are required for exporting electronics to the EU?",
+        "answer": "일반적으로 상업송장, 포장명세서, 원산지증명서, CE 인증서가 필요합니다. 품목에 따라 추가 서류가 요구될 수 있습니다."
+      },
+      {
+        "question": "How do I calculate import duties for my destination country?",
+        "answer": "HS코드와 목적국의 관세율표를 기준으로 산정하며, FTA 협정세율 적용 여부에 따라 달라질 수 있습니다."
+      },
+      {
+        "question": "Can the AI translate my commercial documents?",
+        "answer": "네, Docs 메뉴에서 언어쌍을 선택한 뒤 AI 채우기 기능으로 상업송장 등 서류를 번역할 수 있습니다."
+      }
+    ],
+    "floatingChatbot": {
+      "greeting": "안녕하세요! 수출 서류, 관세, 물류 관련 궁금한 점을 물어보세요.",
+      "dummyConversation": [
+        { "role": "user", "message": "베트남 수출 시 원산지증명서가 꼭 필요한가요?" },
+        { "role": "ai", "message": "네, FTA 협정세율 적용을 위해서는 원산지증명서(C/O)가 필수입니다. Docs 메뉴에서 AI 작성 지원을 받으실 수 있어요." }
+      ]
+    }
+  },
+
+  "govConsultation": {
+    "title": "지자체 담당자 1:1 서류 문의",
+    "inquiryTypes": [
+      "서류 적합성 확인",
+      "지원사업 자격 여부",
+      "서식 오류 확인"
+    ],
+    "inquiries": [
+      {
+        "id": "inq-001",
+        "subject": "원산지증명서 서식 문의",
+        "attachedDocument": "doc-co",
+        "status": "답변완료",
+        "aiPreReview": "품목 설명과 HS코드가 일치하며 특이사항이 발견되지 않았습니다. 서명란 누락 여부만 확인해 주세요.",
+        "officerReply": "서식은 적합하며 접수 가능합니다."
+      },
+      {
+        "id": "inq-002",
+        "subject": "수출바우처 신청 자격 문의",
+        "attachedDocument": "doc-invoice",
+        "status": "대기",
+        "aiPreReview": "사업자등록증 상 업종 코드가 지원 대상에 포함되는지 추가 확인이 필요합니다.",
+        "officerReply": null
+      }
+    ]
+  },
+
+  "translationEditor": {
+    "documentTitle": "Commercial Invoice - KR Export",
+    "languagePair": { "source": "EN", "target": "KO" },
+    "actions": ["번역(원문 변환)", "AI 채우기", "Export PDF", "Save Changes"],
+    "sourceBadge": null,
+    "targetBadge": "EDITING",
+    "aiAppliedBadge": "AI Suggestions applied",
+    "source": {
+      "invoiceNo": "INV-2023-0042",
+      "date": "October 24, 2023",
+      "shipper": ["Global Tech Solutions Inc.", "123 Innovation Drive", "San Francisco, CA 94105, USA"],
+      "consignee": ["Seoul Electronics Ltd.", "456 Teheran-ro, Gangnam-gu", "Seoul 06164, South Korea"],
+      "items": [
+        { "description": "Industrial Grade Semiconductor Wafer", "qty": 500, "unitPrice": "$120.00", "total": "$60,000.00" },
+        { "description": "High-Precision Sensor Modules", "qty": 250, "unitPrice": "$45.00", "total": "$11,250.00" }
+      ]
+    },
+    "target": {
+      "invoiceNo": "INV-2023-0042",
+      "date": "2023년 10월 24일",
+      "dateAiTranslated": true,
+      "shipper": ["Global Tech Solutions Inc.", "123 Innovation Drive", "San Francisco, CA 94105, USA"],
+      "consignee": ["(주)서울일렉트로닉스", "서울특별시 강남구 테헤란로 456", "우편번호 06164, 대한민국"],
+      "consigneeAiTranslated": true,
+      "items": [
+        { "description": "산업용 반도체 웨이퍼", "qty": 500, "unitPrice": "$120.00", "total": "$60,000.00" },
+        { "description": "고정밀 센서 모듈", "qty": 250, "unitPrice": "$45.00", "total": "$11,250.00", "aiTranslated": true }
+      ]
+    }
+  }
+}
