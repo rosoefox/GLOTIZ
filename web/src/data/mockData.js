@@ -18,29 +18,16 @@ export const nav = {
   top: [
     { path: "/analysis", label: "시장 분석" },
     { path: "/gov-support", label: "정부 지원사업" },
-<<<<<<< HEAD
-    { path: "/my-items", label: "나의 수출품목", requiresAuth: true },
-    { path: "/docs", label: "서류 관리", requiresAuth: true },
-    { path: "/marketing", label: "마케팅 이미지 생성기", requiresAuth: true },
-=======
     { path: "/docs", label: "서류 관리", requiresAuth: true },
     { path: "/marketing", label: "마케팅 이미지 생성기", requiresAuth: true },
     { path: "/shopee", label: "쇼피 입점 가이드", requiresAuth: true },
->>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
   ],
   sidebar: [
     { path: "/analysis", label: "시장 분석", icon: "analysis" },
     { path: "/gov-support", label: "정부 지원사업", icon: "projects" },
-<<<<<<< HEAD
-    { path: "/my-items", label: "나의 수출품목", icon: "box", requiresAuth: true },
-    { path: "/docs", label: "서류 관리", icon: "documents", requiresAuth: true },
-    { path: "/marketing", label: "마케팅 이미지 생성기", icon: "marketing", requiresAuth: true },
-    { path: "/ai-docs", label: "AI 서식 자동 채우기", icon: "sparkle", requiresAuth: true },
-=======
     { path: "/docs", label: "서류 관리", icon: "documents", requiresAuth: true },
     { path: "/marketing", label: "마케팅 이미지 생성기", icon: "marketing", requiresAuth: true },
     { path: "/shopee", label: "쇼피 입점 가이드", icon: "globe", requiresAuth: true },
->>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
   ],
   bottom: [
     { path: "/help", label: "고객지원", icon: "help" },
@@ -136,11 +123,7 @@ export const myExportItems = {
 };
 
 export const dashboard = {
-<<<<<<< HEAD
-  greetingTitle: "무엇을 팔고 싶나요?",
-=======
   greetingTitle: "해외에 판매하고 싶은 제품은 무엇인가요?",
->>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
   greetingSubtitle: "당신의 해외 수출을 시작하세요.",
   searchPlaceholder: "예: 화장품, 가전제품...",
   recentSearches: [{ label: "최근 검색: 화장품 미국 수출", query: "화장품" }],
@@ -153,16 +136,6 @@ export const dashboard = {
     { label: "인기공고", count: 8 },
   ],
   cardNewsLabel: "지원사업 카드뉴스",
-<<<<<<< HEAD
-  featuresTitle: "JB-XPORT는 이런 기능을 제공해요",
-  featuresDescription:
-    "소상공인의 해외 수출을 돕는 AI 에이전트입니다. 상품명이나 사진만 검색하면 잘 팔리는 국가·카테고리·시즌을 AI가 한 문장으로 분석해드리고, 신청 가능한 정부 지원사업 매칭부터 필요한 수출 서류 준비까지 한 곳에서 진행할 수 있어요.",
-  features: [
-    { icon: "search", title: "AI 시장 분석", description: "상품명이나 사진 검색만으로 잘 팔리는 국가·카테고리·성수기를 AI가 분석해드려요." },
-    { icon: "projects", title: "정부 지원사업 매칭", description: "분석 결과를 바탕으로 지금 신청 가능한 정부 지원사업을 자동으로 찾아드려요." },
-    { icon: "documents", title: "수출 서류 자동화", description: "지원사업별로 필요한 서류를 확인하고 AI로 자동 완성할 수 있어요." },
-  ],
-=======
 
   statsHeadline: "전북 수출기업이 가장 많이 찾는 파트너, JB-XPORT",
   stats: [
@@ -232,7 +205,6 @@ export const dashboard = {
     { name: "한바이어", company: "테크글로벌무역", rating: 4, text: "필수 서류 체크리스트 덕분에 빠뜨리는 서류 없이 준비할 수 있었습니다." },
   ],
 
->>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
   itemCategoriesTitle: "품목별 지원사업 공고",
   itemCategoriesAll: "전체",
 };
@@ -398,11 +370,7 @@ export const documentChecklist = {
   uploadButtonLabel: "파일 업로드",
   reuploadButtonLabel: "다시 업로드",
   issueLinkLabel: "발급 바로가기",
-<<<<<<< HEAD
-  overallTitle: "전체 서류 준비 현황",
-=======
   overallTitle: "필수 서류 준비 현황",
->>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
   overallDescription: "모든 필수 서류가 등록되어야 다음 통관 단계로 진행할 수 있습니다.",
   overallSuffix: "완료",
   addDocButtonLabel: "추가 수출 제출 서류 작성하기",
@@ -766,8 +734,6 @@ export const govConsultation = {
     },
   ],
 };
-<<<<<<< HEAD
-=======
 
 export const shopeeListing = {
   title: "쇼피 입점 가이드",
@@ -955,4 +921,3 @@ export const adminPanel = {
   viewDocumentLabel: "제출 내용 보기",
   downloadLabel: "다운로드",
 };
->>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)

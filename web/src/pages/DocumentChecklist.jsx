@@ -1,14 +1,8 @@
-<<<<<<< HEAD
-import { useState } from "react";
-=======
 import { useEffect, useState } from "react";
->>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
 import { useLocation, useNavigate } from "react-router-dom";
 import Icon from "../components/Icon";
 import { Badge, Card, Button } from "../components/ui";
 import { documentChecklist as dc } from "../data/mockData";
-<<<<<<< HEAD
-=======
 import { supabase } from "../lib/supabase";
 import { DocumentAutoFillContent } from "./DocumentAutoFill";
 
@@ -68,7 +62,6 @@ function GovTemplateGroup({ title, templates, submissions, onOpenFill }) {
     </div>
   );
 }
->>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
 
 const STATUS_META = {
   notStarted: { label: dc.notStartedLabel, tone: "neutral" },
@@ -230,15 +223,11 @@ function UploadChecklistItem({ item, state, onFileSelect }) {
         <Button
           variant="secondary"
           className="px-3 py-2 text-xs"
-<<<<<<< HEAD
-          onClick={() => navigate("/docs/preview", { state: { docName: item.name } })}
-=======
           onClick={() =>
             item.id === "doc-invoice"
               ? navigate("/docs/new")
               : navigate("/docs/preview", { state: { docName: item.name } })
           }
->>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
         >
           <Icon name="arrowRight" className="h-3.5 w-3.5" />
           {dc.issueLinkLabel}
@@ -315,8 +304,6 @@ export default function DocumentChecklist() {
   const location = useLocation();
   const activeProgram = location.state?.program ?? null;
   const activeItemName = location.state?.itemName ?? null;
-<<<<<<< HEAD
-=======
   const businessId = location.state?.businessId ?? null;
   const businessName = location.state?.businessName ?? null;
 
@@ -355,7 +342,6 @@ export default function DocumentChecklist() {
     refreshGovTemplates();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [businessId]);
->>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
 
   const allGroups = [dc.commonGroup, ...dc.programGroups];
   const matchedGroup = activeProgram
@@ -469,8 +455,6 @@ export default function DocumentChecklist() {
               <span>0%</span>
               <span>100%</span>
             </div>
-<<<<<<< HEAD
-=======
 
             {overallPercent === 100 && (
               <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
@@ -482,13 +466,10 @@ export default function DocumentChecklist() {
                 </span>
               </div>
             )}
->>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
           </Card>
         </div>
       )}
 
-<<<<<<< HEAD
-=======
       {businessId &&
         (loadingGovTemplates ? (
           <p className="mb-8 text-sm text-slate-400">불러오는 중...</p>
@@ -503,7 +484,6 @@ export default function DocumentChecklist() {
           />
         ) : null)}
 
->>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
       {dc.programGroups
         .filter((g) => selectedIds.has(g.id))
         .map((group) => (
@@ -525,8 +505,6 @@ export default function DocumentChecklist() {
         {dc.addDocButtonLabel}
         <Icon name="arrowRight" className="h-5 w-5" />
       </button>
-<<<<<<< HEAD
-=======
 
       {fillTarget && (
         <div
@@ -561,7 +539,6 @@ export default function DocumentChecklist() {
           </div>
         </div>
       )}
->>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
     </div>
   );
 }

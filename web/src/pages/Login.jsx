@@ -12,12 +12,8 @@ export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
 
-<<<<<<< HEAD
-  const goAfterLogin = () => navigate(location.state?.from || "/gov-support");
-=======
   const goAfterLogin = () =>
     navigate(location.state?.from || (accountType === "admin" ? "/admin" : "/gov-support"));
->>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
 
   const handleLogin = (e) => {
     e.preventDefault();

@@ -15,10 +15,7 @@ export default {
       },
       fontFamily: {
         sans: [
-<<<<<<< HEAD
-=======
           "Pretendard Variable",
->>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
           "Pretendard",
           "-apple-system",
           "BlinkMacSystemFont",
@@ -26,8 +23,6 @@ export default {
           "sans-serif",
         ],
       },
-<<<<<<< HEAD
-=======
       keyframes: {
         marquee: {
           "0%": { transform: "translateX(0)" },
@@ -42,7 +37,6 @@ export default {
         marquee: "marquee 26s linear infinite",
         "marquee-reverse": "marquee-reverse 28s linear infinite",
       },
->>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
     },
   },
   plugins: [],

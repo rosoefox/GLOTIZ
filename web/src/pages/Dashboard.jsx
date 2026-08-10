@@ -1,8 +1,4 @@
-<<<<<<< HEAD
-import { useEffect, useMemo, useState } from "react";
-=======
 import { useEffect, useMemo, useRef, useState } from "react";
->>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import Icon from "../components/Icon";
 import SearchBar from "../components/SearchBar";
@@ -10,10 +6,7 @@ import FloatingChatbot from "../components/FloatingChatbot";
 import { brand, dashboard, nav, login, govSupport } from "../data/mockData";
 import { CATEGORIES } from "../data/mockAnalysis";
 import { useAuth } from "../context/AuthContext";
-<<<<<<< HEAD
-=======
 import { supabase } from "../lib/supabase";
->>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
 import jeonbukLogo from "../assets/jeonbuk-logo.svg";
 
 const CATEGORY_ICONS = {
@@ -24,8 +17,6 @@ const CATEGORY_ICONS = {
   household: "box",
 };
 
-<<<<<<< HEAD
-=======
 const FEATURE_TONES = {
   cream: "bg-amber-50 text-amber-600",
   blue: "bg-blue-50 text-blue-600",
@@ -39,69 +30,11 @@ const CASE_TONES = {
   grape: "from-violet-300 to-purple-400",
 };
 
->>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
 function formatTodayKorean() {
   const d = new Date();
   return `${d.getFullYear()}년 ${String(d.getMonth() + 1).padStart(2, "0")}월 ${String(d.getDate()).padStart(2, "0")}일`;
 }
 
-<<<<<<< HEAD
-function ProgramCardNews({ items, onSelect }) {
-  const [index, setIndex] = useState(0);
-  const [playing, setPlaying] = useState(true);
-
-  useEffect(() => {
-    if (!playing || items.length <= 1) return;
-    const id = setInterval(() => setIndex((i) => (i + 1) % items.length), 20000);
-    return () => clearInterval(id);
-  }, [playing, items.length]);
-
-  if (!items.length) return null;
-  const current = items[index % items.length];
-
-  return (
-    <div className="flex h-full min-h-[260px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-brand-600 to-brand-900 text-white">
-      <button
-        type="button"
-        onClick={() => onSelect(current.id)}
-        className="flex flex-1 flex-col justify-center px-8 py-10 text-left transition-opacity hover:opacity-90"
-      >
-        <span className="mb-4 inline-flex w-fit items-center rounded-full bg-white/15 px-3 py-1 text-xs font-semibold">
-          {current.category}
-        </span>
-        <h3 className="text-2xl font-bold leading-snug">{current.title}</h3>
-        <p className="mt-3 text-sm text-white/80">
-          마감일 {current.deadline} · {current.dday}
-        </p>
-      </button>
-
-      <div className="flex items-center justify-center gap-6 border-t border-white/10 bg-black/10 py-3">
-        <button
-          type="button"
-          onClick={() => setIndex((i) => (i - 1 + items.length) % items.length)}
-          aria-label="이전 공고"
-          className="text-white/80 hover:text-white"
-        >
-          <Icon name="arrowLeft" className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          onClick={() => setPlaying((p) => !p)}
-          aria-label={playing ? "일시정지" : "재생"}
-          className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-white hover:bg-white/25"
-        >
-          <Icon name={playing ? "pause" : "play"} className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          onClick={() => setIndex((i) => (i + 1) % items.length)}
-          aria-label="다음 공고"
-          className="text-white/80 hover:text-white"
-        >
-          <Icon name="arrowRight" className="h-4 w-4" />
-        </button>
-      </div>
-=======
 // 통계 영역이 뷰포트에 들어올 때마다(재진입 포함) 카운트업이 다시 시작되도록 key를 바꿔준다.
 function useReplayOnView(threshold = 0.4) {
   const ref = useRef(null);
@@ -171,7 +104,6 @@ function ReviewStars({ rating }) {
           className={`h-3.5 w-3.5 ${idx < rating ? "text-amber-400" : "text-slate-200"}`}
         />
       ))}
->>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
     </div>
   );
 }
@@ -181,8 +113,6 @@ export default function Dashboard() {
   const { isLoggedIn, user, logout } = useAuth();
   const [itemFilter, setItemFilter] = useState("all");
 
-<<<<<<< HEAD
-=======
   const [statsRef, statsReplayKey] = useReplayOnView();
 
   const [ongoingPrograms, setOngoingPrograms] = useState([]);
@@ -202,7 +132,6 @@ export default function Dashboard() {
     loadOngoing();
   }, []);
 
->>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
   const handleSearch = (query) => {
     if (!query) return;
     navigate("/analysis", { state: { query } });
@@ -240,10 +169,6 @@ export default function Dashboard() {
               <Icon name="sparkle" className="h-4 w-4" />
             </div>
             <span className="text-sm font-bold text-slate-900">{brand.name}</span>
-<<<<<<< HEAD
-            <img src={jeonbukLogo} alt="전북특별자치도" className="h-7 w-auto" />
-=======
->>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
           </Link>
           <nav className="hidden items-center gap-6 md:flex">
             {nav.top.map((item) => {
@@ -304,11 +229,7 @@ export default function Dashboard() {
         )}
       </header>
 
-<<<<<<< HEAD
-      <div className="flex flex-col items-center px-6 pb-12 pt-16">
-=======
       <div className="flex w-full flex-col items-center bg-[#deecfb] px-6 pb-12 pt-16">
->>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
         <SearchBar
           heading={dashboard.greetingTitle}
           subtitle={dashboard.greetingSubtitle}
@@ -322,29 +243,12 @@ export default function Dashboard() {
             <button
               key={item.label}
               onClick={() => handleSearch(item.query)}
-<<<<<<< HEAD
-              className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-600 hover:bg-slate-50"
-=======
               className="rounded-full border border-white/40 bg-white px-4 py-2 text-sm text-slate-600 hover:bg-slate-50"
->>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
             >
               {item.label}
             </button>
           ))}
         </div>
-<<<<<<< HEAD
-
-        <p className="mt-8 text-sm text-slate-500">
-          신청 가능한 지원사업{" "}
-          <span className="text-slate-400">({formatTodayKorean()} 기준)</span>{" "}
-          <span className="text-lg font-extrabold text-brand-600">
-            {dashboard.availablePrograms.toLocaleString()}건
-          </span>
-        </p>
-      </div>
-
-      <div className="mx-auto w-full max-w-5xl px-6 pb-20">
-=======
       </div>
 
       <div ref={statsRef} className="mx-auto w-full max-w-5xl px-6 pt-10">
@@ -364,7 +268,6 @@ export default function Dashboard() {
       </div>
 
       <div className="mx-auto w-full max-w-5xl px-6 py-10">
->>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
         <div className="grid grid-cols-1 gap-6 md:grid-cols-5">
           <div className="rounded-2xl border border-slate-200 bg-white p-6 md:col-span-2">
             <h3 className="mb-4 text-center text-base font-bold text-slate-900">{dashboard.announcementsLabel}</h3>
@@ -385,10 +288,6 @@ export default function Dashboard() {
             </div>
           </div>
 
-<<<<<<< HEAD
-          <div className="md:col-span-3">
-            <ProgramCardNews items={govSupport.projects} onSelect={goToProgram} />
-=======
           <div className="rounded-2xl border border-slate-200 bg-white p-6 md:col-span-3">
             <h3 className="mb-2 text-base font-bold text-slate-900">{dashboard.ongoingProgramsTitle}</h3>
             {loadingOngoing ? (
@@ -434,16 +333,11 @@ export default function Dashboard() {
               {dashboard.ongoingProgramsMoreLabel}
               <Icon name="arrowRight" className="h-3.5 w-3.5" />
             </button>
->>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
           </div>
         </div>
       </div>
 
-<<<<<<< HEAD
-      <div className="w-full bg-slate-50 px-6 py-20">
-=======
       <div className="w-full bg-white px-6 py-20">
->>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
         <div className="mx-auto max-w-4xl text-center">
           <h2 className="text-2xl font-bold text-slate-900">{dashboard.featuresTitle}</h2>
           <p className="mx-auto mt-3 max-w-2xl text-sm leading-relaxed text-slate-600">
@@ -452,14 +346,6 @@ export default function Dashboard() {
 
           <div className="mt-10 grid grid-cols-1 gap-6 sm:grid-cols-3">
             {dashboard.features.map((f) => (
-<<<<<<< HEAD
-              <div key={f.title} className="rounded-2xl border border-slate-200 bg-white p-6">
-                <div className="mx-auto mb-4 flex h-11 w-11 items-center justify-center rounded-full bg-brand-600 text-white">
-                  <Icon name={f.icon} className="h-5 w-5" />
-                </div>
-                <p className="mb-1.5 text-base font-bold text-slate-900">{f.title}</p>
-                <p className="text-sm leading-relaxed text-slate-500">{f.description}</p>
-=======
               <div key={f.title} className="flex flex-col items-center rounded-2xl border border-slate-200 bg-white p-6">
                 <div className={`mb-4 flex h-14 w-14 items-center justify-center rounded-2xl ${FEATURE_TONES[f.tone]}`}>
                   <Icon name={f.icon} className="h-7 w-7" />
@@ -473,15 +359,10 @@ export default function Dashboard() {
                   {f.linkLabel}
                   <Icon name="arrowRight" className="h-3.5 w-3.5" />
                 </Link>
->>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
               </div>
             ))}
           </div>
         </div>
-<<<<<<< HEAD
-
-        <div className="mx-auto mt-16 max-w-5xl">
-=======
       </div>
 
       <div className="w-full bg-black px-6 py-20">
@@ -569,7 +450,6 @@ export default function Dashboard() {
 
       <div className="w-full bg-white px-6 py-20">
         <div className="mx-auto max-w-5xl">
->>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
           <h2 className="mb-6 text-center text-xl font-bold text-slate-900">{dashboard.itemCategoriesTitle}</h2>
 
           <div className="mb-8 flex flex-wrap justify-center gap-2">
@@ -629,8 +509,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-<<<<<<< HEAD
-=======
       <footer className="w-full border-t border-slate-100 bg-white px-6 py-8">
         <div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-4 sm:flex-row">
           <div className="flex items-center gap-3">
@@ -644,7 +522,6 @@ export default function Dashboard() {
         </div>
       </footer>
 
->>>>>>> 6349839 (수출 지원 페이지 화면 디자인 및 배경색 수정)
       <FloatingChatbot />
     </div>
   );
