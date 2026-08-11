@@ -1,6 +1,6 @@
-import { NavLink, Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import Icon from "./Icon";
-import { nav, login } from "../data/mockData";
+import { nav } from "../data/mockData";
 import { useAuth } from "../context/AuthContext";
 
 export default function Topbar({ showSearch = true }) {
@@ -8,52 +8,13 @@ export default function Topbar({ showSearch = true }) {
   const avatarInitial = (profile?.company || user?.email || "U")[0].toUpperCase();
   const navigate = useNavigate();
 
-  const goToLogin = () => {
-    window.alert(login.requiredMessage);
-    navigate("/login");
-  };
-
   const handleLogout = () => {
     logout();
     navigate("/");
   };
 
   return (
-    <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-8">
-      <nav className="flex items-center gap-6">
-        {nav.top.map((item) => {
-          const locked = item.requiresAuth && !isLoggedIn;
-
-          if (locked) {
-            return (
-              <button
-                key={item.path}
-                type="button"
-                onClick={goToLogin}
-                className="flex items-center gap-1.5 rounded-md bg-slate-100 px-2 py-1 text-sm font-medium text-slate-400 hover:bg-slate-200"
-              >
-                {item.label}
-                <Icon name="lock" className="h-3 w-3" />
-              </button>
-            );
-          }
-
-          return (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              className={({ isActive }) =>
-                `text-sm font-medium transition-colors ${
-                  isActive ? "text-brand-700" : "text-slate-500 hover:text-slate-900"
-                }`
-              }
-            >
-              {item.label}
-            </NavLink>
-          );
-        })}
-      </nav>
-
+    <header className="flex h-16 shrink-0 items-center justify-end border-b border-slate-200 bg-white px-8">
       <div className="flex items-center gap-4">
         {showSearch && (
           <div className="relative hidden md:block">
@@ -72,6 +33,13 @@ export default function Topbar({ showSearch = true }) {
                 {avatarInitial}
               </div>
               <span className="text-sm font-semibold text-slate-800">마이페이지</span>
+            </Link>
+            <Link
+              to={nav.exportStatus.path}
+              className="flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+            >
+              <Icon name={nav.exportStatus.icon} className="h-4 w-4" />
+              {nav.exportStatus.label}
             </Link>
             <button
               type="button"

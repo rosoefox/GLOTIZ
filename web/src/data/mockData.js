@@ -32,6 +32,7 @@ export const nav = {
   bottom: [
     { path: "/help", label: "고객지원", icon: "help" },
   ],
+  exportStatus: { path: "/my-items", label: "수출 현황", icon: "box" },
 };
 
 export const myPage = {

@@ -212,6 +212,13 @@ export default function Dashboard() {
               </div>
               <span className="text-sm font-semibold text-slate-800">마이페이지</span>
             </Link>
+            <Link
+              to={nav.exportStatus.path}
+              className="flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+            >
+              <Icon name={nav.exportStatus.icon} className="h-4 w-4" />
+              {nav.exportStatus.label}
+            </Link>
             <button
               type="button"
               onClick={handleLogout}
