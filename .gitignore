@@ -1,0 +1,19 @@
+# 예전에 남아있던 중복 클론(각자 자기 .git을 가지고 있어 별도 저장소로 취급됨) — 이 저장소에는 포함하지 않음
+/JB-Trade-AI-Agent/
+/web/JB-Trade-AI-Agent/
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# Node
+node_modules/
+dist/
+dist-ssr/
+
+# env
+.env
+.env.local
+*.local
