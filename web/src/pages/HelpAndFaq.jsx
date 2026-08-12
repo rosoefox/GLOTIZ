@@ -2,6 +2,7 @@ import { useState } from "react";
 import Icon from "../components/Icon";
 import { Card, Button } from "../components/ui";
 import { helpAndFaq as hf } from "../data/mockData";
+import { useChatbot } from "../context/ChatbotContext";
 
 function FaqItem({ question, answer }) {
   const [open, setOpen] = useState(false);
@@ -23,6 +24,7 @@ function FaqItem({ question, answer }) {
 }
 
 export default function HelpAndFaq() {
+  const { openChatbot } = useChatbot();
   return (
     <div className="mx-auto max-w-4xl px-8 py-8">
       <div className="mb-8 text-center">
@@ -37,10 +39,10 @@ export default function HelpAndFaq() {
           </div>
           <div>
             <h2 className="text-base font-bold text-slate-900">{hf.chatBanner.title}</h2>
-            <p className="mt-1 max-w-md text-sm text-slate-500">{hf.chatBanner.description}</p>
+            <p className="mt-1 whitespace-nowrap text-sm text-slate-500">{hf.chatBanner.description}</p>
           </div>
         </div>
-        <Button className="whitespace-nowrap">
+        <Button className="whitespace-nowrap" onClick={openChatbot}>
           {hf.chatBanner.ctaLabel}
           <Icon name="arrowRight" className="h-4 w-4" />
         </Button>

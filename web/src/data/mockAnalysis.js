@@ -57,11 +57,3 @@ export function resolveFilters(rawQuery, { categoryId, countryIds, quarterIds })
 
   return { query, category, countries, countryLabel, quarters: activeQuarters, quarterLabel };
 }
-
-// 정부 지원사업이 방금 분석한 상품(카테고리/국가)에 적합한지 판단하는 규칙
-export function projectMatchesAnalysis(project, analysis) {
-  if (!analysis) return null;
-  const categoryOk = !project.matchCategories?.length || project.matchCategories.includes(analysis.category.id);
-  const countryOk = !project.matchCountries?.length || project.matchCountries.some((c) => analysis.countries.includes(c));
-  return categoryOk && countryOk;
-}

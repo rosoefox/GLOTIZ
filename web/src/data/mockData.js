@@ -32,7 +32,7 @@ export const nav = {
   bottom: [
     { path: "/help", label: "고객지원", icon: "help" },
   ],
-  exportStatus: { path: "/my-items", label: "수출 현황", icon: "box" },
+  exportStatus: { path: "/my-items", label: "수출 품목", icon: "box" },
 };
 
 export const myPage = {
@@ -323,11 +323,24 @@ export const govSupport = {
   title: "정부 지원사업",
   subtitle: "수출 기업을 위한 보조금·지원금·지원 프로그램을 살펴보세요.",
   ctaButton: "내가 선택할 수 있는 지원사업 보기",
-  personalizedNotice: "지금 신청 가능한 지원사업만 활성화했어요. 나머지는 비활성화됩니다.",
   disabledLabel: "신청 불가",
   searchPlaceholder: "키워드, 업종, 지역으로 지원사업 검색...",
   filterButton: "필터",
   cardLabels: { budget: "예산 한도", deadline: "마감일" },
+  allProgramsHeading: "전체 지원사업",
+  allCheckboxLabel: "전체 지원사업",
+  recommendedCheckboxLabel: "추천 지원사업",
+  lastSearchTitle: "최근 검색한 상품",
+  detailPageTitle: "공고 상세화면 확인",
+  basicInfoTitle: "기본 정보",
+  basicInfoLabels: { org: "주관기관", period: "접수기간", target: "지원대상", support: "지원내용", contact: "문의처" },
+  previewSectionTitle: "신청 서식 미리보기",
+  previewUnavailable: "아직 등록된 신청 서식이 없습니다.",
+  applyButtonLabel: "AI 간편신청하기",
+  loginPopup: {
+    title: "로그인이 필요해요",
+    description: "AI 간편신청을 이용하려면 먼저 로그인해주세요.",
+  },
   projects: [
     {
       id: "gov-001",
@@ -379,6 +392,53 @@ export const govSupport = {
       matchCountries: [],
     },
   ],
+};
+
+// 실제 Supabase businesses 행(id)에 매핑되는 상세 정보. DB에는 이런 필드가 없어서
+// 프론트 목업으로 관리한다 — 주관기관/기간 등은 임의로 채운 값이다.
+export const govAnnouncementDetails = {
+  "5090843f-cf8e-4945-a51d-69e1aa8e61e6": {
+    org: "전북특별자치도경제통상진흥원",
+    period: "2026.08.01 ~ 2026.08.31",
+    target: "전북 소재 수출 유망 중소기업",
+    support: "베트남 K-브랜드 EXPO 2026(Mega-Us) 참가 부스비·통역·물류비 등 지원",
+    contact: "전북경제통상진흥원 수출지원팀 (063-000-0000)",
+  },
+  "bb7ab51f-5978-43f7-8f3e-bc85add54153": {
+    org: "군산시청·김제시청",
+    period: "2026.08.01 ~ 2026.08.31",
+    target: "군산·김제 자유무역지역 입주기업",
+    support: "자유무역지역 내 기업 경쟁력 강화를 위한 통합 지원사업",
+    contact: "군산시청 기업지원과 (063-000-0000)",
+  },
+  "ecb57103-e33f-4062-a506-93a95ca01f49": {
+    org: "전북테크노파크",
+    period: "2026.08.01 ~ 2026.08.31",
+    target: "식품 수출 유망 중소기업",
+    support: "홍콩식품박람회 2026 참가 지원 (부스비·물류비 등)",
+    contact: "전북테크노파크 지역산업육성실 (063-000-0000)",
+  },
+  "da530822-7707-44b6-b3b8-93dba472815c": {
+    org: "전북테크노파크",
+    period: "2026.08.01 ~ 2026.08.31",
+    target: "해외 수출 경쟁력 강화가 필요한 전북 소재 기업",
+    support: "해외 수출기업 경쟁력 강화를 위한 컨설팅·마케팅 지원",
+    contact: "전북테크노파크 지역산업육성실 (063-000-0000)",
+  },
+  "8bb84c8b-d4d5-4288-99bb-5218e16186af": {
+    org: "전북특별자치도경제통상진흥원",
+    period: "2026.08.01 ~ 2026.08.31",
+    target: "김제시 소재 수출 초보·유망 기업",
+    support: "통상마스터Youth 연계 수출 통합 지원 (컨설팅·마케팅·인증 등)",
+    contact: "전북경제통상진흥원 통상지원팀 (063-000-0000)",
+  },
+  "ff70560b-2848-4d4b-bce3-245a1244f304": {
+    org: "전주시청",
+    period: "2026.08.01 ~ 2026.08.31",
+    target: "전주시 소재 수출 중소기업",
+    support: "수출바우처 지원사업 (마케팅·인증·통역번역 등 자율 선택형)",
+    contact: "전주시청 일자리경제국 (063-000-0000)",
+  },
 };
 
 export const documentChecklist = {
@@ -636,8 +696,8 @@ export const marketingMaterialCreator = {
   },
   previewTitle: "미리보기",
   preview: {
-    sourceBadge: "문서 #892에서 자동 반영",
     productName: "에어썸 프로 스마트 보틀",
+    tagline: "완벽한 온도, 완벽한 하루",
     description: "전문가를 위한 첨단 온도 제어 기능. 오랜 시간 완벽한 보온·보냉을 유지합니다.",
     specs: [
       { icon: "temperature", label: "보온 유지", value: "24시간" },
@@ -645,6 +705,7 @@ export const marketingMaterialCreator = {
     ],
     brand: "JB-XPORT",
     website: "www.jbxport.kr",
+    price: "29,000원",
   },
 };
 
@@ -665,12 +726,12 @@ export const helpAndFaq = {
   faqSectionTitle: "자주 묻는 질문",
   faqs: [
     {
-      question: "EU로 전자제품을 수출할 때 필요한 서류는 무엇인가요?",
-      answer: "일반적으로 상업송장, 포장명세서, 원산지증명서, CE 인증서가 필요합니다. 품목에 따라 추가 서류가 요구될 수 있습니다.",
+      question: "저한테 맞는 지원사업을 추천해줄 수 있나요?",
+      answer: "네, 시장 분석에서 판매하려는 상품을 검색해두시면, 정부 지원사업 페이지에서 그 결과를 바탕으로 신청 가능한 사업을 추천해드려요.",
     },
     {
-      question: "목적국의 수입 관세는 어떻게 계산하나요?",
-      answer: "HS코드와 목적국의 관세율표를 기준으로 산정하며, FTA 협정세율 적용 여부에 따라 달라질 수 있습니다.",
+      question: "마케팅이나 상세페이지에 쓸 이미지도 만들어 줄 수 있나요?",
+      answer: "네, 마케팅 이미지 생성기에서 상품 정보를 입력하면 AI가 홍보용 이미지를 자동으로 만들어드립니다.",
     },
     {
       question: "AI가 상업 서류를 번역해줄 수 있나요?",
@@ -927,7 +988,7 @@ export const adminPanel = {
   subtitle: "소상공인이 제출한 지원사업 신청서와 서류를 신청자별로 확인하세요.",
   summaryLabels: {
     applicants: "신청 기업 수",
-    submissions: "제출 서류 수",
+    programs: "지원 사업 수",
     completed: "생성 완료",
   },
   applicantFallbackName: "익명 신청자",
@@ -963,8 +1024,11 @@ export const adminPanel = {
   businessManager: {
     newBusinessButtonLabel: "새 사업 등록",
     businessListEmptyMessage: "등록된 사업이 없습니다.",
-    uploadTemplateButtonLabel: "서류 양식 업로드",
+    uploadReferenceDocButtonLabel: "기본서류 업로드",
+    uploadTemplateButtonLabel: "제출 서류 업로드",
     addFieldsButtonLabel: "필드 추가",
+    editTemplateButtonLabel: "수정",
+    deleteTemplateButtonLabel: "삭제",
     templateListEmptyMessage: "등록된 서류 양식이 없습니다.",
 
     businessForm: {
@@ -976,8 +1040,17 @@ export const adminPanel = {
       submitLabel: "등록하기",
     },
 
+    referenceDocForm: {
+      title: "기본서류 업로드",
+      fileLabel: "공고 원문 파일 (PDF/DOCX/HWP/이미지)",
+      submitLabel: "업로드 후 AI 분석",
+      hint:
+        "여기서 업로드하는 문서는 신청서 양식이 아니라, 공고 원문(안내문) 자체입니다. " +
+        "AI가 이 문서를 읽고 공고 상세페이지의 기본 정보(주관기관·접수기간·지원대상·지원내용·문의처)를 자동으로 채웁니다.",
+    },
+
     templateForm: {
-      title: "서류 양식 업로드",
+      title: "제출 서류 업로드",
       nameLabel: "서식명",
       namePlaceholder: "예: 신청서(별지 제1호)",
       formNumberLabel: "서식 번호",
@@ -989,6 +1062,16 @@ export const adminPanel = {
         "일반 텍스트/장문 필드는 {{field_key}} 형식(예: {{company_name_kr}})으로, " +
         "체크박스 필드는 옵션 문구 앞에 □ 기호(예: □ 법인)를 넣어 작성해주세요. " +
         "자리표시자가 없으면 자동 채움 시 값이 채워지지 않습니다.",
+    },
+
+    editTemplateForm: {
+      title: "서류 양식 수정",
+      nameLabel: "서식명",
+      namePlaceholder: "예: 신청서(별지 제1호)",
+      formNumberLabel: "서식 번호",
+      formNumberPlaceholder: "예: 1 또는 별지1호",
+      fileLabel: "DOCX 파일 (선택, 새로 올리면 기존 파일을 대체합니다)",
+      submitLabel: "수정 저장",
     },
 
     fieldsForm: {

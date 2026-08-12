@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 import uuid
 import xml.etree.ElementTree as ET
+from urllib.parse import quote
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -14,6 +15,7 @@ from docx import Document
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from google import genai
 from google.genai import types
 from pydantic import BaseModel
@@ -359,7 +361,11 @@ def delete_account(authorization: str | None = Header(None)):
         raise HTTPException(status_code=401, detail="인증 토큰이 필요합니다.")
 
     token = authorization.split(" ", 1)[1]
-    user_res = supabase.auth.get_user(token)
+    try:
+        user_res = supabase.auth.get_user(token)
+    except Exception:
+        # 세션 만료/무효화 시 supabase-auth가 예외를 던진다 (정상적인 "토큰 없음" 응답이 아니라).
+        raise HTTPException(status_code=401, detail="로그인 세션이 만료되었습니다. 다시 로그인해주세요.")
     if not user_res or not user_res.user:
         raise HTTPException(status_code=401, detail="유효하지 않은 토큰입니다.")
 
@@ -375,7 +381,11 @@ def require_admin(authorization: str | None) -> str:
         raise HTTPException(status_code=401, detail="인증 토큰이 필요합니다.")
 
     token = authorization.split(" ", 1)[1]
-    user_res = supabase.auth.get_user(token)
+    try:
+        user_res = supabase.auth.get_user(token)
+    except Exception:
+        # 세션 만료/무효화 시 supabase-auth가 예외를 던진다 (정상적인 "토큰 없음" 응답이 아니라).
+        raise HTTPException(status_code=401, detail="로그인 세션이 만료되었습니다. 다시 로그인해주세요.")
     if not user_res or not user_res.user:
         raise HTTPException(status_code=401, detail="유효하지 않은 토큰입니다.")
 
@@ -404,6 +414,115 @@ def create_business(req: CreateBusinessRequest, authorization: str | None = Head
     row = (
         supabase.table("businesses")
         .insert({"name": req.name.strip(), "description": req.description})
+        .execute()
+        .data[0]
+    )
+    return row
+
+
+REFERENCE_DOC_ALLOWED_EXTENSIONS = {".pdf", ".docx", ".hwp", ".jpg", ".jpeg", ".png"}
+
+
+def build_basic_info_prompt(business_name):
+    return f"""당신은 정부 지원사업 공고문(원본 서류)을 읽고, 신청자에게 보여줄 핵심 정보를 요약하는 어시스턴트입니다.
+사업명: {business_name}
+
+첨부된 문서를 읽고 아래 항목을 채워주세요:
+- org: 주관기관 (예: 전북테크노파크)
+- period: 접수기간 (예: 2026.08.01 ~ 2026.08.31)
+- target: 지원대상
+- support: 지원내용 (1~2문장 요약)
+- contact: 문의처 (담당부서·전화번호 등)
+
+문서에서 확인할 수 없는 항목은 빈 문자열("")로 두고, 추측해서 지어내지 마세요.
+"""
+
+
+def call_gemini_basic_info(business_name, file_bytes, mime_type):
+    response = gemini_client.models.generate_content(
+        model="gemini-flash-latest",
+        contents=[
+            types.Part.from_bytes(data=file_bytes, mime_type=mime_type),
+            build_basic_info_prompt(business_name),
+        ],
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_schema={
+                "type": "OBJECT",
+                "properties": {
+                    "org": {"type": "STRING"},
+                    "period": {"type": "STRING"},
+                    "target": {"type": "STRING"},
+                    "support": {"type": "STRING"},
+                    "contact": {"type": "STRING"},
+                },
+                "required": ["org", "period", "target", "support", "contact"],
+            },
+        ),
+    )
+    return json.loads(response.text)
+
+
+@app.post("/admin/businesses/{business_id}/reference-doc")
+def upload_reference_doc(
+    business_id: str,
+    file: UploadFile = File(...),
+    authorization: str | None = Header(None),
+):
+    """공고 원문(기본서류)을 업로드하고, AI가 그 문서를 읽어 공고 상세페이지의
+    '기본 정보'(주관기관/접수기간/지원대상/지원내용/문의처)를 자동으로 채운다.
+    제출용 신청서 템플릿(/admin/templates)과는 별개의, 정보 제공용 문서다."""
+    require_admin(authorization)
+
+    business = (
+        supabase.table("businesses").select("*").eq("id", business_id).maybe_single().execute().data
+    )
+    if not business:
+        raise HTTPException(status_code=404, detail="해당 사업을 찾을 수 없습니다.")
+
+    ext = Path(file.filename or "").suffix.lower()
+    if ext not in REFERENCE_DOC_ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="PDF, DOCX, HWP, JPG, PNG 파일만 업로드할 수 있습니다.")
+
+    file_bytes = file.file.read()
+    object_path = f"reference/{business_id}/{uuid.uuid4().hex}{ext}"
+
+    try:
+        supabase.storage.from_(TEMPLATES_BUCKET).upload(object_path, file_bytes, {"upsert": "false"})
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"파일 업로드에 실패했습니다: {e}")
+
+    if ext in (".docx", ".hwp"):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            src_path = tmp_path / f"source{ext}"
+            src_path.write_bytes(file_bytes)
+            try:
+                pdf_path = convert_to_pdf(src_path, tmp_path)
+                gemini_bytes = pdf_path.read_bytes()
+            except Exception as e:
+                supabase.table("businesses").update({"reference_file_path": object_path}).eq(
+                    "id", business_id
+                ).execute()
+                raise HTTPException(status_code=502, detail=f"파일은 업로드됐지만 문서 변환에 실패했습니다: {e}")
+        gemini_mime = "application/pdf"
+    elif ext == ".pdf":
+        gemini_bytes = file_bytes
+        gemini_mime = "application/pdf"
+    else:
+        gemini_bytes = file_bytes
+        gemini_mime = "image/jpeg" if ext in (".jpg", ".jpeg") else "image/png"
+
+    try:
+        basic_info = call_gemini_basic_info(business["name"], gemini_bytes, gemini_mime)
+    except Exception as e:
+        supabase.table("businesses").update({"reference_file_path": object_path}).eq("id", business_id).execute()
+        raise HTTPException(status_code=502, detail=f"파일은 업로드됐지만 AI 정보 추출에 실패했습니다: {e}")
+
+    row = (
+        supabase.table("businesses")
+        .update({"reference_file_path": object_path, "basic_info": basic_info})
+        .eq("id", business_id)
         .execute()
         .data[0]
     )
@@ -458,6 +577,159 @@ def create_template(
         .data[0]
     )
     return row
+
+
+@app.patch("/admin/templates/{template_id}")
+def update_template(
+    template_id: str,
+    name: str = Form(...),
+    form_number: str | None = Form(None),
+    file: UploadFile | None = File(None),
+    authorization: str | None = Header(None),
+):
+    require_admin(authorization)
+
+    template = (
+        supabase.table("templates").select("*").eq("id", template_id).maybe_single().execute().data
+    )
+    if not template:
+        raise HTTPException(status_code=404, detail="해당 서식을 찾을 수 없습니다.")
+
+    if file is not None and file.filename:
+        if not file.filename.lower().endswith(".docx"):
+            raise HTTPException(status_code=400, detail="docx 파일만 업로드할 수 있습니다.")
+        file_bytes = file.file.read()
+        try:
+            supabase.storage.from_(TEMPLATES_BUCKET).update(
+                template["original_file_path"],
+                file_bytes,
+                {"content-type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
+            )
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"파일 업로드에 실패했습니다: {e}")
+
+    row = (
+        supabase.table("templates")
+        .update({"name": name, "form_number": form_number})
+        .eq("id", template_id)
+        .execute()
+        .data[0]
+    )
+    return row
+
+
+@app.delete("/admin/templates/{template_id}")
+def delete_template(template_id: str, authorization: str | None = Header(None)):
+    require_admin(authorization)
+
+    template = (
+        supabase.table("templates").select("*").eq("id", template_id).maybe_single().execute().data
+    )
+    if not template:
+        raise HTTPException(status_code=404, detail="해당 서식을 찾을 수 없습니다.")
+
+    submissions = (
+        supabase.table("submissions").select("id").eq("template_id", template_id).execute().data or []
+    )
+    submission_ids = [s["id"] for s in submissions]
+
+    if submission_ids:
+        generated_docs = (
+            supabase.table("generated_documents")
+            .select("file_path")
+            .in_("submission_id", submission_ids)
+            .execute()
+            .data
+            or []
+        )
+        gen_paths = [g["file_path"] for g in generated_docs if g.get("file_path")]
+        supabase.table("generated_documents").delete().in_("submission_id", submission_ids).execute()
+        if gen_paths:
+            try:
+                supabase.storage.from_(GENERATED_BUCKET).remove(gen_paths)
+            except Exception:
+                pass
+
+        supabase.table("submission_values").delete().in_("submission_id", submission_ids).execute()
+        supabase.table("submissions").delete().eq("template_id", template_id).execute()
+
+    supabase.table("template_fields").delete().eq("template_id", template_id).execute()
+    supabase.table("templates").delete().eq("id", template_id).execute()
+    try:
+        supabase.storage.from_(TEMPLATES_BUCKET).remove([template["original_file_path"]])
+    except Exception:
+        pass  # storage 파일 삭제 실패는 무시 — DB 정리가 우선이다.
+
+    return {"deleted": True}
+
+
+@app.delete("/admin/businesses/{business_id}")
+def delete_business(business_id: str, authorization: str | None = Header(None)):
+    """지원사업(공고) 자체를 삭제한다. 서식 파일만 지우는 게 아니라, 연결된 서식/제출
+    내역/생성된 문서/스토리지 파일까지 전부 함께 삭제한다."""
+    require_admin(authorization)
+
+    business = (
+        supabase.table("businesses").select("*").eq("id", business_id).maybe_single().execute().data
+    )
+    if not business:
+        raise HTTPException(status_code=404, detail="해당 사업을 찾을 수 없습니다.")
+
+    templates = (
+        supabase.table("templates")
+        .select("id,original_file_path")
+        .eq("business_id", business_id)
+        .execute()
+        .data
+        or []
+    )
+    template_ids = [t["id"] for t in templates]
+
+    if template_ids:
+        submissions = (
+            supabase.table("submissions").select("id").in_("template_id", template_ids).execute().data or []
+        )
+        submission_ids = [s["id"] for s in submissions]
+
+        if submission_ids:
+            generated_docs = (
+                supabase.table("generated_documents")
+                .select("file_path")
+                .in_("submission_id", submission_ids)
+                .execute()
+                .data
+                or []
+            )
+            gen_paths = [g["file_path"] for g in generated_docs if g.get("file_path")]
+            supabase.table("generated_documents").delete().in_("submission_id", submission_ids).execute()
+            if gen_paths:
+                try:
+                    supabase.storage.from_(GENERATED_BUCKET).remove(gen_paths)
+                except Exception:
+                    pass
+
+            supabase.table("submission_values").delete().in_("submission_id", submission_ids).execute()
+            supabase.table("submissions").delete().in_("template_id", template_ids).execute()
+
+        supabase.table("template_fields").delete().in_("template_id", template_ids).execute()
+        supabase.table("templates").delete().eq("business_id", business_id).execute()
+
+        template_paths = [t["original_file_path"] for t in templates if t.get("original_file_path")]
+        if template_paths:
+            try:
+                supabase.storage.from_(TEMPLATES_BUCKET).remove(template_paths)
+            except Exception:
+                pass
+
+    if business.get("reference_file_path"):
+        try:
+            supabase.storage.from_(TEMPLATES_BUCKET).remove([business["reference_file_path"]])
+        except Exception:
+            pass
+
+    supabase.table("businesses").delete().eq("id", business_id).execute()
+
+    return {"deleted": True}
 
 
 class TemplateFieldIn(BaseModel):
@@ -834,12 +1106,87 @@ def find_soffice() -> str:
 
 
 def convert_to_pdf(docx_path: Path, out_dir: Path) -> Path:
-    subprocess.run(
-        [find_soffice(), "--headless", "--convert-to", "pdf", "--outdir", str(out_dir), str(docx_path)],
-        check=True,
+    # LibreOffice headless는 프로필을 공유하면 동시 변환 시 잠금 충돌로 실패한다
+    # (예: 상세페이지에서 서식 여러 개를 동시에 미리보기할 때). 호출마다 별도 프로필을 써서 피한다.
+    profile_dir = out_dir / f"lo_profile_{uuid.uuid4().hex}"
+    result = subprocess.run(
+        [
+            find_soffice(),
+            "--headless",
+            "--norestore",
+            f"-env:UserInstallation=file:///{profile_dir.as_posix()}",
+            "--convert-to",
+            "pdf",
+            "--outdir",
+            str(out_dir),
+            str(docx_path),
+        ],
+        capture_output=True,
         timeout=120,
     )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"LibreOffice PDF 변환 실패 (code {result.returncode}): "
+            f"{result.stderr.decode(errors='replace') or result.stdout.decode(errors='replace')}"
+        )
     return out_dir / (docx_path.stem + ".pdf")
+
+
+@app.get("/templates/{template_id}/preview-pdf")
+def preview_template_pdf(template_id: str):
+    """공고 상세페이지에서 원본(빈) 서식을 PDF로 미리보기 위한 공개 엔드포인트.
+    로그인 여부와 무관하게 볼 수 있어야 하므로 관리자 인증을 요구하지 않는다."""
+    template = (
+        supabase.table("templates").select("*").eq("id", template_id).maybe_single().execute().data
+    )
+    if not template:
+        raise HTTPException(status_code=404, detail="해당 서식을 찾을 수 없습니다.")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        docx_bytes = supabase.storage.from_(TEMPLATES_BUCKET).download(template["original_file_path"])
+        docx_path = tmp_path / "template.docx"
+        docx_path.write_bytes(docx_bytes)
+        try:
+            pdf_path = convert_to_pdf(docx_path, tmp_path)
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"PDF 미리보기 생성에 실패했습니다: {e}")
+        pdf_bytes = pdf_path.read_bytes()
+
+    return Response(content=pdf_bytes, media_type="application/pdf")
+
+
+REFERENCE_DOC_MIME_TYPES = {
+    ".pdf": "application/pdf",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".hwp": "application/x-hwp",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+}
+
+
+@app.get("/businesses/{business_id}/reference-doc")
+def download_reference_doc(business_id: str):
+    """공고 상세페이지의 '기본 정보'를 AI가 추출할 때 사용한 원본 공고 파일을
+    그대로 다운로드한다. 로그인 여부와 무관하게 볼 수 있어야 하므로 인증을 요구하지 않는다."""
+    business = (
+        supabase.table("businesses").select("reference_file_path,name").eq("id", business_id).maybe_single().execute().data
+    )
+    if not business or not business.get("reference_file_path"):
+        raise HTTPException(status_code=404, detail="등록된 기본서류가 없습니다.")
+
+    object_path = business["reference_file_path"]
+    ext = Path(object_path).suffix.lower()
+    file_bytes = supabase.storage.from_(TEMPLATES_BUCKET).download(object_path)
+    media_type = REFERENCE_DOC_MIME_TYPES.get(ext, "application/octet-stream")
+    filename = f"{business['name']}_기본서류{ext}"
+
+    return Response(
+        content=file_bytes,
+        media_type=media_type,
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
+    )
 
 
 @app.post("/generate")

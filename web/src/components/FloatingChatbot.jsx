@@ -127,9 +127,6 @@ export default function FloatingChatbot() {
         aria-label="AI 챗봇 열기"
       >
         <Icon name={open ? "x" : "chatbot"} className="h-6 w-6" />
-        {!open && (
-          <span className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2 border-white bg-red-500" />
-        )}
       </button>
     </div>
   );

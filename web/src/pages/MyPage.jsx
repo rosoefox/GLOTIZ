@@ -4,6 +4,7 @@ import Icon from "../components/Icon";
 import { Badge, Card, Button, TextField } from "../components/ui";
 import { myPage as mp, myExportItems as mi } from "../data/mockData";
 import { useAuth } from "../context/AuthContext";
+import { useExportItems } from "../context/ExportItemsContext";
 import { supabase } from "../lib/supabase";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
@@ -11,6 +12,7 @@ const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
 export default function MyPage() {
   const navigate = useNavigate();
   const { logout, user: authUser, profile, refreshProfile, session } = useAuth();
+  const { items: exportItems } = useExportItems();
   const loginId = profile?.login_id ?? "";
   const name = profile?.name ?? "";
   const phone = profile?.phone ?? "";
@@ -281,7 +283,7 @@ export default function MyPage() {
         </div>
 
         <div className="space-y-3">
-          {mi.items.map((item) => (
+          {exportItems.map((item) => (
             <div
               key={item.id}
               className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50 px-4 py-3"

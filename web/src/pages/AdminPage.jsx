@@ -78,6 +78,96 @@ function SubmissionDetailModal({ submission, templateName, onClose }) {
   );
 }
 
+function SubmissionRow({ item, isHistory, applicantUserId, onViewSubmission, onDownload, onNotify, applicant, notifying, notified }) {
+  const meta = STATUS_META[item.statusKey];
+  const key = item.submission ? item.submission.id : `${applicantUserId}:${item.templateId}`;
+  const canNotify = item.statusKey === "not_submitted" || item.statusKey === "needs_revision";
+  return (
+    <div className={`flex flex-wrap items-center justify-between gap-3 px-4 py-3 ${isHistory ? "bg-slate-50" : ""}`}>
+      <div>
+        <p className={`text-sm ${isHistory ? "text-slate-600" : "font-semibold text-slate-900"}`}>
+          {isHistory ? "이전 제출" : item.templateName}
+        </p>
+        {item.submission && (
+          <p className="text-xs text-slate-400">{new Date(item.submission.created_at).toLocaleString("ko-KR")}</p>
+        )}
+      </div>
+      <div className="flex items-center gap-2">
+        <Badge tone={meta.tone}>{meta.label}</Badge>
+        {item.submission && (
+          <Button variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => onViewSubmission(item)}>
+            <Icon name="eye" className="h-3.5 w-3.5" />
+            {ap.viewDocumentLabel}
+          </Button>
+        )}
+        {item.generatedPath && (
+          <Button variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => onDownload(item.generatedPath)}>
+            <Icon name="download" className="h-3.5 w-3.5" />
+            {ap.downloadLabel}
+          </Button>
+        )}
+        {!isHistory && canNotify && (
+          <Button
+            variant="secondary"
+            className="px-3 py-1.5 text-xs"
+            disabled={notifying[key] || notified[key]}
+            onClick={() => onNotify(applicant, item)}
+          >
+            <Icon name="send" className="h-3.5 w-3.5" />
+            {notified[key] ? ap.notifiedLabel : ap.notifyLabel}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SubmissionItem({ item, applicant, onViewSubmission, onDownload, onNotify, notifying, notified }) {
+  const [showHistory, setShowHistory] = useState(false);
+  return (
+    <div>
+      <SubmissionRow
+        item={item}
+        applicantUserId={applicant.userId}
+        applicant={applicant}
+        onViewSubmission={onViewSubmission}
+        onDownload={onDownload}
+        onNotify={onNotify}
+        notifying={notifying}
+        notified={notified}
+      />
+      {item.history.length > 0 && (
+        <>
+          <button
+            type="button"
+            onClick={() => setShowHistory((v) => !v)}
+            className="flex w-full items-center gap-1.5 border-t border-slate-100 px-4 py-2 text-left text-xs font-medium text-brand-600 hover:bg-slate-50"
+          >
+            <Icon name="chevronDown" className={`h-3.5 w-3.5 transition-transform ${showHistory ? "rotate-180" : ""}`} />
+            이전 제출 {item.history.length}건 {showHistory ? "숨기기" : "보기"}
+          </button>
+          {showHistory &&
+            item.history.map((h) => (
+              <div key={h.submission.id} className="border-t border-slate-100">
+                <SubmissionRow
+                  item={h}
+                  isHistory
+                  applicantUserId={applicant.userId}
+                  applicant={applicant}
+                  onViewSubmission={onViewSubmission}
+                  onDownload={onDownload}
+                  onNotify={onNotify}
+                  notifying={notifying}
+                  notified={notified}
+                />
+              </div>
+            ))}
+        </>
+      )}
+    </div>
+  );
+}
+
 function ApplicantRow({ applicant, expanded, onToggle, onViewSubmission, onDownload, onNotify, notifying, notified }) {
   return (
     <Card className="p-0">
@@ -123,57 +213,18 @@ function ApplicantRow({ applicant, expanded, onToggle, onViewSubmission, onDownl
                 </span>
               </div>
               <div className="divide-y divide-slate-100 rounded-xl border border-slate-200">
-                {program.items.map((item) => {
-                  const meta = STATUS_META[item.statusKey];
-                  const key = item.submission ? item.submission.id : `${applicant.userId}:${item.templateId}`;
-                  const canNotify = item.statusKey === "not_submitted" || item.statusKey === "needs_revision";
-                  return (
-                    <div key={key} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900">{item.templateName}</p>
-                        {item.submission && (
-                          <p className="text-xs text-slate-400">
-                            {new Date(item.submission.created_at).toLocaleString("ko-KR")}
-                          </p>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Badge tone={meta.tone}>{meta.label}</Badge>
-                        {item.submission && (
-                          <Button
-                            variant="secondary"
-                            className="px-3 py-1.5 text-xs"
-                            onClick={() => onViewSubmission(item)}
-                          >
-                            <Icon name="eye" className="h-3.5 w-3.5" />
-                            {ap.viewDocumentLabel}
-                          </Button>
-                        )}
-                        {item.generatedPath && (
-                          <Button
-                            variant="secondary"
-                            className="px-3 py-1.5 text-xs"
-                            onClick={() => onDownload(item.generatedPath)}
-                          >
-                            <Icon name="download" className="h-3.5 w-3.5" />
-                            {ap.downloadLabel}
-                          </Button>
-                        )}
-                        {canNotify && (
-                          <Button
-                            variant="secondary"
-                            className="px-3 py-1.5 text-xs"
-                            disabled={notifying[key] || notified[key]}
-                            onClick={() => onNotify(applicant, item)}
-                          >
-                            <Icon name="send" className="h-3.5 w-3.5" />
-                            {notified[key] ? ap.notifiedLabel : ap.notifyLabel}
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
+                {program.items.map((item) => (
+                  <SubmissionItem
+                    key={item.submission ? item.submission.id : `${applicant.userId}:${item.templateId}`}
+                    item={item}
+                    applicant={applicant}
+                    onViewSubmission={onViewSubmission}
+                    onDownload={onDownload}
+                    onNotify={onNotify}
+                    notifying={notifying}
+                    notified={notified}
+                  />
+                ))}
               </div>
             </div>
           ))}
@@ -334,6 +385,156 @@ function NewTemplateModal({ session, business, onClose, onCreated }) {
           {error && <p className="text-xs font-medium text-red-500">{error}</p>}
           <Button type="submit" className="w-full justify-center" disabled={saving}>
             {saving ? "업로드 중..." : tf.submitLabel}
+          </Button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function ReferenceDocModal({ session, business, onClose, onUploaded }) {
+  const rf = ap.businessManager.referenceDocForm;
+  const [file, setFile] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!file) {
+      setError("파일을 선택해주세요.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch(`${BACKEND_URL}/admin/businesses/${business.id}/reference-doc`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        body: form,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "기본서류 업로드에 실패했습니다.");
+      onUploaded(data);
+      onClose();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4" onClick={onClose}>
+      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-slate-900">
+            {rf.title} · {business.name}
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="닫기"
+            className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+          >
+            <Icon name="x" className="h-4 w-4" />
+          </button>
+        </div>
+        <form className="space-y-4" onSubmit={handleSubmit}>
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium text-slate-700">{rf.fileLabel}</span>
+            <input
+              type="file"
+              accept=".pdf,.docx,.hwp,.jpg,.jpeg,.png"
+              onChange={(e) => setFile(e.target.files?.[0] || null)}
+              className="w-full text-sm text-slate-600"
+            />
+          </label>
+          <p className="rounded-lg bg-slate-50 px-3.5 py-2.5 text-xs leading-relaxed text-slate-500">{rf.hint}</p>
+          {error && <p className="text-xs font-medium text-red-500">{error}</p>}
+          <Button type="submit" className="w-full justify-center" disabled={saving}>
+            {saving ? "AI가 문서를 분석하는 중..." : rf.submitLabel}
+          </Button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function EditTemplateModal({ session, template, onClose, onUpdated }) {
+  const ef = ap.businessManager.editTemplateForm;
+  const [name, setName] = useState(template.name || "");
+  const [formNumber, setFormNumber] = useState(template.form_number || "");
+  const [file, setFile] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      const form = new FormData();
+      form.append("name", name);
+      form.append("form_number", formNumber);
+      if (file) form.append("file", file);
+      const res = await fetch(`${BACKEND_URL}/admin/templates/${template.id}`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        body: form,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "서류 양식 수정에 실패했습니다.");
+      onUpdated(data);
+      onClose();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4" onClick={onClose}>
+      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-slate-900">{ef.title}</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="닫기"
+            className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+          >
+            <Icon name="x" className="h-4 w-4" />
+          </button>
+        </div>
+        <form className="space-y-4" onSubmit={handleSubmit}>
+          <TextField
+            label={ef.nameLabel}
+            required
+            placeholder={ef.namePlaceholder}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+          <TextField
+            label={ef.formNumberLabel}
+            placeholder={ef.formNumberPlaceholder}
+            value={formNumber}
+            onChange={(e) => setFormNumber(e.target.value)}
+          />
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium text-slate-700">{ef.fileLabel}</span>
+            <input
+              type="file"
+              accept=".docx"
+              onChange={(e) => setFile(e.target.files?.[0] || null)}
+              className="w-full text-sm text-slate-600"
+            />
+          </label>
+          {error && <p className="text-xs font-medium text-red-500">{error}</p>}
+          <Button type="submit" className="w-full justify-center" disabled={saving}>
+            {saving ? "저장 중..." : ef.submitLabel}
           </Button>
         </form>
       </div>
@@ -512,7 +713,60 @@ function BusinessManager({ session }) {
   const [loadingBM, setLoadingBM] = useState(true);
   const [showBusinessModal, setShowBusinessModal] = useState(false);
   const [templateModalBusiness, setTemplateModalBusiness] = useState(null);
+  const [referenceDocBusiness, setReferenceDocBusiness] = useState(null);
   const [fieldsModalTemplate, setFieldsModalTemplate] = useState(null);
+  const [editTemplateTarget, setEditTemplateTarget] = useState(null);
+  const [deletingTemplateId, setDeletingTemplateId] = useState(null);
+  const [deletingBusinessId, setDeletingBusinessId] = useState(null);
+  const [deleteError, setDeleteError] = useState(null);
+
+  const handleDeleteBusiness = async (biz) => {
+    if (
+      !window.confirm(
+        `"${biz.name}"을(를) 삭제할까요?\n서식, 제출된 신청서, 생성된 문서까지 전부 함께 삭제되며 되돌릴 수 없습니다.`
+      )
+    )
+      return;
+    setDeletingBusinessId(biz.id);
+    setDeleteError(null);
+    try {
+      const res = await fetch(`${BACKEND_URL}/admin/businesses/${biz.id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "사업 삭제에 실패했습니다.");
+      await loadBusinessManager();
+    } catch (err) {
+      setDeleteError(err.message);
+    } finally {
+      setDeletingBusinessId(null);
+    }
+  };
+
+  const handleDeleteTemplate = async (t) => {
+    if (
+      !window.confirm(
+        `"${t.name}" 서식을 삭제할까요?\n이 서식으로 제출된 신청서와 생성된 문서도 함께 삭제되며 되돌릴 수 없습니다.`
+      )
+    )
+      return;
+    setDeletingTemplateId(t.id);
+    setDeleteError(null);
+    try {
+      const res = await fetch(`${BACKEND_URL}/admin/templates/${t.id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "서식 삭제에 실패했습니다.");
+      await loadBusinessManager();
+    } catch (err) {
+      setDeleteError(err.message);
+    } finally {
+      setDeletingTemplateId(null);
+    }
+  };
 
   async function loadBusinessManager() {
     setLoadingBM(true);
@@ -533,7 +787,8 @@ function BusinessManager({ session }) {
 
   return (
     <div>
-      <div className="mb-4 flex justify-end">
+      <div className="mb-4 flex items-center justify-between gap-4">
+        {deleteError ? <p className="text-xs font-medium text-red-500">{deleteError}</p> : <span />}
         <Button onClick={() => setShowBusinessModal(true)}>
           <Icon name="plus" className="h-4 w-4" />
           {bm.newBusinessButtonLabel}
@@ -554,15 +809,39 @@ function BusinessManager({ session }) {
                   <div>
                     <p className="font-bold text-slate-900">{biz.name}</p>
                     {biz.description && <p className="mt-1 text-sm text-slate-500">{biz.description}</p>}
+                    {biz.basic_info && (
+                      <Badge tone="success" className="mt-2">
+                        <Icon name="checkCircle" className="h-3 w-3" /> 기본 정보 완료
+                      </Badge>
+                    )}
                   </div>
-                  <Button
-                    variant="secondary"
-                    className="shrink-0 px-3 py-1.5 text-xs"
-                    onClick={() => setTemplateModalBusiness(biz)}
-                  >
-                    <Icon name="upload" className="h-3.5 w-3.5" />
-                    {bm.uploadTemplateButtonLabel}
-                  </Button>
+                  <div className="flex shrink-0 gap-2">
+                    <Button
+                      variant="secondary"
+                      className="px-3 py-1.5 text-xs"
+                      onClick={() => setReferenceDocBusiness(biz)}
+                    >
+                      <Icon name="upload" className="h-3.5 w-3.5" />
+                      {bm.uploadReferenceDocButtonLabel}
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      className="px-3 py-1.5 text-xs"
+                      onClick={() => setTemplateModalBusiness(biz)}
+                    >
+                      <Icon name="upload" className="h-3.5 w-3.5" />
+                      {bm.uploadTemplateButtonLabel}
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      className="px-3 py-1.5 text-xs text-red-500 hover:bg-red-50"
+                      disabled={deletingBusinessId === biz.id}
+                      onClick={() => handleDeleteBusiness(biz)}
+                    >
+                      <Icon name="trash" className="h-3.5 w-3.5" />
+                      {deletingBusinessId === biz.id ? "삭제 중..." : "사업 삭제"}
+                    </Button>
+                  </div>
                 </div>
 
                 {templates.length === 0 ? (
@@ -575,13 +854,31 @@ function BusinessManager({ session }) {
                           <p className="text-sm font-semibold text-slate-900">{t.name}</p>
                           {t.form_number && <p className="text-xs text-slate-400">서식 번호 {t.form_number}</p>}
                         </div>
-                        <Button
-                          variant="secondary"
-                          className="px-3 py-1.5 text-xs"
-                          onClick={() => setFieldsModalTemplate(t)}
-                        >
-                          {bm.addFieldsButtonLabel}
-                        </Button>
+                        <div className="flex shrink-0 gap-2">
+                          <Button
+                            variant="secondary"
+                            className="px-3 py-1.5 text-xs"
+                            onClick={() => setEditTemplateTarget(t)}
+                          >
+                            {bm.editTemplateButtonLabel}
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            className="px-3 py-1.5 text-xs"
+                            onClick={() => setFieldsModalTemplate(t)}
+                          >
+                            {bm.addFieldsButtonLabel}
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            className="px-3 py-1.5 text-xs text-red-500 hover:bg-red-50"
+                            disabled={deletingTemplateId === t.id}
+                            onClick={() => handleDeleteTemplate(t)}
+                          >
+                            <Icon name="trash" className="h-3.5 w-3.5" />
+                            {deletingTemplateId === t.id ? "삭제 중..." : bm.deleteTemplateButtonLabel}
+                          </Button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -603,12 +900,28 @@ function BusinessManager({ session }) {
           onCreated={loadBusinessManager}
         />
       )}
+      {referenceDocBusiness && (
+        <ReferenceDocModal
+          session={session}
+          business={referenceDocBusiness}
+          onClose={() => setReferenceDocBusiness(null)}
+          onUploaded={loadBusinessManager}
+        />
+      )}
       {fieldsModalTemplate && (
         <NewFieldsModal
           session={session}
           template={fieldsModalTemplate}
           onClose={() => setFieldsModalTemplate(null)}
           onSaved={loadBusinessManager}
+        />
+      )}
+      {editTemplateTarget && (
+        <EditTemplateModal
+          session={session}
+          template={editTemplateTarget}
+          onClose={() => setEditTemplateTarget(null)}
+          onUpdated={loadBusinessManager}
         />
       )}
     </div>
@@ -709,6 +1022,20 @@ export default function AdminPage() {
 
     for (const bucket of Object.values(byUser)) {
       for (const program of Object.values(bucket.byBusiness)) {
+        // 같은 템플릿에 여러 번 제출한 경우, 최신 제출만 대표로 남기고 나머지는
+        // history로 묶어서 드롭다운으로 펼쳐볼 수 있게 한다.
+        const byTemplate = new Map();
+        for (const item of program.items) {
+          const list = byTemplate.get(item.templateId) || [];
+          list.push(item);
+          byTemplate.set(item.templateId, list);
+        }
+        program.items = Array.from(byTemplate.values()).map((list) => {
+          list.sort((a, b) => new Date(b.submission.created_at) - new Date(a.submission.created_at));
+          const [latest, ...history] = list;
+          return { ...latest, history };
+        });
+
         const submittedTemplateIds = new Set(program.items.map((i) => i.templateId));
         const allTemplates = templatesByBusiness[program.businessId] || [];
         for (const t of allTemplates) {
@@ -719,6 +1046,7 @@ export default function AdminPage() {
               templateName: t.name,
               statusKey: "not_submitted",
               generatedPath: null,
+              history: [],
             });
           }
         }
@@ -767,12 +1095,12 @@ export default function AdminPage() {
   }, []);
 
   const summary = useMemo(() => {
-    const submissionCount = applicants.reduce((sum, a) => sum + a.submissions.length, 0);
+    const programCount = applicants.reduce((sum, a) => sum + a.programs.length, 0);
     const completedCount = applicants.reduce(
       (sum, a) => sum + a.submissions.filter((s) => s.status === "generated").length,
       0
     );
-    return { applicants: applicants.length, submissions: submissionCount, completed: completedCount };
+    return { applicants: applicants.length, programs: programCount, completed: completedCount };
   }, [applicants]);
 
   const handleDownload = async (filePath) => {
@@ -863,8 +1191,8 @@ export default function AdminPage() {
                 <p className="mt-1 text-2xl font-extrabold text-brand-700">{summary.applicants}</p>
               </Card>
               <Card className="p-5">
-                <p className="text-sm text-slate-500">{ap.summaryLabels.submissions}</p>
-                <p className="mt-1 text-2xl font-extrabold text-brand-700">{summary.submissions}</p>
+                <p className="text-sm text-slate-500">{ap.summaryLabels.programs}</p>
+                <p className="mt-1 text-2xl font-extrabold text-brand-700">{summary.programs}</p>
               </Card>
               <Card className="p-5">
                 <p className="text-sm text-slate-500">{ap.summaryLabels.completed}</p>

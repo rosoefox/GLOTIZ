@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import Icon from "../components/Icon";
 import { Badge, Card, Button } from "../components/ui";
-import { documentChecklist as dc } from "../data/mockData";
+import { documentChecklist as dc, govAnnouncementDetails } from "../data/mockData";
+import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
 import { DocumentAutoFillContent } from "./DocumentAutoFill";
 
@@ -16,10 +17,7 @@ function GovTemplateGroup({ title, templates, submissions, onOpenFill }) {
   return (
     <div className="mb-8">
       <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
-        <h2 className="flex items-center gap-2 text-base font-bold text-slate-900">
-          {title}
-          <Badge tone="brand">선택한 지원사업</Badge>
-        </h2>
+        <h2 className="flex items-center gap-2 text-base font-bold text-slate-900">{title}</h2>
       </div>
 
       <Card className="divide-y divide-slate-100 p-2 ring-2 ring-brand-400">
@@ -30,17 +28,19 @@ function GovTemplateGroup({ title, templates, submissions, onOpenFill }) {
           const meta = GOV_STATUS_META[statusKey];
           return (
             <div key={t.id} className="flex flex-wrap items-center justify-between gap-3 p-4">
-              <div className="flex items-start gap-3">
+              <div className="flex items-center gap-3">
                 <div
-                  className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
+                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
                     statusKey === "generated" ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-slate-400"
                   }`}
                 >
                   <Icon name={statusKey === "generated" ? "checkCircle" : "documents"} className="h-5 w-5" />
                 </div>
                 <div>
-                  <p className="font-semibold text-slate-900">{t.name}</p>
-                  {t.form_number && <p className="mt-0.5 text-sm text-slate-500">{t.form_number}</p>}
+                  <p className="font-semibold text-slate-900">
+                    {t.form_number && <span className="mr-2 text-slate-400">{t.form_number}.</span>}
+                    {t.name}
+                  </p>
                 </div>
               </div>
 
@@ -59,6 +59,59 @@ function GovTemplateGroup({ title, templates, submissions, onOpenFill }) {
           );
         })}
       </Card>
+    </div>
+  );
+}
+
+function orgNameFor(business) {
+  return govAnnouncementDetails[business.id]?.org || "전북 지원사업 포털";
+}
+
+function ProgramCard({ business, progress, onClick }) {
+  const { done, total } = progress;
+  const complete = total > 0 && done >= total;
+  return (
+    <Card
+      onClick={onClick}
+      className={`flex h-full cursor-pointer flex-col justify-between overflow-hidden p-4 transition-shadow hover:shadow-md ${
+        complete ? "ring-2 ring-emerald-300" : "ring-2 ring-amber-300"
+      }`}
+    >
+      <div>
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <Badge tone="brand">모집 공고</Badge>
+          <Badge tone={complete ? "success" : "warning"}>
+            <Icon name={complete ? "checkCircle" : "history"} className="h-3 w-3" />
+            제출 {done}/{total}
+          </Badge>
+        </div>
+        <h3 className="line-clamp-3 text-sm font-bold leading-snug text-slate-900">{business.name}</h3>
+      </div>
+      <p className="mt-3 truncate text-xs text-slate-400">출처: {orgNameFor(business)}</p>
+    </Card>
+  );
+}
+
+function ProgramPicker({ programs, progressByBusiness, loading, onSelect }) {
+  return (
+    <div className="mb-8">
+      <h2 className="mb-3 text-base font-bold text-slate-900">내가 신청한 사업</h2>
+      {loading ? (
+        <p className="text-sm text-slate-400">불러오는 중...</p>
+      ) : programs.length === 0 ? (
+        <p className="text-sm text-slate-400">아직 서류를 제출한 지원사업이 없습니다.</p>
+      ) : (
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+          {programs.map((b) => (
+            <ProgramCard
+              key={b.id}
+              business={b}
+              progress={progressByBusiness[b.id] || { done: 0, total: 0 }}
+              onClick={() => onSelect(b)}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -144,22 +197,28 @@ function UploadChecklistItem({ item, state, onFileSelect }) {
 export default function DocumentChecklist() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
   const activeItemName = location.state?.itemName ?? null;
-  const businessId = location.state?.businessId ?? null;
-  const businessName = location.state?.businessName ?? null;
+
+  const [selectedBusinessId, setSelectedBusinessId] = useState(location.state?.businessId ?? null);
+  const [selectedBusinessName, setSelectedBusinessName] = useState(location.state?.businessName ?? null);
 
   const [govTemplates, setGovTemplates] = useState([]);
   const [govSubmissions, setGovSubmissions] = useState({});
   const [loadingGovTemplates, setLoadingGovTemplates] = useState(false);
   const [fillTarget, setFillTarget] = useState(null);
 
+  const [programs, setPrograms] = useState([]);
+  const [loadingPrograms, setLoadingPrograms] = useState(false);
+  const [progressByBusiness, setProgressByBusiness] = useState({});
+
   const refreshGovTemplates = async () => {
-    if (!businessId) return;
+    if (!selectedBusinessId) return;
     setLoadingGovTemplates(true);
     const { data: templates } = await supabase
       .from("templates")
       .select("*")
-      .eq("business_id", businessId)
+      .eq("business_id", selectedBusinessId)
       .order("form_number");
     setGovTemplates(templates || []);
 
@@ -182,7 +241,80 @@ export default function DocumentChecklist() {
   useEffect(() => {
     refreshGovTemplates();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [businessId]);
+  }, [selectedBusinessId]);
+
+  // 지원사업을 선택하지 않은 상태(사이드바에서 바로 진입)면, 내가 서류를
+  // 하나라도 제출한 사업만 목록에 보여주고, 각 사업의 제출 현황(N/전체)을 표시한다.
+  useEffect(() => {
+    if (selectedBusinessId) return;
+    let cancelled = false;
+    async function loadPrograms() {
+      setLoadingPrograms(true);
+      if (!user?.id) {
+        if (!cancelled) {
+          setPrograms([]);
+          setProgressByBusiness({});
+          setLoadingPrograms(false);
+        }
+        return;
+      }
+
+      const { data: subs } = await supabase
+        .from("submissions")
+        .select("template_id")
+        .eq("user_id", user.id);
+      const submittedTemplateIds = [...new Set((subs || []).map((s) => s.template_id))];
+
+      if (!submittedTemplateIds.length) {
+        if (!cancelled) {
+          setPrograms([]);
+          setProgressByBusiness({});
+          setLoadingPrograms(false);
+        }
+        return;
+      }
+
+      const { data: submittedTemplates } = await supabase
+        .from("templates")
+        .select("id,business_id")
+        .in("id", submittedTemplateIds);
+      const businessIds = [...new Set((submittedTemplates || []).map((t) => t.business_id))];
+
+      const [{ data: businesses }, { data: allTemplates }] = await Promise.all([
+        supabase.from("businesses").select("*").in("id", businessIds).order("created_at", { ascending: false }),
+        supabase.from("templates").select("id,business_id").in("business_id", businessIds),
+      ]);
+
+      const submittedByBusiness = {};
+      (submittedTemplates || []).forEach((t) => {
+        (submittedByBusiness[t.business_id] ??= new Set()).add(t.id);
+      });
+      const totalByBusiness = {};
+      (allTemplates || []).forEach((t) => {
+        totalByBusiness[t.business_id] = (totalByBusiness[t.business_id] || 0) + 1;
+      });
+
+      const progress = {};
+      businessIds.forEach((id) => {
+        progress[id] = { done: submittedByBusiness[id]?.size || 0, total: totalByBusiness[id] || 0 };
+      });
+
+      if (!cancelled) {
+        setPrograms(businesses || []);
+        setProgressByBusiness(progress);
+        setLoadingPrograms(false);
+      }
+    }
+    loadPrograms();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedBusinessId, user?.id]);
+
+  const handleSelectProgram = (business) => {
+    setSelectedBusinessId(business.id);
+    setSelectedBusinessName(business.name);
+  };
 
   const [uploadState, setUploadState] = useState(() =>
     Object.fromEntries(
@@ -277,19 +409,46 @@ export default function DocumentChecklist() {
         </Card>
       </div>
 
-      {businessId &&
-        (loadingGovTemplates ? (
-          <p className="mb-8 text-sm text-slate-400">불러오는 중...</p>
-        ) : govTemplates.length > 0 ? (
-          <GovTemplateGroup
-            title={businessName ? `${businessName} 제출서류` : "필수 제출 서류"}
-            templates={govTemplates}
-            submissions={govSubmissions}
-            onOpenFill={(t) =>
-              setFillTarget({ templateId: t.id, templateName: t.name, businessId, businessName })
-            }
-          />
-        ) : null)}
+      {selectedBusinessId ? (
+        <div className="mb-8">
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedBusinessId(null);
+              setSelectedBusinessName(null);
+            }}
+            className="mb-4 flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-800"
+          >
+            <Icon name="arrowLeft" className="h-4 w-4" /> 지원사업 목록으로
+          </button>
+          {loadingGovTemplates ? (
+            <p className="text-sm text-slate-400">불러오는 중...</p>
+          ) : govTemplates.length > 0 ? (
+            <GovTemplateGroup
+              title={selectedBusinessName ? `${selectedBusinessName} 제출서류` : "필수 제출 서류"}
+              templates={govTemplates}
+              submissions={govSubmissions}
+              onOpenFill={(t) =>
+                setFillTarget({
+                  templateId: t.id,
+                  templateName: t.name,
+                  businessId: selectedBusinessId,
+                  businessName: selectedBusinessName,
+                })
+              }
+            />
+          ) : (
+            <p className="text-sm text-slate-400">등록된 제출 서류가 없습니다.</p>
+          )}
+        </div>
+      ) : (
+        <ProgramPicker
+          programs={programs}
+          progressByBusiness={progressByBusiness}
+          loading={loadingPrograms}
+          onSelect={handleSelectProgram}
+        />
+      )}
 
       <button
         type="button"

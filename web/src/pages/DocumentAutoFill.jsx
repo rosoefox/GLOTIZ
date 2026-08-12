@@ -211,23 +211,25 @@ export function DocumentAutoFillContent({ templateId, templateName, businessName
         <h3 className="mt-3 text-lg font-bold text-slate-900">다운로드 준비 완료</h3>
         <p className="mt-1 text-sm text-slate-500">AI 문서 생성이 완료되었습니다.</p>
 
-        {downloadUrl ? (
-          <a
-            href={downloadUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="mt-5 inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700"
-          >
-            <Icon name="download" className="h-4 w-4" />
-            PDF 다운로드
-          </a>
-        ) : (
-          <p className="mt-5 text-sm text-slate-400">다운로드 링크를 만드는 중...</p>
-        )}
+        <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
+          {downloadUrl ? (
+            <a
+              href={downloadUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700"
+            >
+              <Icon name="download" className="h-4 w-4" />
+              PDF 다운로드
+            </a>
+          ) : (
+            <p className="text-sm text-slate-400">다운로드 링크를 만드는 중...</p>
+          )}
 
-        <Button variant="secondary" className="mt-3" onClick={onDone}>
-          필수 서류 목록으로 돌아가기
-        </Button>
+          <Button variant="secondary" onClick={onDone}>
+            필수 서류 목록으로 돌아가기
+          </Button>
+        </div>
       </Card>
     );
   }

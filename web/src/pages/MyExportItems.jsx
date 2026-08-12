@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import Icon from "../components/Icon";
 import { Badge, Card, Button, TextField } from "../components/ui";
 import { myExportItems as mi, exportDocumentForm as f, documentChecklist as dc } from "../data/mockData";
+import { useExportItems } from "../context/ExportItemsContext";
 
 const PROGRAM_OPTIONS = dc.programGroups.map((g) => g.program);
 
@@ -103,12 +104,9 @@ function BasicInfoForm({ item, onSave, onCancel }) {
 
 export default function MyExportItems() {
   const navigate = useNavigate();
-  const [items, setItems] = useState(mi.items);
+  const { items, addItem, updateItem } = useExportItems();
   const [expandedId, setExpandedId] = useState(null);
   const [showNewForm, setShowNewForm] = useState(false);
-  const [doneMap, setDoneMap] = useState(() =>
-    Object.fromEntries(mi.items.map((it) => [it.id, it.basicInfoDone]))
-  );
 
   const toggleExpand = (id) => {
     setShowNewForm(false);
@@ -121,25 +119,12 @@ export default function MyExportItems() {
   };
 
   const handleSaveExisting = (id, values) => {
-    setItems((prev) =>
-      prev.map((it) => (it.id === id ? { ...it, ...values } : it))
-    );
-    setDoneMap((prev) => ({ ...prev, [id]: true }));
+    updateItem(id, values);
     setExpandedId(null);
   };
 
   const handleCreateNew = (values) => {
-    const newItem = {
-      id: `item-${Date.now()}`,
-      name: values.name || "새 품목",
-      category: "기타",
-      destination: values.destination,
-      status: "inProgress",
-      govPrograms: values.govPrograms,
-      updatedAt: new Date().toLocaleDateString("ko-KR"),
-    };
-    setItems((prev) => [newItem, ...prev]);
-    setDoneMap((prev) => ({ ...prev, [newItem.id]: true }));
+    addItem(values);
     setShowNewForm(false);
   };
 
@@ -162,7 +147,7 @@ export default function MyExportItems() {
 
       <div className="mt-6 space-y-4">
         {items.map((item) => {
-          const done = doneMap[item.id];
+          const done = item.basicInfoDone;
           const expanded = expandedId === item.id;
           return (
             <Card key={item.id} className="p-5">

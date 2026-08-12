@@ -1,62 +1,48 @@
-import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import Icon from "../components/Icon";
 import { Badge, Card, Button } from "../components/ui";
-import { govSupport as gs } from "../data/mockData";
-import { resolveFilters, pickDefaults, projectMatchesAnalysis } from "../data/mockAnalysis";
+import { govSupport as gs, govAnnouncementDetails } from "../data/mockData";
+import { resolveFilters, pickDefaults } from "../data/mockAnalysis";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
 
-const ProjectCard = forwardRef(function ProjectCard(
-  { topBarClass, badge, extraBadges, title, rows, sourceText, ctaText, disabled, onClick },
-  ref
-) {
+function isEligible(business, analysis) {
+  if (!analysis) return null;
+  const haystack = `${business.name} ${business.description || ""}`;
+  const categoryMatch = haystack.includes(analysis.category.label);
+  const countryMatch = analysis.countries.some((c) => haystack.includes(c));
+  return categoryMatch || countryMatch;
+}
+
+function orgNameFor(business) {
+  return govAnnouncementDetails[business.id]?.org || "전북 지원사업 포털";
+}
+
+function AnnouncementCard({ business, disabled, badge, onClick }) {
   return (
     <Card
-      ref={ref}
       onClick={onClick}
       aria-disabled={disabled}
-      className={`overflow-hidden transition-shadow ${
+      className={`flex h-full flex-col justify-between overflow-hidden p-4 transition-shadow ${
         disabled ? "cursor-not-allowed opacity-40" : "cursor-pointer hover:shadow-md"
       }`}
     >
-      <div className={`h-1 w-full ${topBarClass || "bg-transparent"}`} />
-      <div className="p-5">
-        <div className="mb-4 flex items-center justify-between gap-2">
+      <div>
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <Badge tone="brand">모집 공고</Badge>
           {badge}
-          <div className="flex items-center gap-2">{extraBadges}</div>
         </div>
-
-        <h3 className="mb-4 min-h-[3rem] text-base font-bold leading-snug text-slate-900">{title}</h3>
-
-        {rows && rows.length > 0 && (
-          <div className="space-y-2 border-t border-slate-100 pt-3 text-sm">
-            {rows.map((r) => (
-              <div key={r.label} className="flex justify-between">
-                <span className="text-slate-500">{r.label}</span>
-                <span className={`font-semibold ${r.tone || "text-slate-700"}`}>{r.value}</span>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {sourceText && <p className="mt-3 text-xs text-slate-400">출처: {sourceText}</p>}
-        <p className="mt-3 flex items-center gap-1 text-xs font-medium text-brand-600">
-          {ctaText}
-          {!disabled && <Icon name="arrowRight" className="h-3.5 w-3.5" />}
-        </p>
+        <h3 className="line-clamp-3 text-sm font-bold leading-snug text-slate-900">{business.name}</h3>
       </div>
+      <p className="mt-3 truncate text-xs text-slate-400">출처: {orgNameFor(business)}</p>
     </Card>
   );
-});
+}
 
 export default function GovSupport() {
   const { isLoggedIn, lastQuery, lastFilters } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation();
-  const [personalizedMode, setPersonalizedMode] = useState(false);
-  const highlightId = location.state?.highlightId ?? null;
-  const highlightRef = useRef(null);
 
   const [announcements, setAnnouncements] = useState([]);
   const [loadingAnnouncements, setLoadingAnnouncements] = useState(true);
@@ -64,114 +50,133 @@ export default function GovSupport() {
   useEffect(() => {
     async function loadAnnouncements() {
       setLoadingAnnouncements(true);
-      // templates!inner: 서류 양식이 하나라도 업로드된 사업만 노출한다.
-      // (관리자가 사업만 등록하고 아직 서류를 안 올린 상태는 목록에 안 뜬다)
-      const { data } = await supabase
-        .from("businesses")
-        .select("*, templates!inner(id)")
-        .order("created_at", { ascending: false });
+      const { data } = await supabase.from("businesses").select("*").order("created_at", { ascending: false });
       setAnnouncements(data || []);
       setLoadingAnnouncements(false);
     }
     loadAnnouncements();
   }, []);
 
-  useEffect(() => {
-    if (highlightId && highlightRef.current) {
-      highlightRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
-    }
-  }, [highlightId]);
-
   const analysis = useMemo(() => {
     if (!isLoggedIn || !lastQuery) return null;
     return resolveFilters(lastQuery, lastFilters || pickDefaults(lastQuery));
   }, [isLoggedIn, lastQuery, lastFilters]);
 
-  const handlePersonalizedClick = () => {
-    if (!isLoggedIn) {
-      navigate("/login", { state: { from: "/gov-support" } });
-      return;
-    }
-    setPersonalizedMode(true);
-  };
+  const handleAnnouncementClick = (business) => navigate(`/gov-support/${business.id}`);
 
-  const handleAnnouncementClick = (business, disabled) => {
-    if (disabled) return;
-    if (!isLoggedIn) {
-      navigate("/login", { state: { from: "/gov-support" } });
-      return;
-    }
-    navigate("/docs", { state: { businessId: business.id, businessName: business.name } });
-  };
+  if (!isLoggedIn) {
+    return (
+      <div className="mx-auto flex max-w-6xl flex-col px-8 py-8">
+        <h1 className="mb-5 text-4xl font-extrabold text-slate-900">{gs.allProgramsHeading}</h1>
+
+        {loadingAnnouncements ? (
+          <p className="text-sm text-slate-400">불러오는 중...</p>
+        ) : announcements.length === 0 ? (
+          <p className="text-sm text-slate-400">등록된 지원사업이 없습니다.</p>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+            {announcements.map((b) => (
+              <AnnouncementCard key={b.id} business={b} onClick={() => handleAnnouncementClick(b)} />
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return <LoggedInGovSupport announcements={announcements} loading={loadingAnnouncements} analysis={analysis} onCardClick={handleAnnouncementClick} />;
+}
+
+function LoggedInGovSupport({ announcements, loading, analysis, onCardClick }) {
+  const navigate = useNavigate();
+  const [listMode, setListMode] = useState("all"); // "all" | "recommended"
+  const [personalizedMode, setPersonalizedMode] = useState(false);
+
+  const visibleAnnouncements =
+    listMode === "recommended" ? announcements.filter((b) => isEligible(b, analysis) === true) : announcements;
 
   return (
-    <div className="mx-auto max-w-6xl px-8 py-8">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-900">{gs.title}</h1>
-        <div className="-mt-1 flex flex-wrap items-end justify-between gap-4">
-          <p className="max-w-xl text-sm text-slate-500">{gs.subtitle}</p>
-          <div className="text-right">
-            <Button onClick={handlePersonalizedClick}>
-              <Icon name="sparkle" className="h-4 w-4" />
-              {gs.ctaButton}
-            </Button>
-            {personalizedMode && (
-              <p className="mt-2 whitespace-nowrap text-xs text-brand-700">{gs.personalizedNotice}</p>
-            )}
-          </div>
-        </div>
-      </div>
+    <div className="mx-auto flex max-w-6xl flex-col px-8 py-8">
+      <h1 className="text-4xl font-extrabold text-slate-900">{gs.allProgramsHeading}</h1>
 
-      <div className="mb-6 flex gap-3">
-        <div className="relative flex-1">
-          <Icon name="search" className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input
-            placeholder={gs.searchPlaceholder}
-            className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-11 pr-4 text-sm shadow-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
-          />
+      <Card className="mt-4 p-4">
+        <p className="mb-1 text-xs font-semibold text-slate-400">{gs.lastSearchTitle}</p>
+        {analysis ? (
+          <p className="text-sm text-slate-700">
+            <span className="font-bold text-brand-700">&ldquo;{analysis.query}&rdquo;</span> · {analysis.category.label} ·{" "}
+            {analysis.countryLabel}
+          </p>
+        ) : (
+          <p className="text-sm text-slate-400">
+            아직 검색한 상품이 없습니다.{" "}
+            <button type="button" onClick={() => navigate("/analysis")} className="font-semibold text-brand-600 hover:underline">
+              시장 분석에서 상품을 검색해보세요
+            </button>
+          </p>
+        )}
+      </Card>
+
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-4">
+        <div className="flex gap-4">
+          <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+            <input
+              type="checkbox"
+              checked={listMode === "all"}
+              onChange={() => setListMode("all")}
+              className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+            />
+            {gs.allCheckboxLabel}
+          </label>
+          <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+            <input
+              type="checkbox"
+              checked={listMode === "recommended"}
+              onChange={() => setListMode("recommended")}
+              className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+            />
+            {gs.recommendedCheckboxLabel}
+          </label>
         </div>
-        <Button variant="secondary">
-          <Icon name="settings" className="h-4 w-4" />
-          {gs.filterButton}
+
+        <Button className="px-6 py-4 text-base" onClick={() => setPersonalizedMode((v) => !v)}>
+          <Icon name="sparkle" className="h-5 w-5" />
+          {gs.ctaButton}
         </Button>
       </div>
 
-      <h2 className="mb-3 text-base font-bold text-slate-900">전체 지원사업</h2>
-      {loadingAnnouncements ? (
-        <p className="text-sm text-slate-400">불러오는 중...</p>
-      ) : announcements.length === 0 ? (
-        <p className="text-sm text-slate-400">등록된 지원사업이 없습니다.</p>
-      ) : (
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {announcements.map((b) => {
-            const eligible = analysis ? projectMatchesAnalysis(b, analysis) : null;
-            const disabled = personalizedMode && eligible !== true;
-            return (
-              <ProjectCard
-                key={b.id}
-                ref={b.id === highlightId ? highlightRef : null}
-                topBarClass="bg-brand-400"
-                badge={<Badge tone="brand">모집 공고</Badge>}
-                extraBadges={
-                  eligible === true ? (
-                    <Badge tone="success">
-                      <Icon name="checkCircle" className="h-3 w-3" /> 가능
-                    </Badge>
-                  ) : eligible === false ? (
-                    <Badge tone="neutral">미해당</Badge>
-                  ) : null
-                }
-                title={b.name}
-                rows={b.description ? [{ label: "안내", value: b.description }] : null}
-                sourceText="전북 지원사업 포털"
-                ctaText={disabled ? gs.disabledLabel : isLoggedIn ? "필수 서류 확인하기" : "로그인하고 서류 확인하기"}
-                disabled={disabled}
-                onClick={() => handleAnnouncementClick(b, disabled)}
-              />
-            );
-          })}
-        </div>
-      )}
+      <div className="mt-6">
+        {loading ? (
+          <p className="text-sm text-slate-400">불러오는 중...</p>
+        ) : visibleAnnouncements.length === 0 ? (
+          <p className="text-sm text-slate-400">
+            {listMode === "recommended" ? "조건에 맞는 추천 지원사업이 없습니다." : "등록된 지원사업이 없습니다."}
+          </p>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+            {visibleAnnouncements.map((b) => {
+              const eligible = isEligible(b, analysis);
+              const disabled = personalizedMode && eligible !== true;
+              return (
+                <AnnouncementCard
+                  key={b.id}
+                  business={b}
+                  disabled={disabled}
+                  badge={
+                    eligible === true ? (
+                      <Badge tone="success">
+                        <Icon name="checkCircle" className="h-3 w-3" /> 가능
+                      </Badge>
+                    ) : eligible === false ? (
+                      <Badge tone="neutral">미해당</Badge>
+                    ) : null
+                  }
+                  onClick={() => onCardClick(b)}
+                />
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
