@@ -334,6 +334,13 @@ export const govSupport = {
   },
   recentSearchSummaryLabel: "최근 시장조사 품목",
   recentSearchSummaryEmpty: "아직 시장조사 이력이 없어요. 시장 분석에서 품목을 검색해보세요.",
+  advancedFilter: {
+    toggleLabel: "필터",
+    allOption: "전체",
+    productLabel: "지원 상품",
+    periodLabel: "모집기간",
+    budgetLabel: "지원금액",
+  },
   detailPage: {
     heading: "공고 상세화면 확인",
     basicInfoLabels: {

@@ -14,7 +14,27 @@ export const REAL_BUSINESS_DEFAULTS = {
   contact: "전북테크노파크 기업지원단",
   matchCategories: [],
   matchCountries: [],
+  // 실제 DB에는 모집월·지원금액 데이터가 없어 필터에서는 "전체"로만 잡힌다.
+  applyMonth: null,
+  budgetMax: null,
 };
+
+// 지원금액 필터용 구간. budgetMax(원)가 해당 구간에 들어가는 공고만 걸러낸다.
+export const BUDGET_TIERS = [
+  { id: "under10m", label: "1천만원 이하", max: 10_000_000 },
+  { id: "10to30m", label: "1천만원 ~ 3천만원", min: 10_000_000, max: 30_000_000 },
+  { id: "over30m", label: "3천만원 이상", min: 30_000_000 },
+];
+
+export function matchesBudgetTier(budgetMax, tierId) {
+  if (!tierId || tierId === "all") return true;
+  if (budgetMax == null) return false;
+  const tier = BUDGET_TIERS.find((t) => t.id === tierId);
+  if (!tier) return true;
+  if (tier.min != null && budgetMax <= tier.min) return false;
+  if (tier.max != null && budgetMax > tier.max) return false;
+  return true;
+}
 
 // 임시로 채워 넣는 4건 (관리자가 실제 공고를 추가로 등록하기 전까지 6개를 보여주기 위한 목업)
 export const dummyAnnouncements = [
@@ -32,6 +52,8 @@ export const dummyAnnouncements = [
     contact: "전북경제통상진흥원 수출지원단 063-711-2000",
     matchCategories: ["cosmetics", "fashion", "household"],
     matchCountries: ["베트남", "태국", "인도네시아", "필리핀", "말레이시아", "싱가포르"],
+    applyMonth: "2026-08",
+    budgetMax: 20_000_000,
   },
   {
     id: "mock-cert-support",
@@ -47,6 +69,8 @@ export const dummyAnnouncements = [
     contact: "전북테크노파크 기업지원단 063-219-2124",
     matchCategories: ["cosmetics", "electronics"],
     matchCountries: [],
+    applyMonth: "2026-09",
+    budgetMax: 30_000_000,
   },
   {
     id: "mock-logistics-support",
@@ -62,6 +86,8 @@ export const dummyAnnouncements = [
     contact: "전북경제통상진흥원 수출지원단 063-711-2000",
     matchCategories: ["food", "household"],
     matchCountries: ["태국", "인도네시아"],
+    applyMonth: "2026-08",
+    budgetMax: 10_000_000,
   },
   {
     id: "mock-content-marketing",
@@ -77,6 +103,8 @@ export const dummyAnnouncements = [
     contact: "전북문화관광재단 콘텐츠산업팀 063-230-7000",
     matchCategories: ["cosmetics", "food"],
     matchCountries: ["베트남"],
+    applyMonth: "2026-09",
+    budgetMax: 15_000_000,
   },
 ];
 

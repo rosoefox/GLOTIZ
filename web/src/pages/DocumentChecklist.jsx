@@ -294,7 +294,7 @@ export default function DocumentChecklist() {
       <button
         type="button"
         onClick={() => navigate("/docs/new")}
-        className="flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-800 px-6 py-4 text-base font-bold text-white hover:bg-brand-900"
+        className="flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-700 px-6 py-4 text-base font-bold text-white hover:bg-brand-900"
       >
         {dc.addDocButtonLabel}
         <Icon name="arrowRight" className="h-5 w-5" />

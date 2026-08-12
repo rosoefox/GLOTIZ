@@ -3,9 +3,30 @@ import { useLocation, useNavigate } from "react-router-dom";
 import Icon from "../components/Icon";
 import { Badge, Card, Button } from "../components/ui";
 import { govSupport as gs } from "../data/mockData";
-import { loadAnnouncements } from "../data/govSupportData";
-import { resolveFilters, pickDefaults, projectMatchesAnalysis } from "../data/mockAnalysis";
+import { loadAnnouncements, BUDGET_TIERS, matchesBudgetTier } from "../data/govSupportData";
+import { CATEGORIES, resolveFilters, pickDefaults, projectMatchesAnalysis } from "../data/mockAnalysis";
 import { useAuth } from "../context/AuthContext";
+
+const STORAGE_KEY = "jbxport.govSupportPrefs";
+
+function readPersistedPrefs() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function matchesCategoryFilter(announcement, categoryFilter) {
+  if (categoryFilter === "all") return true;
+  return !announcement.matchCategories?.length || announcement.matchCategories.includes(categoryFilter);
+}
+
+function matchesPeriodFilter(announcement, periodFilter) {
+  if (periodFilter === "all") return true;
+  return announcement.applyMonth === periodFilter;
+}
 
 const ProjectCard = forwardRef(function ProjectCard(
   { badge, extraBadges, title, description, sourceText, ctaText, disabled, onClick },
@@ -20,7 +41,7 @@ const ProjectCard = forwardRef(function ProjectCard(
         disabled ? "cursor-not-allowed opacity-40" : "cursor-pointer hover:shadow-md"
       }`}
     >
-      <div className="h-1 w-full bg-brand-400" />
+      <div className="h-1 w-full bg-brand-500" />
       <div className="flex flex-1 flex-col p-4">
         <div className="mb-2.5 flex items-center justify-between gap-2">
           {badge}
@@ -84,7 +105,14 @@ export default function GovSupport() {
   const navigate = useNavigate();
   const location = useLocation();
   const [personalizedMode, setPersonalizedMode] = useState(false);
-  const [viewMode, setViewMode] = useState("all"); // "all" | "recommended" (로그인 후에만 사용)
+
+  // 전체/추천 지원사업 보기 + 상세 필터: 로그인 상태에서는 이전 선택을 기억해뒀다가 다시 반영한다.
+  const [viewAll, setViewAll] = useState(() => readPersistedPrefs()?.viewAll ?? true);
+  const [viewRecommended, setViewRecommended] = useState(() => readPersistedPrefs()?.viewRecommended ?? false);
+  const [categoryFilter, setCategoryFilter] = useState(() => readPersistedPrefs()?.categoryFilter ?? "all");
+  const [periodFilter, setPeriodFilter] = useState(() => readPersistedPrefs()?.periodFilter ?? "all");
+  const [budgetFilter, setBudgetFilter] = useState(() => readPersistedPrefs()?.budgetFilter ?? "all");
+
   const highlightId = location.state?.highlightId ?? null;
   const highlightRef = useRef(null);
 
@@ -111,10 +139,31 @@ export default function GovSupport() {
     }
   }, [highlightId]);
 
+  // 로그인한 사용자의 보기/필터 선택을 기억해둔다.
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    try {
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ viewAll, viewRecommended, categoryFilter, periodFilter, budgetFilter })
+      );
+    } catch {
+      // localStorage 사용 불가(프라이빗 모드 등) 시 그냥 세션 내 상태만 유지
+    }
+  }, [isLoggedIn, viewAll, viewRecommended, categoryFilter, periodFilter, budgetFilter]);
+
   const analysis = useMemo(() => {
     if (!isLoggedIn || !lastQuery) return null;
     return resolveFilters(lastQuery, lastFilters || pickDefaults(lastQuery));
   }, [isLoggedIn, lastQuery, lastFilters]);
+
+  const periodOptions = useMemo(() => {
+    const months = Array.from(new Set(announcements.map((a) => a.applyMonth).filter(Boolean))).sort();
+    return months.map((m) => {
+      const [y, mo] = m.split("-");
+      return { id: m, label: `${y}년 ${parseInt(mo, 10)}월` };
+    });
+  }, [announcements]);
 
   const handlePersonalizedClick = () => {
     if (!isLoggedIn) {
@@ -130,10 +179,16 @@ export default function GovSupport() {
   };
 
   const visibleAnnouncements = useMemo(() => {
-    if (!isLoggedIn || viewMode === "all") return announcements;
-    if (!analysis) return [];
-    return announcements.filter((a) => projectMatchesAnalysis(a, analysis) === true);
-  }, [announcements, isLoggedIn, viewMode, analysis]);
+    return announcements.filter((a) => {
+      const eligible = analysis ? projectMatchesAnalysis(a, analysis) === true : false;
+      const passesView = viewAll || (viewRecommended && eligible);
+      if (!passesView) return false;
+      if (!matchesCategoryFilter(a, categoryFilter)) return false;
+      if (!matchesPeriodFilter(a, periodFilter)) return false;
+      if (!matchesBudgetTier(a.budgetMax, budgetFilter)) return false;
+      return true;
+    });
+  }, [announcements, viewAll, viewRecommended, analysis, categoryFilter, periodFilter, budgetFilter]);
 
   // ── 로그인 전: 제목 + 6개 카드만 화면 스크롤 없이 꽉 차게 보여준다 ──
   if (!isLoggedIn) {
@@ -157,7 +212,11 @@ export default function GovSupport() {
     );
   }
 
-  // ── 로그인 후: 시장조사 요약 + 전체/추천 보기 전환 + 매칭 지원사업 ──
+  const noViewSelected = !viewAll && !viewRecommended;
+  const selectClass =
+    "rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-700 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100";
+
+  // ── 로그인 후: 시장조사 요약 + 전체/추천 보기(개별 선택) + 필터 + 매칭 지원사업 ──
   return (
     <div className="mx-auto max-w-6xl px-8 py-8">
       <div className="mb-6">
@@ -181,12 +240,12 @@ export default function GovSupport() {
       </Card>
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-4">
           <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
             <input
               type="checkbox"
-              checked={viewMode === "all"}
-              onChange={() => setViewMode("all")}
+              checked={viewAll}
+              onChange={(e) => setViewAll(e.target.checked)}
               className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
             />
             {gs.viewToggle.all}
@@ -194,12 +253,59 @@ export default function GovSupport() {
           <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
             <input
               type="checkbox"
-              checked={viewMode === "recommended"}
-              onChange={() => setViewMode("recommended")}
+              checked={viewRecommended}
+              onChange={(e) => setViewRecommended(e.target.checked)}
               className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
             />
             {gs.viewToggle.recommended}
           </label>
+
+          <div className="flex flex-wrap items-center gap-2 border-l border-slate-200 pl-4">
+            <Icon name="settings" className="h-4 w-4 text-slate-400" />
+            <span className="text-xs font-semibold text-slate-500">{gs.advancedFilter.toggleLabel}</span>
+
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              className={selectClass}
+              aria-label={gs.advancedFilter.productLabel}
+            >
+              <option value="all">{gs.advancedFilter.productLabel}: {gs.advancedFilter.allOption}</option>
+              {CATEGORIES.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={periodFilter}
+              onChange={(e) => setPeriodFilter(e.target.value)}
+              className={selectClass}
+              aria-label={gs.advancedFilter.periodLabel}
+            >
+              <option value="all">{gs.advancedFilter.periodLabel}: {gs.advancedFilter.allOption}</option>
+              {periodOptions.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={budgetFilter}
+              onChange={(e) => setBudgetFilter(e.target.value)}
+              className={selectClass}
+              aria-label={gs.advancedFilter.budgetLabel}
+            >
+              <option value="all">{gs.advancedFilter.budgetLabel}: {gs.advancedFilter.allOption}</option>
+              {BUDGET_TIERS.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <div className="text-right">
@@ -213,7 +319,9 @@ export default function GovSupport() {
         </div>
       </div>
 
-      {viewMode === "recommended" && !analysis ? (
+      {noViewSelected ? (
+        <p className="text-sm text-slate-400">보기 옵션(전체 지원사업 / 추천 지원사업)을 하나 이상 선택해주세요.</p>
+      ) : viewRecommended && !viewAll && !analysis ? (
         <p className="text-sm text-slate-400">{gs.recentSearchSummaryEmpty}</p>
       ) : (
         <AnnouncementGrid

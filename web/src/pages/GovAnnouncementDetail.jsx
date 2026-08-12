@@ -9,6 +9,37 @@ import { useAuth } from "../context/AuthContext";
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
 const dp = gs.detailPage;
 
+// AI 간편신청하기 버튼 전용 커스텀 커서: 기본 화살표보다 큼직한 8비트 픽셀 아트 포인터.
+const PIXEL_CURSOR_SVG = `
+<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 8 8" shape-rendering="crispEdges">
+  <rect x="0" y="0" width="1" height="1" fill="#1d4ed8" stroke="#ffffff" stroke-width="0.12"/>
+  <rect x="0" y="1" width="1" height="1" fill="#1d4ed8" stroke="#ffffff" stroke-width="0.12"/>
+  <rect x="1" y="1" width="1" height="1" fill="#1d4ed8" stroke="#ffffff" stroke-width="0.12"/>
+  <rect x="0" y="2" width="1" height="1" fill="#1d4ed8" stroke="#ffffff" stroke-width="0.12"/>
+  <rect x="1" y="2" width="1" height="1" fill="#1d4ed8" stroke="#ffffff" stroke-width="0.12"/>
+  <rect x="2" y="2" width="1" height="1" fill="#1d4ed8" stroke="#ffffff" stroke-width="0.12"/>
+  <rect x="0" y="3" width="1" height="1" fill="#1d4ed8" stroke="#ffffff" stroke-width="0.12"/>
+  <rect x="1" y="3" width="1" height="1" fill="#1d4ed8" stroke="#ffffff" stroke-width="0.12"/>
+  <rect x="2" y="3" width="1" height="1" fill="#1d4ed8" stroke="#ffffff" stroke-width="0.12"/>
+  <rect x="3" y="3" width="1" height="1" fill="#1d4ed8" stroke="#ffffff" stroke-width="0.12"/>
+  <rect x="0" y="4" width="1" height="1" fill="#1d4ed8" stroke="#ffffff" stroke-width="0.12"/>
+  <rect x="1" y="4" width="1" height="1" fill="#1d4ed8" stroke="#ffffff" stroke-width="0.12"/>
+  <rect x="2" y="4" width="1" height="1" fill="#1d4ed8" stroke="#ffffff" stroke-width="0.12"/>
+  <rect x="3" y="4" width="1" height="1" fill="#1d4ed8" stroke="#ffffff" stroke-width="0.12"/>
+  <rect x="4" y="4" width="1" height="1" fill="#1d4ed8" stroke="#ffffff" stroke-width="0.12"/>
+  <rect x="0" y="5" width="1" height="1" fill="#1d4ed8" stroke="#ffffff" stroke-width="0.12"/>
+  <rect x="1" y="5" width="1" height="1" fill="#1d4ed8" stroke="#ffffff" stroke-width="0.12"/>
+  <rect x="2" y="5" width="1" height="1" fill="#1d4ed8" stroke="#ffffff" stroke-width="0.12"/>
+  <rect x="0" y="6" width="1" height="1" fill="#1d4ed8" stroke="#ffffff" stroke-width="0.12"/>
+  <rect x="2" y="6" width="1" height="1" fill="#1d4ed8" stroke="#ffffff" stroke-width="0.12"/>
+  <rect x="3" y="6" width="1" height="1" fill="#1d4ed8" stroke="#ffffff" stroke-width="0.12"/>
+  <rect x="2" y="7" width="1" height="1" fill="#1d4ed8" stroke="#ffffff" stroke-width="0.12"/>
+  <rect x="3" y="7" width="1" height="1" fill="#1d4ed8" stroke="#ffffff" stroke-width="0.12"/>
+</svg>`;
+const PIXEL_CURSOR_STYLE = {
+  cursor: `url("data:image/svg+xml,${encodeURIComponent(PIXEL_CURSOR_SVG)}") 2 2, pointer`,
+};
+
 function LoginPopup({ onClose, onSuccess }) {
   const { login: signIn } = useAuth();
   const [email, setEmail] = useState("");
@@ -187,7 +218,8 @@ export default function GovAnnouncementDetail() {
         <button
           type="button"
           onClick={handleApplyClick}
-          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-800 px-6 py-4 text-base font-bold text-white hover:bg-brand-900"
+          style={PIXEL_CURSOR_STYLE}
+          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-700 px-6 py-4 text-base font-bold text-white hover:bg-brand-900"
         >
           <Icon name="sparkle" className="h-5 w-5" />
           {dp.applyButtonLabel}
