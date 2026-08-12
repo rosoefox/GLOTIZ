@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import Icon from "./Icon";
+import TextType from "./TextType";
 
 export default function SearchBar({
   heading,
@@ -48,7 +49,17 @@ export default function SearchBar({
 
   return (
     <form onSubmit={handleSubmit} className="flex w-full flex-col items-center">
-      <h1 className="mb-4 text-center text-5xl font-extrabold tracking-tight text-slate-900 md:text-6xl">{heading}</h1>
+      <TextType
+        as="h1"
+        text={heading}
+        typingSpeed={110}
+        initialDelay={500}
+        loop={false}
+        showCursor
+        cursorCharacter="|"
+        cursorBlinkDuration={0.6}
+        className="mb-4 text-center text-5xl font-extrabold tracking-tight text-slate-900 md:text-6xl"
+      />
       {subtitle && <p className="mb-12 text-center text-base font-medium text-brand-600">{subtitle}</p>}
       <div className="relative w-full max-w-2xl">
         <Icon

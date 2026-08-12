@@ -16,7 +16,7 @@ import {
 import BaseIcon from "../components/Icon";
 import SearchBar from "../components/SearchBar";
 import FloatingChatbot from "../components/FloatingChatbot";
-import { brand, dashboard, nav, login, govSupport } from "../data/mockData";
+import { brand, dashboard, nav, login, govAnnouncementDetails } from "../data/mockData";
 import { CATEGORIES } from "../data/mockAnalysis";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
@@ -64,6 +64,16 @@ const CASE_TONES = {
   ocean: "from-sky-300 to-blue-400",
   grape: "from-violet-300 to-purple-400",
 };
+
+function orgNameFor(business) {
+  const detail = govAnnouncementDetails[business.id];
+  return detail?.recruiter || detail?.org || "전북 지원사업 포털";
+}
+
+function matchesCategory(business, category) {
+  const haystack = `${business.name} ${business.description || ""}`;
+  return category.keywords.some((k) => haystack.includes(k)) || haystack.includes(category.label);
+}
 
 function formatTodayKorean() {
   const d = new Date();
@@ -152,7 +162,7 @@ export default function Dashboard() {
 
   const [statsRef, statsReplayKey] = useReplayOnView();
 
-  const [ongoingPrograms, setOngoingPrograms] = useState([]);
+  const [businesses, setBusinesses] = useState([]);
   const [loadingOngoing, setLoadingOngoing] = useState(true);
 
   useEffect(() => {
@@ -162,13 +172,72 @@ export default function Dashboard() {
       const { data } = await supabase
         .from("businesses")
         .select("*, templates!inner(id)")
-        .order("created_at", { ascending: false })
-        .limit(5);
-      setOngoingPrograms(data || []);
+        .order("created_at", { ascending: false });
+      setBusinesses(data || []);
       setLoadingOngoing(false);
     }
     loadOngoing();
   }, []);
+
+  const ongoingPrograms = useMemo(() => businesses.slice(0, 5), [businesses]);
+
+  const [programCounts, setProgramCounts] = useState({ latest: 0, deadlineSoon: 0, popular: 0 });
+
+  useEffect(() => {
+    if (!businesses.length) {
+      setProgramCounts({ latest: 0, deadlineSoon: 0, popular: 0 });
+      return;
+    }
+
+    let cancelled = false;
+    async function loadCounts() {
+      const now = new Date();
+
+      const latest = businesses.filter((b) => {
+        const days = (now - new Date(b.created_at)) / 86400000;
+        return days <= 30;
+      }).length;
+
+      const deadlineSoon = businesses.filter((b) => {
+        const detail = b.basic_info || govAnnouncementDetails[b.id];
+        const endStr = detail?.period?.split("~")[1]?.trim();
+        if (!endStr) return false;
+        const end = new Date(endStr.replace(/\./g, "-"));
+        const daysLeft = (end - now) / 86400000;
+        return daysLeft >= 0 && daysLeft <= 14;
+      }).length;
+
+      // 인기공고: 실제로 신청(제출)이 한 건이라도 들어온 공고 수를 인기 지표로 쓴다.
+      const businessIds = businesses.map((b) => b.id);
+      const { data: templates } = await supabase
+        .from("templates")
+        .select("id,business_id")
+        .in("business_id", businessIds);
+      const businessByTemplate = Object.fromEntries((templates || []).map((t) => [t.id, t.business_id]));
+      const templateIds = Object.keys(businessByTemplate);
+
+      let popular = 0;
+      if (templateIds.length) {
+        const { data: submissions } = await supabase
+          .from("submissions")
+          .select("template_id")
+          .in("template_id", templateIds);
+        popular = new Set((submissions || []).map((s) => businessByTemplate[s.template_id])).size;
+      }
+
+      if (!cancelled) setProgramCounts({ latest, deadlineSoon, popular });
+    }
+    loadCounts();
+    return () => {
+      cancelled = true;
+    };
+  }, [businesses]);
+
+  const programStats = [
+    { label: dashboard.programStats[0].label, count: programCounts.latest },
+    { label: dashboard.programStats[1].label, count: programCounts.deadlineSoon },
+    { label: dashboard.programStats[2].label, count: programCounts.popular },
+  ];
 
   const handleSearch = (query) => {
     if (!query) return;
@@ -194,9 +263,11 @@ export default function Dashboard() {
   };
 
   const filteredPrograms = useMemo(() => {
-    if (itemFilter === "all") return govSupport.projects;
-    return govSupport.projects.filter((p) => p.matchCategories?.includes(itemFilter));
-  }, [itemFilter]);
+    if (itemFilter === "all") return businesses;
+    const category = CATEGORIES.find((c) => c.id === itemFilter);
+    if (!category) return businesses;
+    return businesses.filter((b) => matchesCategory(b, category));
+  }, [businesses, itemFilter]);
 
   return (
     <div className="flex min-h-screen flex-col bg-white">
@@ -314,10 +385,10 @@ export default function Dashboard() {
 
       <div className="mx-auto w-full max-w-5xl px-6 py-10">
         <div className="grid grid-cols-1 gap-6 md:grid-cols-5">
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 md:col-span-2">
+          <div className="flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-6 md:col-span-2">
             <h3 className="mb-4 text-center text-base font-bold text-slate-900">{dashboard.announcementsLabel}</h3>
-            <div className="divide-y divide-slate-100">
-              {dashboard.programStats.map((s) => (
+            <div className="flex flex-1 flex-col justify-center divide-y divide-slate-100">
+              {programStats.map((s) => (
                 <button
                   key={s.label}
                   onClick={() => navigate("/gov-support")}
@@ -555,7 +626,9 @@ export default function Dashboard() {
             ))}
           </div>
 
-          {filteredPrograms.length === 0 ? (
+          {loadingOngoing ? (
+            <p className="text-center text-sm text-slate-400">불러오는 중...</p>
+          ) : filteredPrograms.length === 0 ? (
             <p className="text-center text-sm text-slate-400">해당 품목에 적합한 지원사업이 아직 없어요.</p>
           ) : (
             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
@@ -566,16 +639,11 @@ export default function Dashboard() {
                   onClick={() => goToProgram(p.id)}
                   className="flex flex-col rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition-transform duration-150 hover:-translate-y-0.5 hover:scale-[1.03] hover:shadow-md"
                 >
-                  <div className="mb-3 flex items-center justify-between gap-2">
-                    <span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-700">
-                      {p.category}
-                    </span>
-                    <span className={`text-xs font-semibold ${p.urgent ? "text-red-500" : "text-slate-400"}`}>
-                      {p.dday}
-                    </span>
-                  </div>
-                  <h4 className="mb-2 min-h-[2.5rem] text-sm font-bold leading-snug text-slate-900">{p.title}</h4>
-                  <p className="mt-auto text-xs text-slate-500">마감일 {p.deadline}</p>
+                  <span className="mb-3 w-fit rounded-full bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-700">
+                    모집중
+                  </span>
+                  <h4 className="mb-2 min-h-[2.5rem] text-sm font-bold leading-snug text-slate-900">{p.name}</h4>
+                  <p className="mt-auto text-xs text-slate-500">모집처 {orgNameFor(p)}</p>
                 </button>
               ))}
             </div>
