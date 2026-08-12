@@ -87,7 +87,7 @@ function downloadReport(analysis) {
 export default function MarketAnalysis() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { isLoggedIn, setLastQuery, setLastFilters } = useAuth();
+  const { setLastQuery, setLastFilters } = useAuth();
 
   // 새로 검색(location.state.query)한 게 아니면, 지난번 검색 결과를 그대로 복원한다 —
   // 페이지를 벗어났다 다시 들어와도(사이드바 클릭 등) 검색 버튼을 누르기 전까진 재조회하지 않는다.
@@ -189,10 +189,6 @@ export default function MarketAnalysis() {
   };
 
   const handleCheckGovSupport = () => {
-    if (!isLoggedIn) {
-      navigate("/login", { state: { from: "/gov-support" } });
-      return;
-    }
     navigate("/gov-support");
   };
 

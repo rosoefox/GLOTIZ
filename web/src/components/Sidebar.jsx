@@ -75,11 +75,11 @@ export default function Sidebar() {
       <div className="flex flex-col gap-3">
         <button
           type="button"
-          onClick={() => (isLoggedIn ? navigate("/mypage") : goToLogin())}
+          onClick={() => (isLoggedIn ? navigate("/my-items") : goToLogin())}
           className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-700 px-4 py-3 text-sm font-semibold text-white hover:bg-brand-900"
         >
-          <Icon name="user" className="h-4 w-4" />
-          나의 기본정보
+          <Icon name="box" className="h-4 w-4" />
+          나의 수출 현황
         </button>
 
         <div className="my-1 border-t border-slate-200" />

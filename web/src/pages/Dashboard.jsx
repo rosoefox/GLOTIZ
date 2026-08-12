@@ -1,6 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
-import Icon from "../components/Icon";
+import {
+  Sparkles,
+  Lock,
+  Package,
+  Briefcase,
+  ArrowRight,
+  Search,
+  FileText,
+  FlaskConical,
+  Cpu,
+  UtensilsCrossed,
+  Shirt,
+} from "lucide-react";
+import BaseIcon from "../components/Icon";
 import SearchBar from "../components/SearchBar";
 import FloatingChatbot from "../components/FloatingChatbot";
 import { brand, dashboard, nav, login, govSupport } from "../data/mockData";
@@ -8,6 +21,28 @@ import { CATEGORIES } from "../data/mockAnalysis";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
 import jeonbukLogo from "../assets/jeonbuk-logo.svg";
+
+// 홈 화면 전용으로 단순하고 깔끔한 라인 아이콘(lucide)을 쓰고, 다른 페이지가 함께 쓰는
+// components/Icon.jsx는 건드리지 않도록 이 페이지 안에서만 이름을 덮어써서 렌더링한다.
+const HOME_ICONS = {
+  sparkle: Sparkles,
+  lock: Lock,
+  box: Package,
+  projects: Briefcase,
+  arrowRight: ArrowRight,
+  search: Search,
+  documents: FileText,
+  formulation: FlaskConical,
+  electronics: Cpu,
+  food: UtensilsCrossed,
+  fashion: Shirt,
+};
+
+function Icon({ name, className = "w-5 h-5", strokeWidth = 1.8 }) {
+  const Cmp = HOME_ICONS[name];
+  if (Cmp) return <Cmp className={className} strokeWidth={strokeWidth} />;
+  return <BaseIcon name={name} className={className} strokeWidth={strokeWidth} />;
+}
 
 const CATEGORY_ICONS = {
   cosmetics: "sparkle",
@@ -113,6 +148,7 @@ export default function Dashboard() {
   const { isLoggedIn, user, profile, logout } = useAuth();
   const avatarInitial = (profile?.company || user?.email || "U")[0].toUpperCase();
   const [itemFilter, setItemFilter] = useState("all");
+  const [hoverPreview, setHoverPreview] = useState(null);
 
   const [statsRef, statsReplayKey] = useReplayOnView();
 
@@ -394,6 +430,11 @@ export default function Dashboard() {
                   <div
                     key={`${c.id}-${idx}`}
                     className="w-64 shrink-0 cursor-default transition-transform duration-300 ease-out hover:-translate-y-2"
+                    onMouseMove={(e) => {
+                      if (!c.image) return;
+                      setHoverPreview({ image: c.image, title: c.title, x: e.clientX, y: e.clientY });
+                    }}
+                    onMouseLeave={() => setHoverPreview(null)}
                   >
                     {c.image ? (
                       <img
@@ -418,6 +459,20 @@ export default function Dashboard() {
             </div>
           ))}
         </div>
+
+        {hoverPreview && (
+          <div
+            className="pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-full pb-3"
+            style={{ left: hoverPreview.x, top: hoverPreview.y }}
+          >
+            <img
+              src={hoverPreview.image}
+              alt={hoverPreview.title}
+              referrerPolicy="no-referrer"
+              className="max-h-[65vh] max-w-[320px] rounded-xl border border-white/10 object-contain shadow-2xl"
+            />
+          </div>
+        )}
       </div>
 
       <div className="w-full bg-[#067ff8] px-6 py-20">

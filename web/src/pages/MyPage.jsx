@@ -2,9 +2,8 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Icon from "../components/Icon";
 import { Badge, Card, Button, TextField } from "../components/ui";
-import { myPage as mp, myExportItems as mi } from "../data/mockData";
+import { myPage as mp } from "../data/mockData";
 import { useAuth } from "../context/AuthContext";
-import { useExportItems } from "../context/ExportItemsContext";
 import { supabase } from "../lib/supabase";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
@@ -12,7 +11,6 @@ const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
 export default function MyPage() {
   const navigate = useNavigate();
   const { logout, user: authUser, profile, refreshProfile, session } = useAuth();
-  const { items: exportItems } = useExportItems();
   const loginId = profile?.login_id ?? "";
   const name = profile?.name ?? "";
   const phone = profile?.phone ?? "";
@@ -30,6 +28,10 @@ export default function MyPage() {
   const [myDocs, setMyDocs] = useState([]);
   const [loadingDocs, setLoadingDocs] = useState(true);
   const [notifications, setNotifications] = useState([]);
+  const [additionalDocs, setAdditionalDocs] = useState([]);
+  const [loadingAdditionalDocs, setLoadingAdditionalDocs] = useState(true);
+  const [uploadingDoc, setUploadingDoc] = useState(false);
+  const [additionalDocsError, setAdditionalDocsError] = useState("");
 
   useEffect(() => {
     if (!authUser) return;
@@ -89,6 +91,66 @@ export default function MyPage() {
   const markAsRead = async (id) => {
     setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
     await supabase.from("notifications").update({ is_read: true }).eq("id", id);
+  };
+
+  const loadAdditionalDocs = async () => {
+    if (!session) return;
+    setLoadingAdditionalDocs(true);
+    try {
+      const res = await fetch(`${BACKEND_URL}/account/documents`, {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "서류 목록을 불러오지 못했습니다.");
+      setAdditionalDocs(data.documents || []);
+    } catch (err) {
+      setAdditionalDocsError(err.message);
+    } finally {
+      setLoadingAdditionalDocs(false);
+    }
+  };
+
+  useEffect(() => {
+    loadAdditionalDocs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session]);
+
+  const handleUploadAdditionalDoc = async (file) => {
+    if (!file) return;
+    setUploadingDoc(true);
+    setAdditionalDocsError("");
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch(`${BACKEND_URL}/account/documents`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        body: form,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "업로드에 실패했습니다.");
+      await loadAdditionalDocs();
+    } catch (err) {
+      setAdditionalDocsError(err.message);
+    } finally {
+      setUploadingDoc(false);
+    }
+  };
+
+  const handleDeleteAdditionalDoc = async (path) => {
+    try {
+      const res = await fetch(`${BACKEND_URL}/account/documents?path=${encodeURIComponent(path)}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || "삭제에 실패했습니다.");
+      }
+      setAdditionalDocs((prev) => prev.filter((d) => d.path !== path));
+    } catch (err) {
+      setAdditionalDocsError(err.message);
+    }
   };
 
   const startEditing = () => {
@@ -245,6 +307,65 @@ export default function MyPage() {
       </Card>
 
       <Card className="mt-6 p-6">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-bold text-slate-900">{mp.additionalDocsTitle}</h2>
+            <p className="mt-0.5 text-xs text-slate-500">{mp.additionalDocsSubtitle}</p>
+          </div>
+          <label className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-brand-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-brand-700">
+            {uploadingDoc ? <Icon name="history" className="h-3.5 w-3.5 animate-spin" /> : <Icon name="upload" className="h-3.5 w-3.5" />}
+            {mp.additionalDocsUploadLabel}
+            <input
+              type="file"
+              accept=".pdf,.docx,.hwp,.jpg,.jpeg,.png"
+              className="hidden"
+              disabled={uploadingDoc}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                handleUploadAdditionalDoc(file);
+              }}
+            />
+          </label>
+        </div>
+
+        {additionalDocsError && <p className="mb-3 text-xs font-medium text-red-500">{additionalDocsError}</p>}
+
+        {loadingAdditionalDocs ? (
+          <p className="text-sm text-slate-400">불러오는 중...</p>
+        ) : additionalDocs.length === 0 ? (
+          <p className="text-sm text-slate-400">{mp.additionalDocsEmptyMessage}</p>
+        ) : (
+          <div className="space-y-2">
+            {additionalDocs.map((d) => (
+              <div
+                key={d.path}
+                className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 px-4 py-3 text-sm"
+              >
+                <a
+                  href={d.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex min-w-0 items-center gap-2 font-medium text-slate-800 hover:text-brand-700"
+                >
+                  <Icon name="documents" className="h-4 w-4 shrink-0 text-slate-400" />
+                  <span className="truncate">{d.name}</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={() => handleDeleteAdditionalDoc(d.path)}
+                  aria-label="삭제"
+                  className="shrink-0 text-slate-400 hover:text-red-500"
+                >
+                  <Icon name="trash" className="h-4 w-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      <Card className="mt-6 p-6">
         <h2 className="mb-4 text-sm font-bold text-slate-900">{mp.docStatusSectionTitle}</h2>
         {loadingDocs ? (
           <p className="text-sm text-slate-400">불러오는 중...</p>
@@ -268,41 +389,6 @@ export default function MyPage() {
             ))}
           </div>
         )}
-      </Card>
-
-      <Card className="mt-6 p-6">
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <h2 className="text-sm font-bold text-slate-900">{mp.exportItemsTitle}</h2>
-            <p className="mt-0.5 text-xs text-slate-500">{mp.exportItemsSubtitle}</p>
-          </div>
-          <Button variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => navigate("/my-items")}>
-            {mp.viewAllLabel}
-            <Icon name="arrowRight" className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-
-        <div className="space-y-3">
-          {exportItems.map((item) => (
-            <div
-              key={item.id}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50 px-4 py-3"
-            >
-              <div>
-                <p className="text-sm font-semibold text-slate-900">{item.name}</p>
-                <p className="mt-0.5 text-xs text-slate-500">
-                  {item.category} · {item.destination} 수출
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <Badge tone={mi.statusTone[item.status]}>{mi.statusLabels[item.status]}</Badge>
-                <span className="text-xs text-slate-400">
-                  {mp.docStatusLabel}: {item.basicInfoDone ? mi.basicInfoDoneLabel : mi.basicInfoPendingLabel}
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
       </Card>
 
       <Card className="mt-6 border-red-100 bg-red-50/40 p-6">

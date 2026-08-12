@@ -16,7 +16,8 @@ function isEligible(business, analysis) {
 }
 
 function orgNameFor(business) {
-  return govAnnouncementDetails[business.id]?.org || "전북 지원사업 포털";
+  const detail = govAnnouncementDetails[business.id];
+  return detail?.recruiter || detail?.org || "전북 지원사업 포털";
 }
 
 function AnnouncementCard({ business, disabled, badge, onClick }) {
@@ -24,18 +25,18 @@ function AnnouncementCard({ business, disabled, badge, onClick }) {
     <Card
       onClick={onClick}
       aria-disabled={disabled}
-      className={`flex h-full flex-col justify-between overflow-hidden p-4 transition-shadow ${
+      className={`flex h-full min-h-[220px] flex-col justify-between overflow-hidden p-7 transition-shadow ${
         disabled ? "cursor-not-allowed opacity-40" : "cursor-pointer hover:shadow-md"
       }`}
     >
       <div>
-        <div className="mb-2 flex items-center justify-between gap-2">
+        <div className="mb-3 flex items-center justify-between gap-2">
           <Badge tone="brand">모집 공고</Badge>
           {badge}
         </div>
-        <h3 className="line-clamp-3 text-sm font-bold leading-snug text-slate-900">{business.name}</h3>
+        <h3 className="text-lg font-bold leading-snug text-slate-900 md:text-xl">{business.name}</h3>
       </div>
-      <p className="mt-3 truncate text-xs text-slate-400">출처: {orgNameFor(business)}</p>
+      <p className="mt-4 truncate text-sm text-slate-400">모집처: {orgNameFor(business)}</p>
     </Card>
   );
 }
@@ -74,7 +75,7 @@ export default function GovSupport() {
         ) : announcements.length === 0 ? (
           <p className="text-sm text-slate-400">등록된 지원사업이 없습니다.</p>
         ) : (
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
             {announcements.map((b) => (
               <AnnouncementCard key={b.id} business={b} onClick={() => handleAnnouncementClick(b)} />
             ))}
@@ -152,7 +153,7 @@ function LoggedInGovSupport({ announcements, loading, analysis, onCardClick }) {
             {listMode === "recommended" ? "조건에 맞는 추천 지원사업이 없습니다." : "등록된 지원사업이 없습니다."}
           </p>
         ) : (
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
             {visibleAnnouncements.map((b) => {
               const eligible = isEligible(b, analysis);
               const disabled = personalizedMode && eligible !== true;

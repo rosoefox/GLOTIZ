@@ -719,6 +719,46 @@ function BusinessManager({ session }) {
   const [deletingTemplateId, setDeletingTemplateId] = useState(null);
   const [deletingBusinessId, setDeletingBusinessId] = useState(null);
   const [deleteError, setDeleteError] = useState(null);
+  const [editingBusinessId, setEditingBusinessId] = useState(null);
+  const [editingName, setEditingName] = useState("");
+  const [savingName, setSavingName] = useState(false);
+  const [nameError, setNameError] = useState(null);
+
+  const startEditBusinessName = (biz) => {
+    setNameError(null);
+    setEditingBusinessId(biz.id);
+    setEditingName(biz.name);
+  };
+
+  const cancelEditBusinessName = () => {
+    setEditingBusinessId(null);
+    setEditingName("");
+  };
+
+  const saveBusinessName = async (biz) => {
+    const trimmed = editingName.trim();
+    if (!trimmed || trimmed === biz.name) {
+      cancelEditBusinessName();
+      return;
+    }
+    setSavingName(true);
+    setNameError(null);
+    try {
+      const res = await fetch(`${BACKEND_URL}/admin/businesses/${biz.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ name: trimmed }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "사업명 수정에 실패했습니다.");
+      await loadBusinessManager();
+      cancelEditBusinessName();
+    } catch (err) {
+      setNameError(err.message);
+    } finally {
+      setSavingName(false);
+    }
+  };
 
   const handleDeleteBusiness = async (biz) => {
     if (
@@ -807,7 +847,54 @@ function BusinessManager({ session }) {
               <Card key={biz.id} className="p-5">
                 <div className="mb-3 flex items-start justify-between gap-4">
                   <div>
-                    <p className="font-bold text-slate-900">{biz.name}</p>
+                    {editingBusinessId === biz.id ? (
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          autoFocus
+                          value={editingName}
+                          onChange={(e) => setEditingName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") saveBusinessName(biz);
+                            if (e.key === "Escape") cancelEditBusinessName();
+                          }}
+                          disabled={savingName}
+                          className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-sm font-bold text-slate-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => saveBusinessName(biz)}
+                          disabled={savingName}
+                          aria-label="저장"
+                          className="flex h-7 w-7 items-center justify-center rounded-full text-brand-600 hover:bg-brand-50"
+                        >
+                          <Icon name="check" className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={cancelEditBusinessName}
+                          disabled={savingName}
+                          aria-label="취소"
+                          className="flex h-7 w-7 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100"
+                        >
+                          <Icon name="x" className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5">
+                        <p className="font-bold text-slate-900">{biz.name}</p>
+                        <button
+                          type="button"
+                          onClick={() => startEditBusinessName(biz)}
+                          aria-label="사업명 수정"
+                          className="flex h-6 w-6 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                        >
+                          <Icon name="pencil" className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    )}
+                    {editingBusinessId === biz.id && nameError && (
+                      <p className="mt-1 text-xs font-medium text-red-500">{nameError}</p>
+                    )}
                     {biz.description && <p className="mt-1 text-sm text-slate-500">{biz.description}</p>}
                     {biz.basic_info && (
                       <Badge tone="success" className="mt-2">

@@ -374,6 +374,83 @@ def delete_account(authorization: str | None = Header(None)):
     return {"deleted": True}
 
 
+def require_user(authorization: str | None) -> str:
+    """bearer 토큰을 검증하고 로그인한 사용자의 user_id를 반환한다 (관리자 권한은 요구하지 않는다)."""
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="인증 토큰이 필요합니다.")
+
+    token = authorization.split(" ", 1)[1]
+    try:
+        user_res = supabase.auth.get_user(token)
+    except Exception:
+        raise HTTPException(status_code=401, detail="로그인 세션이 만료되었습니다. 다시 로그인해주세요.")
+    if not user_res or not user_res.user:
+        raise HTTPException(status_code=401, detail="유효하지 않은 토큰입니다.")
+    return user_res.user.id
+
+
+ADDITIONAL_DOC_ALLOWED_EXTENSIONS = {".pdf", ".docx", ".hwp", ".jpg", ".jpeg", ".png"}
+
+
+@app.get("/account/documents")
+def list_additional_documents(authorization: str | None = Header(None)):
+    """마이페이지에서 사용자가 업로드한 추가 기본 서류 목록을 조회한다."""
+    user_id = require_user(authorization)
+    folder = f"additional-docs/{user_id}"
+    objects = supabase.storage.from_(TEMPLATES_BUCKET).list(folder)
+
+    documents = []
+    for obj in objects or []:
+        # 폴더 자체를 나타내는 placeholder 항목은 제외한다.
+        if not obj.get("id"):
+            continue
+        path = f"{folder}/{obj['name']}"
+        signed = supabase.storage.from_(TEMPLATES_BUCKET).create_signed_url(path, 3600)
+        original_name = obj["name"].split("_", 1)[-1] if "_" in obj["name"] else obj["name"]
+        documents.append(
+            {
+                "path": path,
+                "name": original_name,
+                "createdAt": obj.get("created_at"),
+                "url": signed.get("signedURL"),
+            }
+        )
+    documents.sort(key=lambda d: d["createdAt"] or "", reverse=True)
+    return {"documents": documents}
+
+
+@app.post("/account/documents")
+def upload_additional_document(file: UploadFile = File(...), authorization: str | None = Header(None)):
+    """마이페이지에서 사용자가 추가 기본 서류를 업로드한다."""
+    user_id = require_user(authorization)
+
+    ext = Path(file.filename or "").suffix.lower()
+    if ext not in ADDITIONAL_DOC_ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="PDF, DOCX, HWP, JPG, PNG 파일만 업로드할 수 있습니다.")
+
+    file_bytes = file.file.read()
+    object_path = f"additional-docs/{user_id}/{uuid.uuid4().hex}_{file.filename}"
+    try:
+        supabase.storage.from_(TEMPLATES_BUCKET).upload(
+            object_path, file_bytes, {"content-type": file.content_type or "application/octet-stream"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"파일 업로드에 실패했습니다: {e}")
+
+    return {"path": object_path, "name": file.filename}
+
+
+@app.delete("/account/documents")
+def delete_additional_document(path: str, authorization: str | None = Header(None)):
+    """마이페이지에서 업로드했던 추가 기본 서류를 삭제한다."""
+    user_id = require_user(authorization)
+    if not path.startswith(f"additional-docs/{user_id}/"):
+        raise HTTPException(status_code=403, detail="본인이 업로드한 서류만 삭제할 수 있습니다.")
+
+    supabase.storage.from_(TEMPLATES_BUCKET).remove([path])
+    return {"deleted": True}
+
+
 def require_admin(authorization: str | None) -> str:
     """bearer 토큰을 검증하고 profiles.account_type == 'admin'인지 확인한다.
     성공 시 user_id를 반환하고, 실패 시 HTTPException을 던진다."""
@@ -414,6 +491,35 @@ def create_business(req: CreateBusinessRequest, authorization: str | None = Head
     row = (
         supabase.table("businesses")
         .insert({"name": req.name.strip(), "description": req.description})
+        .execute()
+        .data[0]
+    )
+    return row
+
+
+class UpdateBusinessNameRequest(BaseModel):
+    name: str
+
+
+@app.patch("/admin/businesses/{business_id}")
+def update_business_name(
+    business_id: str, req: UpdateBusinessNameRequest, authorization: str | None = Header(None)
+):
+    require_admin(authorization)
+
+    if not req.name.strip():
+        raise HTTPException(status_code=400, detail="사업명을 입력해주세요.")
+
+    business = (
+        supabase.table("businesses").select("id").eq("id", business_id).maybe_single().execute().data
+    )
+    if not business:
+        raise HTTPException(status_code=404, detail="해당 사업을 찾을 수 없습니다.")
+
+    row = (
+        supabase.table("businesses")
+        .update({"name": req.name.strip()})
+        .eq("id", business_id)
         .execute()
         .data[0]
     )
@@ -1189,6 +1295,40 @@ def download_reference_doc(business_id: str):
     )
 
 
+@app.get("/businesses/{business_id}/reference-doc/preview-pdf")
+def preview_reference_doc_pdf(business_id: str):
+    """공고 상세페이지에서 기본서류를 PDF로 바로 미리보기 위한 공개 엔드포인트.
+    이미지(jpg/png)는 그대로 반환하고, docx는 PDF로 변환한다. hwp는 변환을 지원하지 않는다."""
+    business = (
+        supabase.table("businesses").select("reference_file_path,name").eq("id", business_id).maybe_single().execute().data
+    )
+    if not business or not business.get("reference_file_path"):
+        raise HTTPException(status_code=404, detail="등록된 기본서류가 없습니다.")
+
+    object_path = business["reference_file_path"]
+    ext = Path(object_path).suffix.lower()
+    file_bytes = supabase.storage.from_(TEMPLATES_BUCKET).download(object_path)
+
+    if ext == ".pdf":
+        return Response(content=file_bytes, media_type="application/pdf")
+
+    if ext in (".jpg", ".jpeg", ".png"):
+        return Response(content=file_bytes, media_type=REFERENCE_DOC_MIME_TYPES[ext])
+
+    if ext == ".docx":
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            docx_path = tmp_path / "reference.docx"
+            docx_path.write_bytes(file_bytes)
+            try:
+                pdf_path = convert_to_pdf(docx_path, tmp_path)
+            except Exception as e:
+                raise HTTPException(status_code=502, detail=f"PDF 미리보기 생성에 실패했습니다: {e}")
+            return Response(content=pdf_path.read_bytes(), media_type="application/pdf")
+
+    raise HTTPException(status_code=415, detail="이 파일 형식은 미리보기를 지원하지 않습니다. 다운로드해서 확인해주세요.")
+
+
 @app.post("/generate")
 def generate(req: GenerateRequest):
     submission_id = req.submission_id
@@ -1354,6 +1494,16 @@ def review(req: ReviewRequest):
         .execute()
         .data[0]
     )
+
+    if status == "needs_revision":
+        message = f"[{template['name']}] 제출하신 서류에 보완이 필요합니다.{f' ({note})' if note else ''}"
+        supabase.table("notifications").insert({
+            "user_id": submission["user_id"],
+            "submission_id": submission_id,
+            "template_id": template["id"],
+            "type": "needs_revision",
+            "message": message,
+        }).execute()
 
     return {
         "submission_id": submission_id,

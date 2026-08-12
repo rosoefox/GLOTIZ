@@ -68,6 +68,10 @@ export const myPage = {
   },
   alarmTitle: "알림",
   alarmEmptyMessage: "새로운 알림이 없습니다.",
+  additionalDocsTitle: "추가 기본 서류",
+  additionalDocsSubtitle: "사업자등록증 등 여러 지원사업에서 공통으로 쓰이는 서류를 미리 올려두세요.",
+  additionalDocsUploadLabel: "추가 기본 서류 업로드하기",
+  additionalDocsEmptyMessage: "아직 업로드한 서류가 없습니다.",
 };
 
 export const submissionReview = {
@@ -105,6 +109,17 @@ export const myExportItems = {
   basicInfoDoneLabel: "완성",
   basicInfoPendingLabel: "미완성",
   actionLabel: "진행 현황 확인",
+  programsLabel: "신청한 지원사업 공고",
+  noProgramsMessage: "아직 신청한 지원사업이 없습니다. 정부 지원사업 페이지에서 신청해보세요.",
+  progressTitle: "제출 서류 진행률",
+  progressEmptyMessage: "등록된 제출 서류가 없습니다.",
+  progressStatusLabels: {
+    not_submitted: "미제출",
+    pending: "검토 중",
+    approved: "제출 완료",
+    needs_revision: "보완 필요",
+  },
+  revisionBannerLabel: "건의 서류에 보완이 필요합니다. 아래에서 확인해주세요.",
   items: [
     {
       id: "item-001",
@@ -113,7 +128,7 @@ export const myExportItems = {
       destination: "미국",
       status: "submitted",
       basicInfoDone: true,
-      govPrograms: ["해외 전시회 참가 지원금"],
+      govPrograms: [],
       updatedAt: "2024. 10. 20",
     },
     {
@@ -123,7 +138,7 @@ export const myExportItems = {
       destination: "베트남",
       status: "ready",
       basicInfoDone: true,
-      govPrograms: ["2024년 글로벌 시장 확대 바우처 사업", "해외 인증 획득 지원사업"],
+      govPrograms: [],
       updatedAt: "2024. 10. 18",
     },
     {
@@ -133,7 +148,7 @@ export const myExportItems = {
       destination: "태국",
       status: "inProgress",
       basicInfoDone: false,
-      govPrograms: ["소상공인 수출 물류비 지원사업"],
+      govPrograms: [],
       updatedAt: "2024. 10. 12",
     },
   ],
@@ -198,14 +213,16 @@ export const dashboard = {
   caseStudiesTitle: "AI · 디자인 진행 사례",
   caseStudiesDescription: "JB-XPORT AI가 함께 완성한 서류와 디자인 결과물을 만나보세요.",
   caseStudies: [
-    { id: "case-01", title: "워터젤 선크림 SPF50+ 패키지 디자인", tag: "패키지 디자인", tone: "sunrise", icon: "sparkle", image: "https://i.pinimg.com/736x/25/4c/0e/254c0e876a000f7dc86425625b66ba63.jpg" },
-    { id: "case-02", title: "전통 발효 고추장 세트 브랜드 로고", tag: "브랜드 로고", tone: "forest", icon: "formulation", image: "https://i.pinimg.com/1200x/d6/5f/bf/d65fbffb7c9194cd121c380f9c0b4fbc.jpg" },
-    { id: "case-03", title: "AeroTherm Pro 스마트 보틀 상세페이지", tag: "상세페이지", tone: "ocean", icon: "electronics", image: "https://i.pinimg.com/736x/25/4c/0e/254c0e876a000f7dc86425625b66ba63.jpg" },
-    { id: "case-04", title: "글로벌 시장 확대 바우처 참가신청서", tag: "서류 자동완성", tone: "grape", icon: "documents", image: "https://i.pinimg.com/1200x/d6/5f/bf/d65fbffb7c9194cd121c380f9c0b4fbc.jpg" },
-    { id: "case-05", title: "K-뷰티 마스크팩 수출용 라벨 디자인", tag: "라벨 디자인", tone: "sunrise", icon: "sparkle", image: "https://i.pinimg.com/736x/25/4c/0e/254c0e876a000f7dc86425625b66ba63.jpg" },
-    { id: "case-06", title: "해외 전시회 부스 배너 디자인", tag: "배너 디자인", tone: "ocean", icon: "marketing", image: "https://i.pinimg.com/1200x/d6/5f/bf/d65fbffb7c9194cd121c380f9c0b4fbc.jpg" },
-    { id: "case-07", title: "원산지증명서(C/O) 자동 작성", tag: "서류 자동완성", tone: "forest", icon: "documents", image: "https://i.pinimg.com/736x/25/4c/0e/254c0e876a000f7dc86425625b66ba63.jpg" },
-    { id: "case-08", title: "전통 한과 선물세트 SNS 카드뉴스", tag: "SNS 콘텐츠", tone: "grape", icon: "growth", image: "https://i.pinimg.com/1200x/d6/5f/bf/d65fbffb7c9194cd121c380f9c0b4fbc.jpg" },
+    { id: "case-01", title: "AURELIA 워터 에센스 세럼 디자인 포스터", tag: "패키지 디자인", tone: "sunrise", icon: "sparkle", image: "/case-studies/case-01.jpg" },
+    { id: "case-02", title: "전통 발효 고추장 세트 브랜드 포스터", tag: "브랜드 무드보드", tone: "forest", icon: "formulation", image: "/case-studies/case-02.jpg" },
+    { id: "case-03", title: "글로벌 마켓 플랫폼 앱 상세페이지", tag: "상세페이지", tone: "ocean", icon: "electronics", image: "/case-studies/case-03.jpg" },
+    { id: "case-04", title: "워터젤 선크림 SPF50+ 포스터", tag: "배너 디자인", tone: "grape", icon: "sparkle", image: "/case-studies/case-04.jpg" },
+    { id: "case-05", title: "글로우 메이크업 베이스 상세페이지", tag: "SNS 콘텐츠", tone: "sunrise", icon: "sparkle", image: "/case-studies/case-05.jpg" },
+    { id: "case-06", title: "스마트 블루투스 헤드셋 상세페이지", tag: "상세페이지", tone: "ocean", icon: "electronics", image: "/case-studies/case-06.jpg" },
+    { id: "case-07", title: "당근 비타민 주스 브랜드 포스터", tag: "브랜드 로고", tone: "forest", icon: "food", image: "/case-studies/case-07.jpg" },
+    { id: "case-08", title: "오렌지 주스 자동 실링캔 상세페이지", tag: "라벨 디자인", tone: "grape", icon: "food", image: "/case-studies/case-08.jpg" },
+    { id: "case-09", title: "디카페인 원두 커피 상세페이지", tag: "메뉴 디자인", tone: "ocean", icon: "food", image: "/case-studies/case-09.jpg" },
+    { id: "case-10", title: "어성초 스킨케어 컬렉션 포스터", tag: "브랜드 무드보드", tone: "sunrise", icon: "sparkle", image: "/case-studies/case-10.jpg" },
   ],
 
   satisfactionTitle: "소상공인 · 공공기관의 이유있는 선택",
@@ -334,7 +351,7 @@ export const govSupport = {
   detailPageTitle: "공고 상세화면 확인",
   basicInfoTitle: "기본 정보",
   basicInfoLabels: { org: "주관기관", period: "접수기간", target: "지원대상", support: "지원내용", contact: "문의처" },
-  previewSectionTitle: "신청 서식 미리보기",
+  previewSectionTitle: "공고 서식 미리보기",
   previewUnavailable: "아직 등록된 신청 서식이 없습니다.",
   applyButtonLabel: "AI 간편신청하기",
   loginPopup: {
@@ -399,6 +416,7 @@ export const govSupport = {
 export const govAnnouncementDetails = {
   "5090843f-cf8e-4945-a51d-69e1aa8e61e6": {
     org: "전북특별자치도경제통상진흥원",
+    recruiter: "전북테크노파크",
     period: "2026.08.01 ~ 2026.08.31",
     target: "전북 소재 수출 유망 중소기업",
     support: "베트남 K-브랜드 EXPO 2026(Mega-Us) 참가 부스비·통역·물류비 등 지원",
@@ -406,6 +424,7 @@ export const govAnnouncementDetails = {
   },
   "bb7ab51f-5978-43f7-8f3e-bc85add54153": {
     org: "군산시청·김제시청",
+    recruiter: "전북지역산업진흥원",
     period: "2026.08.01 ~ 2026.08.31",
     target: "군산·김제 자유무역지역 입주기업",
     support: "자유무역지역 내 기업 경쟁력 강화를 위한 통합 지원사업",
@@ -413,6 +432,7 @@ export const govAnnouncementDetails = {
   },
   "ecb57103-e33f-4062-a506-93a95ca01f49": {
     org: "전북테크노파크",
+    recruiter: "(재)전북특별자치도경제통상진흥원",
     period: "2026.08.01 ~ 2026.08.31",
     target: "식품 수출 유망 중소기업",
     support: "홍콩식품박람회 2026 참가 지원 (부스비·물류비 등)",
@@ -420,6 +440,7 @@ export const govAnnouncementDetails = {
   },
   "da530822-7707-44b6-b3b8-93dba472815c": {
     org: "전북테크노파크",
+    recruiter: "(재)전북특별자치도경제통상진흥원",
     period: "2026.08.01 ~ 2026.08.31",
     target: "해외 수출 경쟁력 강화가 필요한 전북 소재 기업",
     support: "해외 수출기업 경쟁력 강화를 위한 컨설팅·마케팅 지원",
@@ -427,6 +448,7 @@ export const govAnnouncementDetails = {
   },
   "8bb84c8b-d4d5-4288-99bb-5218e16186af": {
     org: "전북특별자치도경제통상진흥원",
+    recruiter: "(재)전북특별자치도경제통상진흥원",
     period: "2026.08.01 ~ 2026.08.31",
     target: "김제시 소재 수출 초보·유망 기업",
     support: "통상마스터Youth 연계 수출 통합 지원 (컨설팅·마케팅·인증 등)",
@@ -434,6 +456,7 @@ export const govAnnouncementDetails = {
   },
   "ff70560b-2848-4d4b-bce3-245a1244f304": {
     org: "전주시청",
+    recruiter: "전북특별자치도경제통상진흥원",
     period: "2026.08.01 ~ 2026.08.31",
     target: "전주시 소재 수출 중소기업",
     support: "수출바우처 지원사업 (마케팅·인증·통역번역 등 자율 선택형)",
@@ -442,7 +465,7 @@ export const govAnnouncementDetails = {
 };
 
 export const documentChecklist = {
-  title: "필수 수출 서류",
+  title: "수출 서류 제출",
   subtitle: "품목·지원사업별로 준비해야 할 서류를 확인하고 업로드해주세요.",
   autoFillLabel: "자동완성",
   autoFillAllLabel: "전체 서류 자동완성",

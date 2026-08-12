@@ -16,8 +16,6 @@ import GovSupportDetail from "./pages/GovSupportDetail";
 import MyExportItems from "./pages/MyExportItems";
 import MyPage from "./pages/MyPage";
 import DocumentChecklist from "./pages/DocumentChecklist";
-import ExportDocumentForm from "./pages/ExportDocumentForm";
-import DocumentPreview from "./pages/DocumentPreview";
 import TranslationEditor from "./pages/TranslationEditor";
 import MarketingMaterialCreator from "./pages/MarketingMaterialCreator";
 import HelpAndFaq from "./pages/HelpAndFaq";
@@ -47,8 +45,6 @@ export default function App() {
                   <Route path="/my-items" element={<RequireAuth><MyExportItems /></RequireAuth>} />
                   <Route path="/mypage" element={<RequireAuth><MyPage /></RequireAuth>} />
                   <Route path="/docs" element={<RequireAuth><DocumentChecklist /></RequireAuth>} />
-                  <Route path="/docs/new" element={<RequireAuth><ExportDocumentForm /></RequireAuth>} />
-                  <Route path="/docs/preview" element={<RequireAuth><DocumentPreview /></RequireAuth>} />
                   <Route path="/docs/translate" element={<RequireAuth><TranslationEditor /></RequireAuth>} />
                   <Route path="/marketing" element={<RequireAuth><MarketingMaterialCreator /></RequireAuth>} />
                   <Route path="/shopee" element={<RequireAuth><ShopeeListing /></RequireAuth>} />
