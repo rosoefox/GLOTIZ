@@ -40,20 +40,3 @@ export function pickDefaults(rawQuery) {
     quarterIds: QUARTERS.map((q) => q.id),
   };
 }
-
-// 필터 상태(id들)를 화면 표시용 라벨/객체로 변환한다. 실제 수출 데이터는 포함하지 않는다.
-export function resolveFilters(rawQuery, { categoryId, countryIds, quarterIds }) {
-  const query = (rawQuery || "").trim() || "이 상품";
-  const category = CATEGORIES.find((c) => c.id === categoryId) || CATEGORIES[0];
-
-  const isAllCountries = countryIds.includes("all") || countryIds.length === 0;
-  const countries = isAllCountries ? COUNTRIES : countryIds;
-  const countryLabel = isAllCountries ? "동남아시아 전역" : countries.join("·");
-
-  const quarters = QUARTERS.filter((q) => quarterIds.includes(q.id));
-  const activeQuarters = quarters.length ? quarters : [QUARTERS[0]];
-  const isAllQuarters = activeQuarters.length === QUARTERS.length;
-  const quarterLabel = isAllQuarters ? "전체(연중)" : activeQuarters.map((q) => q.label.split(" ")[0]).join(", ");
-
-  return { query, category, countries, countryLabel, quarters: activeQuarters, quarterLabel };
-}

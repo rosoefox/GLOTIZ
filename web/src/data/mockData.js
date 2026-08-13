@@ -16,23 +16,10 @@ export const user = {
 
 export const nav = {
   top: [
-    { path: "/analysis", label: "시장 분석" },
-    { path: "/gov-support", label: "정부 지원사업" },
-    { path: "/docs", label: "서류 관리", requiresAuth: true },
-    { path: "/marketing", label: "마케팅 이미지 생성기", requiresAuth: true },
-    { path: "/shopee", label: "쇼피 입점 가이드", requiresAuth: true },
+    { path: "/gov-support", label: "수출지원사업" },
+    { path: "/marketing", label: "AI 이미지 생성", requiresAuth: true },
+    { path: "/shopee", label: "해외 수출 플랫폼 입점 가이드", requiresAuth: true },
   ],
-  sidebar: [
-    { path: "/analysis", label: "시장 분석", icon: "analysis" },
-    { path: "/gov-support", label: "정부 지원사업", icon: "projects" },
-    { path: "/docs", label: "서류 관리", icon: "documents", requiresAuth: true },
-    { path: "/marketing", label: "마케팅 이미지 생성기", icon: "marketing", requiresAuth: true },
-    { path: "/shopee", label: "쇼피 입점 가이드", icon: "globe", requiresAuth: true },
-  ],
-  bottom: [
-    { path: "/help", label: "고객지원", icon: "help" },
-  ],
-  exportStatus: { path: "/my-items", label: "수출 품목", icon: "box" },
 };
 
 export const myPage = {
@@ -59,19 +46,24 @@ export const myPage = {
   exportItemsSubtitle: "수출 진행 현황과 서류 제출 현황을 확인하세요.",
   viewAllLabel: "전체 보기",
   docStatusLabel: "서류 제출 현황",
-  docStatusSectionTitle: "제출 서류 확인 현황",
-  docStatusEmptyMessage: "아직 제출한 서류가 없습니다.",
-  reviewStatusLabels: {
-    approved: "제출 완료",
-    needsRevision: "보완 필요",
-    reviewing: "AI 검토 중",
+  needsRevisionAlert: "보완이 필요한 서류가 {count}건 있어요. 나의 지원사업 현황에서 확인해주세요.",
+};
+
+export const myApplicationStatus = {
+  title: "나의 지원사업 현황",
+  subtitle: "제출한 서류의 심사 진행 상황을 확인하세요.",
+  emptyMessage: "아직 서류를 제출한 지원사업이 없습니다.",
+  documentsEmptyMessage: "제출한 서류가 없습니다.",
+  statusLabels: {
+    reviewing: "심사진행중",
+    needsRevision: "서류보완필요",
+    approved: "심사완료",
   },
-  alarmTitle: "알림",
-  alarmEmptyMessage: "새로운 알림이 없습니다.",
-  additionalDocsTitle: "추가 기본 서류",
-  additionalDocsSubtitle: "사업자등록증 등 여러 지원사업에서 공통으로 쓰이는 서류를 미리 올려두세요.",
-  additionalDocsUploadLabel: "추가 기본 서류 업로드하기",
-  additionalDocsEmptyMessage: "아직 업로드한 서류가 없습니다.",
+  statusDotClasses: {
+    reviewing: "bg-blue-400",
+    needsRevision: "bg-red-500",
+    approved: "bg-emerald-500",
+  },
 };
 
 export const submissionReview = {
@@ -110,7 +102,7 @@ export const myExportItems = {
   basicInfoPendingLabel: "미완성",
   actionLabel: "진행 현황 확인",
   programsLabel: "신청한 지원사업 공고",
-  noProgramsMessage: "아직 신청한 지원사업이 없습니다. 정부 지원사업 페이지에서 신청해보세요.",
+  noProgramsMessage: "아직 신청한 지원사업이 없습니다. 수출지원사업 페이지에서 신청해보세요.",
   progressTitle: "제출 서류 진행률",
   progressEmptyMessage: "등록된 제출 서류가 없습니다.",
   progressStatusLabels: {
@@ -157,9 +149,6 @@ export const myExportItems = {
 export const dashboard = {
   greetingTitle: "해외에 판매하고 싶은 제품은 무엇인가요?",
   greetingSubtitle: "당신의 해외 수출을 시작하세요.",
-  searchPlaceholder: "예: 화장품, 가전제품...",
-  recentSearches: [{ label: "최근 검색: 화장품 미국 수출", query: "화장품" }],
-  popularKeywords: [{ label: "인기: K-푸드 동남아", query: "K-푸드" }],
   availablePrograms: 128,
   announcementsLabel: "지원사업공고",
   programStats: [
@@ -182,31 +171,31 @@ export const dashboard = {
 
   featuresTitle: "JB-XPORT로 서류 작성/디자인 고민을 해결해보세요!",
   featuresDescription:
-    "소상공인의 해외 수출을 돕는 AI 에이전트입니다. 상품명이나 사진만 검색하면 잘 팔리는 국가·카테고리·시즌을 AI가 한 문장으로 분석해드리고, 신청 가능한 정부 지원사업 매칭부터 필요한 수출 서류 준비까지 한 곳에서 진행할 수 있어요.",
+    "소상공인의 해외 수출을 돕는 AI 에이전트입니다. 신청 가능한 수출지원사업을 찾는 것부터, 마케팅에 바로 쓸 AI 이미지 생성, 해외 판매 플랫폼 입점까지 한 곳에서 진행할 수 있어요.",
   features: [
-    {
-      icon: "search",
-      tone: "cream",
-      title: "AI 시장 분석",
-      description: "상품명이나 사진 검색만으로 잘 팔리는 국가·카테고리·성수기를 AI가 분석해드려요.",
-      linkLabel: "분석하러 가기",
-      to: "/analysis",
-    },
     {
       icon: "projects",
       tone: "blue",
-      title: "정부 지원사업 매칭",
-      description: "분석 결과를 바탕으로 지금 신청 가능한 정부 지원사업을 자동으로 찾아드려요.",
+      title: "수출지원사업",
+      description: "지금 신청 가능한 정부 수출지원사업을 찾아보고 필요한 서류까지 한 곳에서 준비하세요.",
       linkLabel: "지원사업 보기",
       to: "/gov-support",
     },
     {
-      icon: "documents",
+      icon: "sparkle",
+      tone: "cream",
+      title: "AI 이미지 생성",
+      description: "상품 사진 한 장으로 마케팅에 바로 쓸 수 있는 이미지를 AI가 만들어드려요.",
+      linkLabel: "이미지 생성하러 가기",
+      to: "/marketing",
+    },
+    {
+      icon: "globe",
       tone: "mint",
-      title: "수출 서류 자동화",
-      description: "지원사업별로 필요한 서류를 확인하고 AI로 자동 완성할 수 있어요.",
-      linkLabel: "서류 관리하기",
-      to: "/docs",
+      title: "해외 수출 플랫폼 입점 가이드",
+      description: "쇼피 등 해외 판매 플랫폼 입점에 필요한 정보를 정리해서 안내해드려요.",
+      linkLabel: "입점 가이드 보기",
+      to: "/shopee",
     },
   ],
 
@@ -228,19 +217,33 @@ export const dashboard = {
   satisfactionTitle: "소상공인 · 공공기관의 이유있는 선택",
   satisfactionRate: 98.7,
   satisfactionSubtitle: "고객 만족도",
-  reviewMoreLabel: "더보기",
-  reviewTotalCount: 452,
   reviews: [
     { name: "김해피", company: "해피코스메틱", rating: 5, text: "AI가 서류 초안을 잡아줘서 신청서 작성 시간이 절반으로 줄었어요. 담당자 확인만 하면 돼서 정말 편해요." },
     { name: "박수출", company: "미소식품", rating: 5, text: "지원사업 매칭이 정확해서 놓칠 뻔한 마감임박 공고까지 챙길 수 있었습니다." },
-    { name: "이대표", company: "그린리빙", rating: 4, text: "디자인 시안을 여러 개 받아보고 고르기만 하면 돼서 외주 맡기는 것보다 훨씬 빨랐어요." },
+    { name: "이대표", company: "그린리빙", rating: 5, text: "디자인 시안을 여러 개 받아보고 고르기만 하면 돼서 외주 맡기는 것보다 훨씬 빨랐어요." },
     { name: "최무역", company: "코스모트레이드", rating: 5, text: "수출 서류를 하나하나 준비할 필요 없이 AI가 자동으로 채워줘서 실수도 줄었습니다." },
-    { name: "정소상", company: "우리한과", rating: 5, text: "정부 지원사업 정보를 한곳에서 볼 수 있어서 정보 찾는 시간이 크게 줄었어요." },
-    { name: "한바이어", company: "테크글로벌무역", rating: 4, text: "필수 서류 체크리스트 덕분에 빠뜨리는 서류 없이 준비할 수 있었습니다." },
+    { name: "정소상", company: "우리한과", rating: 5, text: "수출지원사업 정보를 한곳에서 볼 수 있어서 정보 찾는 시간이 크게 줄었어요." },
+    { name: "한바이어", company: "테크글로벌무역", rating: 5, text: "필수 서류 체크리스트 덕분에 빠뜨리는 서류 없이 준비할 수 있었습니다." },
   ],
 
   itemCategoriesTitle: "품목별 지원사업 공고",
-  itemCategoriesAll: "전체",
+  itemCategories: [
+    { id: "cosmetics", label: "화장품", icon: "sparkle", keywords: ["화장품", "뷰티", "코스메틱", "스킨케어"] },
+    { id: "food", label: "식품", icon: "food", keywords: ["식품", "푸드", "농산물", "가공식품", "음료"] },
+    { id: "ai-tech", label: "AI·Tech", icon: "electronics", keywords: ["AI", "IT", "스마트", "기술", "디지털", "전자"] },
+    { id: "lifestyle", label: "Life style", icon: "box", keywords: ["생활", "리빙", "패션", "잡화", "인테리어"] },
+    { id: "etc", label: "기타", icon: "grid", keywords: [] },
+  ],
+
+  myApplicationStatusTitle: "내가 지원한 공고 현황",
+  myApplicationLoginGateLabel: "로그인을 통해 확인하세요",
+  myApplicationStats: [
+    { key: "total", label: "전체건수" },
+    { key: "drafting", label: "서류작성중" },
+    { key: "reviewing", label: "심사진행중" },
+    { key: "reviewed", label: "심사완료" },
+    { key: "closed", label: "마감건수" },
+  ],
 };
 
 export const login = {
@@ -316,38 +319,24 @@ export const resetPassword = {
   backToLoginLabel: "로그인으로 돌아가기",
 };
 
-export const marketAnalysis = {
-  pageTitle: "시장 분석 대시보드",
-  searchBar: {
-    heading: "무엇을 검색할까요?",
-    placeholder: "상품 검색...",
-  },
-  imageSearchNotice: "사진으로 검색한 결과입니다. 정확도를 높이려면 상품명을 입력해 다시 검색해보세요.",
-  aiExecutiveSummary: { badge: "AI 핵심 요약 리포트", live: "LIVE", confidence: "데이터 신뢰도 98%", updated: "방금 업데이트됨" },
-  filtersTitle: "분석 결과",
-  categoryLabel: "카테고리 (HS Code)",
-  countryLabel: "대상 국가 (동남아시아)",
-  quarterLabel: "분기별 설정",
-  allCountriesLabel: "전체 (All)",
-  chartTitleSuffix: "(2024)",
-  keyMarketDriversTitle: "핵심 시장 동인 (Key Market Drivers)",
-  downloadReportLabel: "보고서 다운로드",
-  checkGovSupportLabel: "지원 사업 확인하기",
-  checkGovSupportDesc: "이 분석 결과를 바탕으로 신청 가능한 정부 지원사업을 확인해보세요.",
-};
-
 export const govSupport = {
-  title: "정부 지원사업",
+  title: "수출지원사업",
   subtitle: "수출 기업을 위한 보조금·지원금·지원 프로그램을 살펴보세요.",
-  ctaButton: "내가 선택할 수 있는 지원사업 보기",
-  disabledLabel: "신청 불가",
-  searchPlaceholder: "키워드, 업종, 지역으로 지원사업 검색...",
-  filterButton: "필터",
-  cardLabels: { budget: "예산 한도", deadline: "마감일" },
-  allProgramsHeading: "전체 지원사업",
-  allCheckboxLabel: "전체 지원사업",
-  recommendedCheckboxLabel: "추천 지원사업",
-  lastSearchTitle: "최근 검색한 상품",
+  allProgramsHeading: "수출지원사업",
+  filters: {
+    regionLabel: "지역",
+    categoryLabel: "품목",
+    statusLabel: "진행상황",
+    regions: [
+      "전주시", "군산시", "익산시", "정읍시", "남원시", "김제시", "완주군",
+      "진안군", "무주군", "장수군", "임실군", "순창군", "고창군", "부안군",
+    ],
+    statusOptions: [
+      { id: "all", label: "전체" },
+      { id: "ongoing", label: "진행중" },
+      { id: "closed", label: "마감" },
+    ],
+  },
   detailPageTitle: "공고 상세화면 확인",
   basicInfoTitle: "기본 정보",
   basicInfoLabels: { org: "주관기관", period: "접수기간", target: "지원대상", support: "지원내용", contact: "문의처" },
@@ -703,7 +692,7 @@ export const documentPreview = {
 };
 
 export const marketingMaterialCreator = {
-  title: "마케팅 이미지 생성기",
+  title: "AI 이미지 생성",
   subtitle: "제품 마케팅 이미지를 빠르게 생성하세요.",
   actions: { loadFromDoc: "기존 서류 정보 불러오기", saveImage: "이미지 저장" },
   uploadLabel: "상품 사진 업로드",
@@ -749,16 +738,16 @@ export const helpAndFaq = {
   faqSectionTitle: "자주 묻는 질문",
   faqs: [
     {
-      question: "저한테 맞는 지원사업을 추천해줄 수 있나요?",
-      answer: "네, 시장 분석에서 판매하려는 상품을 검색해두시면, 정부 지원사업 페이지에서 그 결과를 바탕으로 신청 가능한 사업을 추천해드려요.",
+      question: "저한테 맞는 지원사업을 찾아볼 수 있나요?",
+      answer: "네, 수출지원사업 페이지에서 지역·품목·진행상황으로 필터를 걸어 조건에 맞는 공고만 골라볼 수 있어요.",
     },
     {
       question: "마케팅이나 상세페이지에 쓸 이미지도 만들어 줄 수 있나요?",
-      answer: "네, 마케팅 이미지 생성기에서 상품 정보를 입력하면 AI가 홍보용 이미지를 자동으로 만들어드립니다.",
+      answer: "네, AI 이미지 생성에서 상품 정보를 입력하면 AI가 홍보용 이미지를 자동으로 만들어드립니다.",
     },
     {
       question: "AI가 상업 서류를 번역해줄 수 있나요?",
-      answer: "네, 서류 관리 메뉴에서 언어쌍을 선택한 뒤 'AI 채우기' 기능으로 상업송장 등 서류를 번역할 수 있습니다.",
+      answer: "네, 서류 제출 화면에서 언어쌍을 선택한 뒤 'AI 채우기' 기능으로 상업송장 등 서류를 번역할 수 있습니다.",
     },
   ],
   floatingChatbot: {
@@ -845,7 +834,7 @@ export const govConsultation = {
 };
 
 export const shopeeListing = {
-  title: "쇼피 입점 가이드",
+  title: "해외 수출 플랫폼 입점 가이드",
   subtitle: "쇼피 셀러센터의 상품 등록 화면에 맞춰 필요한 정보만 정리했어요. 값을 복사해서 그대로 붙여넣으세요.",
   introTitle: "쇼피 입점, 이렇게 진행하세요",
   introSteps: [
@@ -864,8 +853,8 @@ export const shopeeListing = {
   copyLabel: "복사",
   copiedLabel: "복사됨",
   copyAllLabel: "전체 내용 복사",
-  imagePickerLabel: "마케팅 이미지 생성기에서 불러오기",
-  imagePickerEmpty: "마케팅 이미지 생성기에서 만든 이미지가 아직 없어요.",
+  imagePickerLabel: "AI 이미지 생성에서 불러오기",
+  imagePickerEmpty: "AI 이미지 생성에서 만든 이미지가 아직 없어요.",
   fieldSectionLabels: {
     basic: "Basic information",
     specification: "Specification",
@@ -1038,6 +1027,8 @@ export const adminPanel = {
   emptyMessage: "아직 제출된 신청서가 없습니다.",
   viewDocumentLabel: "제출 내용 보기",
   downloadLabel: "다운로드",
+  markNeedsRevisionLabel: "보완 필요로 표시",
+  markApprovedLabel: "심사완료로 표시",
 
   tabs: {
     submissions: "제출 현황",
@@ -1047,12 +1038,12 @@ export const adminPanel = {
   businessManager: {
     newBusinessButtonLabel: "새 사업 등록",
     businessListEmptyMessage: "등록된 사업이 없습니다.",
-    uploadReferenceDocButtonLabel: "기본서류 업로드",
     uploadTemplateButtonLabel: "제출 서류 업로드",
     addFieldsButtonLabel: "필드 추가",
     editTemplateButtonLabel: "수정",
     deleteTemplateButtonLabel: "삭제",
     templateListEmptyMessage: "등록된 서류 양식이 없습니다.",
+    userUploadBadgeLabel: "사용자 업로드형",
 
     businessForm: {
       title: "새 사업 등록",
@@ -1061,15 +1052,6 @@ export const adminPanel = {
       descriptionLabel: "사업 안내",
       descriptionPlaceholder: "사업 개요를 입력하세요.",
       submitLabel: "등록하기",
-    },
-
-    referenceDocForm: {
-      title: "기본서류 업로드",
-      fileLabel: "공고 원문 파일 (PDF/DOCX/HWP/이미지)",
-      submitLabel: "업로드 후 AI 분석",
-      hint:
-        "여기서 업로드하는 문서는 신청서 양식이 아니라, 공고 원문(안내문) 자체입니다. " +
-        "AI가 이 문서를 읽고 공고 상세페이지의 기본 정보(주관기관·접수기간·지원대상·지원내용·문의처)를 자동으로 채웁니다.",
     },
 
     templateForm: {
@@ -1085,6 +1067,10 @@ export const adminPanel = {
         "일반 텍스트/장문 필드는 {{field_key}} 형식(예: {{company_name_kr}})으로, " +
         "체크박스 필드는 옵션 문구 앞에 □ 기호(예: □ 법인)를 넣어 작성해주세요. " +
         "자리표시자가 없으면 자동 채움 시 값이 채워지지 않습니다.",
+      userUploadCheckboxLabel: "서식 번호 및 docx 파일을 올리지 않기",
+      userUploadHint:
+        "체크하면 AI 자동완성 서식 없이 서류 이름만 등록됩니다. 신청자 화면에는 이 서류가 " +
+        "'발급 바로가기'로 발급받아 직접 업로드하는 서류로 표시됩니다.",
     },
 
     editTemplateForm: {

@@ -20,20 +20,15 @@ export default function GovSupportDetail() {
   const { businessId } = useParams();
   const navigate = useNavigate();
   const [business, setBusiness] = useState(null);
-  const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
       setLoading(true);
-      const [{ data: biz }, { data: tpls }] = await Promise.all([
-        supabase.from("businesses").select("*").eq("id", businessId).maybeSingle(),
-        supabase.from("templates").select("*").eq("business_id", businessId).order("form_number"),
-      ]);
+      const { data: biz } = await supabase.from("businesses").select("*").eq("id", businessId).maybeSingle();
       if (!cancelled) {
         setBusiness(biz || null);
-        setTemplates(tpls || []);
         setLoading(false);
       }
     }
@@ -84,20 +79,7 @@ export default function GovSupportDetail() {
       <p className="mt-2 text-lg font-bold text-brand-700">{business.name}</p>
 
       <Card className="mt-6 p-6">
-        <div className="mb-3 flex items-center justify-between gap-2">
-          <h2 className="text-sm font-bold text-slate-900">{gs.basicInfoTitle}</h2>
-          {business.reference_file_path && (
-            <a
-              href={`${BACKEND_URL}/businesses/${business.id}/reference-doc/preview-pdf`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-            >
-              <Icon name="eye" className="h-3.5 w-3.5" />
-              기본서류 미리보기
-            </a>
-          )}
-        </div>
+        <h2 className="mb-3 text-sm font-bold text-slate-900">{gs.basicInfoTitle}</h2>
         <dl className="space-y-2">
           {detail ? (
             <>
@@ -120,21 +102,14 @@ export default function GovSupportDetail() {
 
       <Card className="mt-6 p-6">
         <h2 className="mb-4 text-sm font-bold text-slate-900">{gs.previewSectionTitle}</h2>
-        {templates.length === 0 ? (
-          <p className="text-sm text-slate-400">{gs.previewUnavailable}</p>
+        {business.reference_file_path ? (
+          <iframe
+            title="기본서류 미리보기"
+            src={`${BACKEND_URL}/businesses/${business.id}/reference-doc/preview-pdf`}
+            className="h-[900px] w-full rounded-xl border border-slate-200"
+          />
         ) : (
-          <div className="space-y-6">
-            {templates.map((t) => (
-              <div key={t.id}>
-                <p className="mb-2 text-sm font-semibold text-slate-700">{t.name}</p>
-                <iframe
-                  title={t.name}
-                  src={`${BACKEND_URL}/templates/${t.id}/preview-pdf`}
-                  className="h-[900px] w-full rounded-xl border border-slate-200"
-                />
-              </div>
-            ))}
-          </div>
+          <p className="text-sm text-slate-400">{gs.previewUnavailable}</p>
         )}
       </Card>
     </div>

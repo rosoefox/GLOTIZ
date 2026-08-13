@@ -3,12 +3,12 @@ import { Link, useNavigate } from "react-router-dom";
 import Icon from "../components/Icon";
 import { Button, TextField } from "../components/ui";
 import { brand, login, signup as s } from "../data/mockData";
-import { CATEGORIES, COUNTRIES, pickDefaults } from "../data/mockAnalysis";
+import { CATEGORIES, COUNTRIES } from "../data/mockAnalysis";
 import { useAuth } from "../context/AuthContext";
 
 export default function Signup() {
   const navigate = useNavigate();
-  const { signup, setLastQuery, setLastFilters } = useAuth();
+  const { signup } = useAuth();
   const [accountType, setAccountType] = useState("user");
   const [form, setForm] = useState({
     loginId: "",
@@ -60,13 +60,6 @@ export default function Signup() {
         return;
       }
 
-      const category = CATEGORIES.find((c) => c.id === form.categoryId);
-      setLastQuery(category?.label || "");
-      setLastFilters({
-        categoryId: form.categoryId,
-        countryIds: [form.country],
-        quarterIds: pickDefaults(category?.label || "").quarterIds,
-      });
       navigate("/gov-support");
     } catch (err) {
       setError(err.message);

@@ -5,6 +5,7 @@ import { Badge, Card, Button, TextField } from "../components/ui";
 import { brand, adminPanel as ap } from "../data/mockData";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
+import { readErrorMessage } from "../lib/apiError";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
 const FIELD_TYPE_OPTIONS = ["text", "number", "date", "select", "checkbox", "textarea", "long_text"];
@@ -78,7 +79,18 @@ function SubmissionDetailModal({ submission, templateName, onClose }) {
   );
 }
 
-function SubmissionRow({ item, isHistory, applicantUserId, onViewSubmission, onDownload, onNotify, applicant, notifying, notified }) {
+function SubmissionRow({
+  item,
+  isHistory,
+  applicantUserId,
+  onViewSubmission,
+  onDownload,
+  onNotify,
+  onSetReviewStatus,
+  applicant,
+  notifying,
+  notified,
+}) {
   const meta = STATUS_META[item.statusKey];
   const key = item.submission ? item.submission.id : `${applicantUserId}:${item.templateId}`;
   const canNotify = item.statusKey === "not_submitted" || item.statusKey === "needs_revision";
@@ -106,6 +118,24 @@ function SubmissionRow({ item, isHistory, applicantUserId, onViewSubmission, onD
             {ap.downloadLabel}
           </Button>
         )}
+        {!isHistory && item.submission && item.statusKey !== "needs_revision" && (
+          <Button
+            variant="secondary"
+            className="px-3 py-1.5 text-xs text-amber-600 hover:bg-amber-50"
+            onClick={() => onSetReviewStatus(item, "needs_revision")}
+          >
+            {ap.markNeedsRevisionLabel}
+          </Button>
+        )}
+        {!isHistory && item.submission && item.statusKey !== "approved" && (
+          <Button
+            variant="secondary"
+            className="px-3 py-1.5 text-xs text-emerald-600 hover:bg-emerald-50"
+            onClick={() => onSetReviewStatus(item, "approved")}
+          >
+            {ap.markApprovedLabel}
+          </Button>
+        )}
         {!isHistory && canNotify && (
           <Button
             variant="secondary"
@@ -122,7 +152,7 @@ function SubmissionRow({ item, isHistory, applicantUserId, onViewSubmission, onD
   );
 }
 
-function SubmissionItem({ item, applicant, onViewSubmission, onDownload, onNotify, notifying, notified }) {
+function SubmissionItem({ item, applicant, onViewSubmission, onDownload, onNotify, onSetReviewStatus, notifying, notified }) {
   const [showHistory, setShowHistory] = useState(false);
   return (
     <div>
@@ -133,6 +163,7 @@ function SubmissionItem({ item, applicant, onViewSubmission, onDownload, onNotif
         onViewSubmission={onViewSubmission}
         onDownload={onDownload}
         onNotify={onNotify}
+        onSetReviewStatus={onSetReviewStatus}
         notifying={notifying}
         notified={notified}
       />
@@ -168,7 +199,17 @@ function SubmissionItem({ item, applicant, onViewSubmission, onDownload, onNotif
   );
 }
 
-function ApplicantRow({ applicant, expanded, onToggle, onViewSubmission, onDownload, onNotify, notifying, notified }) {
+function ApplicantRow({
+  applicant,
+  expanded,
+  onToggle,
+  onViewSubmission,
+  onDownload,
+  onNotify,
+  onSetReviewStatus,
+  notifying,
+  notified,
+}) {
   return (
     <Card className="p-0">
       <button
@@ -221,6 +262,7 @@ function ApplicantRow({ applicant, expanded, onToggle, onViewSubmission, onDownl
                     onViewSubmission={onViewSubmission}
                     onDownload={onDownload}
                     onNotify={onNotify}
+                    onSetReviewStatus={onSetReviewStatus}
                     notifying={notifying}
                     notified={notified}
                   />
@@ -251,8 +293,8 @@ function NewBusinessModal({ session, onClose, onCreated }) {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
         body: JSON.stringify({ name, description }),
       });
+      if (!res.ok) throw new Error(await readErrorMessage(res, "사업 등록에 실패했습니다."));
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "사업 등록에 실패했습니다.");
       onCreated(data);
       onClose();
     } catch (err) {
@@ -309,12 +351,13 @@ function NewTemplateModal({ session, business, onClose, onCreated }) {
   const [name, setName] = useState("");
   const [formNumber, setFormNumber] = useState("");
   const [file, setFile] = useState(null);
+  const [userUploadRequired, setUserUploadRequired] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!file) {
+    if (!userUploadRequired && !file) {
       setError("DOCX 파일을 선택해주세요.");
       return;
     }
@@ -324,15 +367,18 @@ function NewTemplateModal({ session, business, onClose, onCreated }) {
       const form = new FormData();
       form.append("business_id", business.id);
       form.append("name", name);
-      form.append("form_number", formNumber);
-      form.append("file", file);
+      form.append("user_upload_required", userUploadRequired ? "true" : "false");
+      if (!userUploadRequired) {
+        form.append("form_number", formNumber);
+        form.append("file", file);
+      }
       const res = await fetch(`${BACKEND_URL}/admin/templates`, {
         method: "POST",
         headers: { Authorization: `Bearer ${session.access_token}` },
         body: form,
       });
+      if (!res.ok) throw new Error(await readErrorMessage(res, "서류 양식 업로드에 실패했습니다."));
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "서류 양식 업로드에 실패했습니다.");
       onCreated(data);
       onClose();
     } catch (err) {
@@ -366,95 +412,44 @@ function NewTemplateModal({ session, business, onClose, onCreated }) {
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
-          <TextField
-            label={tf.formNumberLabel}
-            placeholder={tf.formNumberPlaceholder}
-            value={formNumber}
-            onChange={(e) => setFormNumber(e.target.value)}
-          />
-          <label className="block">
-            <span className="mb-1.5 block text-sm font-medium text-slate-700">{tf.fileLabel}</span>
+          <label className="flex items-start gap-2">
             <input
-              type="file"
-              accept=".docx"
-              onChange={(e) => setFile(e.target.files?.[0] || null)}
-              className="w-full text-sm text-slate-600"
+              type="checkbox"
+              checked={userUploadRequired}
+              onChange={(e) => setUserUploadRequired(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-100"
             />
+            <span className="text-sm font-medium text-slate-700">{tf.userUploadCheckboxLabel}</span>
           </label>
-          <p className="rounded-lg bg-slate-50 px-3.5 py-2.5 text-xs leading-relaxed text-slate-500">{tf.docxHint}</p>
+          {userUploadRequired ? (
+            <p className="rounded-lg bg-slate-50 px-3.5 py-2.5 text-xs leading-relaxed text-slate-500">
+              {tf.userUploadHint}
+            </p>
+          ) : (
+            <>
+              <TextField
+                label={tf.formNumberLabel}
+                placeholder={tf.formNumberPlaceholder}
+                value={formNumber}
+                onChange={(e) => setFormNumber(e.target.value)}
+              />
+              <label className="block">
+                <span className="mb-1.5 block text-sm font-medium text-slate-700">{tf.fileLabel}</span>
+                <input
+                  type="file"
+                  accept=".docx"
+                  onChange={(e) => setFile(e.target.files?.[0] || null)}
+                  className="w-full text-sm text-slate-600"
+                />
+              </label>
+              <p className="rounded-lg bg-slate-50 px-3.5 py-2.5 text-xs leading-relaxed text-slate-500">
+                {tf.docxHint}
+              </p>
+            </>
+          )}
           {error && <p className="text-xs font-medium text-red-500">{error}</p>}
           <Button type="submit" className="w-full justify-center" disabled={saving}>
             {saving ? "업로드 중..." : tf.submitLabel}
-          </Button>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-function ReferenceDocModal({ session, business, onClose, onUploaded }) {
-  const rf = ap.businessManager.referenceDocForm;
-  const [file, setFile] = useState(null);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState(null);
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!file) {
-      setError("파일을 선택해주세요.");
-      return;
-    }
-    setSaving(true);
-    setError(null);
-    try {
-      const form = new FormData();
-      form.append("file", file);
-      const res = await fetch(`${BACKEND_URL}/admin/businesses/${business.id}/reference-doc`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${session.access_token}` },
-        body: form,
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "기본서류 업로드에 실패했습니다.");
-      onUploaded(data);
-      onClose();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4" onClick={onClose}>
-      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-slate-900">
-            {rf.title} · {business.name}
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="닫기"
-            className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-          >
-            <Icon name="x" className="h-4 w-4" />
-          </button>
-        </div>
-        <form className="space-y-4" onSubmit={handleSubmit}>
-          <label className="block">
-            <span className="mb-1.5 block text-sm font-medium text-slate-700">{rf.fileLabel}</span>
-            <input
-              type="file"
-              accept=".pdf,.docx,.hwp,.jpg,.jpeg,.png"
-              onChange={(e) => setFile(e.target.files?.[0] || null)}
-              className="w-full text-sm text-slate-600"
-            />
-          </label>
-          <p className="rounded-lg bg-slate-50 px-3.5 py-2.5 text-xs leading-relaxed text-slate-500">{rf.hint}</p>
-          {error && <p className="text-xs font-medium text-red-500">{error}</p>}
-          <Button type="submit" className="w-full justify-center" disabled={saving}>
-            {saving ? "AI가 문서를 분석하는 중..." : rf.submitLabel}
           </Button>
         </form>
       </div>
@@ -484,8 +479,8 @@ function EditTemplateModal({ session, template, onClose, onUpdated }) {
         headers: { Authorization: `Bearer ${session.access_token}` },
         body: form,
       });
+      if (!res.ok) throw new Error(await readErrorMessage(res, "서류 양식 수정에 실패했습니다."));
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "서류 양식 수정에 실패했습니다.");
       onUpdated(data);
       onClose();
     } catch (err) {
@@ -603,8 +598,8 @@ function NewFieldsModal({ session, template, onClose, onSaved }) {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
         body: JSON.stringify({ fields }),
       });
+      if (!res.ok) throw new Error(await readErrorMessage(res, "필드 추가에 실패했습니다."));
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "필드 추가에 실패했습니다.");
       onSaved(data.fields);
       onClose();
     } catch (err) {
@@ -713,12 +708,11 @@ function BusinessManager({ session }) {
   const [loadingBM, setLoadingBM] = useState(true);
   const [showBusinessModal, setShowBusinessModal] = useState(false);
   const [templateModalBusiness, setTemplateModalBusiness] = useState(null);
-  const [referenceDocBusiness, setReferenceDocBusiness] = useState(null);
   const [fieldsModalTemplate, setFieldsModalTemplate] = useState(null);
   const [editTemplateTarget, setEditTemplateTarget] = useState(null);
   const [deletingTemplateId, setDeletingTemplateId] = useState(null);
   const [deletingBusinessId, setDeletingBusinessId] = useState(null);
-  const [deleteError, setDeleteError] = useState(null);
+  const [actionError, setActionError] = useState(null);
   const [editingBusinessId, setEditingBusinessId] = useState(null);
   const [editingName, setEditingName] = useState("");
   const [savingName, setSavingName] = useState(false);
@@ -749,8 +743,7 @@ function BusinessManager({ session }) {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
         body: JSON.stringify({ name: trimmed }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "사업명 수정에 실패했습니다.");
+      if (!res.ok) throw new Error(await readErrorMessage(res, "사업명 수정에 실패했습니다."));
       await loadBusinessManager();
       cancelEditBusinessName();
     } catch (err) {
@@ -768,17 +761,16 @@ function BusinessManager({ session }) {
     )
       return;
     setDeletingBusinessId(biz.id);
-    setDeleteError(null);
+    setActionError(null);
     try {
       const res = await fetch(`${BACKEND_URL}/admin/businesses/${biz.id}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "사업 삭제에 실패했습니다.");
+      if (!res.ok) throw new Error(await readErrorMessage(res, "사업 삭제에 실패했습니다."));
       await loadBusinessManager();
     } catch (err) {
-      setDeleteError(err.message);
+      setActionError(err.message);
     } finally {
       setDeletingBusinessId(null);
     }
@@ -792,17 +784,16 @@ function BusinessManager({ session }) {
     )
       return;
     setDeletingTemplateId(t.id);
-    setDeleteError(null);
+    setActionError(null);
     try {
       const res = await fetch(`${BACKEND_URL}/admin/templates/${t.id}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "서식 삭제에 실패했습니다.");
+      if (!res.ok) throw new Error(await readErrorMessage(res, "서식 삭제에 실패했습니다."));
       await loadBusinessManager();
     } catch (err) {
-      setDeleteError(err.message);
+      setActionError(err.message);
     } finally {
       setDeletingTemplateId(null);
     }
@@ -828,7 +819,7 @@ function BusinessManager({ session }) {
   return (
     <div>
       <div className="mb-4 flex items-center justify-between gap-4">
-        {deleteError ? <p className="text-xs font-medium text-red-500">{deleteError}</p> : <span />}
+        {actionError ? <p className="text-xs font-medium text-red-500">{actionError}</p> : <span />}
         <Button onClick={() => setShowBusinessModal(true)}>
           <Icon name="plus" className="h-4 w-4" />
           {bm.newBusinessButtonLabel}
@@ -906,14 +897,6 @@ function BusinessManager({ session }) {
                     <Button
                       variant="secondary"
                       className="px-3 py-1.5 text-xs"
-                      onClick={() => setReferenceDocBusiness(biz)}
-                    >
-                      <Icon name="upload" className="h-3.5 w-3.5" />
-                      {bm.uploadReferenceDocButtonLabel}
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      className="px-3 py-1.5 text-xs"
                       onClick={() => setTemplateModalBusiness(biz)}
                     >
                       <Icon name="upload" className="h-3.5 w-3.5" />
@@ -939,7 +922,13 @@ function BusinessManager({ session }) {
                       <div key={t.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
                         <div>
                           <p className="text-sm font-semibold text-slate-900">{t.name}</p>
-                          {t.form_number && <p className="text-xs text-slate-400">서식 번호 {t.form_number}</p>}
+                          {t.user_upload_required ? (
+                            <Badge tone="brand" className="mt-1">
+                              {bm.userUploadBadgeLabel}
+                            </Badge>
+                          ) : (
+                            t.form_number && <p className="text-xs text-slate-400">서식 번호 {t.form_number}</p>
+                          )}
                         </div>
                         <div className="flex shrink-0 gap-2">
                           <Button
@@ -949,13 +938,15 @@ function BusinessManager({ session }) {
                           >
                             {bm.editTemplateButtonLabel}
                           </Button>
-                          <Button
-                            variant="secondary"
-                            className="px-3 py-1.5 text-xs"
-                            onClick={() => setFieldsModalTemplate(t)}
-                          >
-                            {bm.addFieldsButtonLabel}
-                          </Button>
+                          {!t.user_upload_required && (
+                            <Button
+                              variant="secondary"
+                              className="px-3 py-1.5 text-xs"
+                              onClick={() => setFieldsModalTemplate(t)}
+                            >
+                              {bm.addFieldsButtonLabel}
+                            </Button>
+                          )}
                           <Button
                             variant="secondary"
                             className="px-3 py-1.5 text-xs text-red-500 hover:bg-red-50"
@@ -985,14 +976,6 @@ function BusinessManager({ session }) {
           business={templateModalBusiness}
           onClose={() => setTemplateModalBusiness(null)}
           onCreated={loadBusinessManager}
-        />
-      )}
-      {referenceDocBusiness && (
-        <ReferenceDocModal
-          session={session}
-          business={referenceDocBusiness}
-          onClose={() => setReferenceDocBusiness(null)}
-          onUploaded={loadBusinessManager}
         />
       )}
       {fieldsModalTemplate && (
@@ -1025,6 +1008,7 @@ export default function AdminPage() {
   const [viewingSubmission, setViewingSubmission] = useState(null);
   const [notifying, setNotifying] = useState({});
   const [notified, setNotified] = useState({});
+  const [reviewStatusError, setReviewStatusError] = useState(null);
 
   async function load() {
     setLoading(true);
@@ -1220,6 +1204,20 @@ export default function AdminPage() {
     if (!error) setNotified((prev) => ({ ...prev, [key]: true }));
   };
 
+  const handleSetReviewStatus = async (item, reviewStatus) => {
+    if (!item.submission) return;
+    setReviewStatusError(null);
+    const { error } = await supabase
+      .from("submissions")
+      .update({ review_status: reviewStatus, reviewed_at: new Date().toISOString() })
+      .eq("id", item.submission.id);
+    if (error) {
+      setReviewStatusError(error.message);
+      return;
+    }
+    await load();
+  };
+
   const handleLogout = () => {
     logout();
     navigate("/");
@@ -1287,6 +1285,10 @@ export default function AdminPage() {
               </Card>
             </div>
 
+            {reviewStatusError && (
+              <p className="mb-3 text-xs font-medium text-red-500">{reviewStatusError}</p>
+            )}
+
             {loading ? (
               <p className="text-sm text-slate-400">불러오는 중...</p>
             ) : applicants.length === 0 ? (
@@ -1304,6 +1306,7 @@ export default function AdminPage() {
                     }
                     onDownload={handleDownload}
                     onNotify={handleNotify}
+                    onSetReviewStatus={handleSetReviewStatus}
                     notifying={notifying}
                     notified={notified}
                   />

@@ -61,7 +61,7 @@ export default function Login() {
             전북 기업의 해외 진출
           </h2>
           <p className="mt-4 max-w-sm text-sm leading-relaxed text-brand-100/80">
-            시장 분석부터 정부 지원사업 매칭, 수출 서류 자동완성까지 —
+            수출지원사업 매칭부터 수출 서류 자동완성까지 —
             {brand.name}와 함께 다음 수출을 준비하세요.
           </p>
         </div>

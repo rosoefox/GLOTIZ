@@ -1,52 +1,70 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import Icon from "../components/Icon";
-import { Badge, Card, Button } from "../components/ui";
-import { govSupport as gs, govAnnouncementDetails } from "../data/mockData";
-import { resolveFilters, pickDefaults } from "../data/mockAnalysis";
-import { useAuth } from "../context/AuthContext";
+import { Card } from "../components/ui";
+import { govSupport as gs, dashboard, govAnnouncementDetails } from "../data/mockData";
+import { isClosed } from "../lib/period";
 import { supabase } from "../lib/supabase";
-
-function isEligible(business, analysis) {
-  if (!analysis) return null;
-  const haystack = `${business.name} ${business.description || ""}`;
-  const categoryMatch = haystack.includes(analysis.category.label);
-  const countryMatch = analysis.countries.some((c) => haystack.includes(c));
-  return categoryMatch || countryMatch;
-}
 
 function orgNameFor(business) {
   const detail = govAnnouncementDetails[business.id];
   return detail?.recruiter || detail?.org || "전북 지원사업 포털";
 }
 
-function AnnouncementCard({ business, disabled, badge, onClick }) {
+function matchesRegion(business, region) {
+  const haystack = `${business.name} ${business.description || ""}`;
+  return haystack.includes(region);
+}
+
+// 5개 품목 카테고리 중 키워드가 실제로 매치되는 것을 찾고, 하나도 안 걸리면 "기타"로 취급한다.
+function matchedCategoryIds(business) {
+  const haystack = `${business.name} ${business.description || ""}`;
+  const matched = dashboard.itemCategories
+    .filter((c) => c.keywords.length > 0 && c.keywords.some((k) => haystack.includes(k)))
+    .map((c) => c.id);
+  return matched.length ? matched : ["etc"];
+}
+
+function AnnouncementCard({ business, highlighted, onClick }) {
   return (
     <Card
       onClick={onClick}
-      aria-disabled={disabled}
-      className={`flex h-full min-h-[220px] flex-col justify-between overflow-hidden p-7 transition-shadow ${
-        disabled ? "cursor-not-allowed opacity-40" : "cursor-pointer hover:shadow-md"
+      className={`flex h-full min-h-[200px] cursor-pointer flex-col justify-between overflow-hidden p-6 transition-shadow hover:shadow-md ${
+        highlighted ? "border-emerald-400 ring-2 ring-emerald-300" : ""
       }`}
     >
       <div>
-        <div className="mb-3 flex items-center justify-between gap-2">
-          <Badge tone="brand">모집 공고</Badge>
-          {badge}
-        </div>
-        <h3 className="text-lg font-bold leading-snug text-slate-900 md:text-xl">{business.name}</h3>
+        <span className="mb-3 inline-block w-fit rounded-full bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-700">
+          {orgNameFor(business)}
+        </span>
+        <h3 className="text-base font-bold leading-snug text-slate-900">{business.name}</h3>
       </div>
-      <p className="mt-4 truncate text-sm text-slate-400">모집처: {orgNameFor(business)}</p>
     </Card>
   );
 }
 
+function CheckboxRow({ label, checked, onChange }) {
+  return (
+    <label className="flex items-center gap-2 text-sm text-slate-700">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={onChange}
+        className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+      />
+      {label}
+    </label>
+  );
+}
+
 export default function GovSupport() {
-  const { isLoggedIn, lastQuery, lastFilters } = useAuth();
   const navigate = useNavigate();
 
   const [announcements, setAnnouncements] = useState([]);
   const [loadingAnnouncements, setLoadingAnnouncements] = useState(true);
+
+  const [selectedRegions, setSelectedRegions] = useState([]);
+  const [selectedCategories, setSelectedCategories] = useState([]);
+  const [statusFilter, setStatusFilter] = useState("all");
 
   useEffect(() => {
     async function loadAnnouncements() {
@@ -58,123 +76,100 @@ export default function GovSupport() {
     loadAnnouncements();
   }, []);
 
-  const analysis = useMemo(() => {
-    if (!isLoggedIn || !lastQuery) return null;
-    return resolveFilters(lastQuery, lastFilters || pickDefaults(lastQuery));
-  }, [isLoggedIn, lastQuery, lastFilters]);
+  const toggleRegion = (region) => {
+    setSelectedRegions((prev) => (prev.includes(region) ? prev.filter((r) => r !== region) : [...prev, region]));
+  };
+
+  const toggleCategory = (categoryId) => {
+    setSelectedCategories((prev) =>
+      prev.includes(categoryId) ? prev.filter((c) => c !== categoryId) : [...prev, categoryId]
+    );
+  };
+
+  const hasActiveFilter = selectedRegions.length > 0 || selectedCategories.length > 0 || statusFilter !== "all";
+
+  const visibleAnnouncements = useMemo(() => {
+    return announcements.filter((b) => {
+      if (selectedRegions.length > 0 && !selectedRegions.some((r) => matchesRegion(b, r))) return false;
+      if (selectedCategories.length > 0) {
+        const categoryIds = matchedCategoryIds(b);
+        if (!selectedCategories.some((c) => categoryIds.includes(c))) return false;
+      }
+      const closed = isClosed(b, govAnnouncementDetails);
+      if (statusFilter === "ongoing" && closed) return false;
+      if (statusFilter === "closed" && !closed) return false;
+      return true;
+    });
+  }, [announcements, selectedRegions, selectedCategories, statusFilter]);
 
   const handleAnnouncementClick = (business) => navigate(`/gov-support/${business.id}`);
-
-  if (!isLoggedIn) {
-    return (
-      <div className="mx-auto flex max-w-6xl flex-col px-8 py-8">
-        <h1 className="mb-5 text-4xl font-extrabold text-slate-900">{gs.allProgramsHeading}</h1>
-
-        {loadingAnnouncements ? (
-          <p className="text-sm text-slate-400">불러오는 중...</p>
-        ) : announcements.length === 0 ? (
-          <p className="text-sm text-slate-400">등록된 지원사업이 없습니다.</p>
-        ) : (
-          <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-            {announcements.map((b) => (
-              <AnnouncementCard key={b.id} business={b} onClick={() => handleAnnouncementClick(b)} />
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  return <LoggedInGovSupport announcements={announcements} loading={loadingAnnouncements} analysis={analysis} onCardClick={handleAnnouncementClick} />;
-}
-
-function LoggedInGovSupport({ announcements, loading, analysis, onCardClick }) {
-  const navigate = useNavigate();
-  const [listMode, setListMode] = useState("all"); // "all" | "recommended"
-  const [personalizedMode, setPersonalizedMode] = useState(false);
-
-  const visibleAnnouncements =
-    listMode === "recommended" ? announcements.filter((b) => isEligible(b, analysis) === true) : announcements;
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col px-8 py-8">
       <h1 className="text-4xl font-extrabold text-slate-900">{gs.allProgramsHeading}</h1>
+      <p className="mt-2 text-sm text-slate-500">{gs.subtitle}</p>
 
-      <Card className="mt-4 p-4">
-        <p className="mb-1 text-xs font-semibold text-slate-400">{gs.lastSearchTitle}</p>
-        {analysis ? (
-          <p className="text-sm text-slate-700">
-            <span className="font-bold text-brand-700">&ldquo;{analysis.query}&rdquo;</span> · {analysis.category.label} ·{" "}
-            {analysis.countryLabel}
-          </p>
-        ) : (
-          <p className="text-sm text-slate-400">
-            아직 검색한 상품이 없습니다.{" "}
-            <button type="button" onClick={() => navigate("/analysis")} className="font-semibold text-brand-600 hover:underline">
-              시장 분석에서 상품을 검색해보세요
-            </button>
-          </p>
-        )}
+      <Card className="mt-6 p-5">
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
+          <div>
+            <p className="mb-3 text-xs font-bold text-slate-400">{gs.filters.regionLabel}</p>
+            <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+              {gs.filters.regions.map((region) => (
+                <CheckboxRow
+                  key={region}
+                  label={region}
+                  checked={selectedRegions.includes(region)}
+                  onChange={() => toggleRegion(region)}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <p className="mb-3 text-xs font-bold text-slate-400">{gs.filters.categoryLabel}</p>
+            <div className="space-y-2">
+              {dashboard.itemCategories.map((c) => (
+                <CheckboxRow
+                  key={c.id}
+                  label={c.label}
+                  checked={selectedCategories.includes(c.id)}
+                  onChange={() => toggleCategory(c.id)}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <p className="mb-3 text-xs font-bold text-slate-400">{gs.filters.statusLabel}</p>
+            <div className="space-y-2">
+              {gs.filters.statusOptions.map((s) => (
+                <CheckboxRow
+                  key={s.id}
+                  label={s.label}
+                  checked={statusFilter === s.id}
+                  onChange={() => setStatusFilter(s.id)}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
       </Card>
 
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-4">
-        <div className="flex gap-4">
-          <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-            <input
-              type="checkbox"
-              checked={listMode === "all"}
-              onChange={() => setListMode("all")}
-              className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
-            />
-            {gs.allCheckboxLabel}
-          </label>
-          <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-            <input
-              type="checkbox"
-              checked={listMode === "recommended"}
-              onChange={() => setListMode("recommended")}
-              className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
-            />
-            {gs.recommendedCheckboxLabel}
-          </label>
-        </div>
-
-        <Button className="px-6 py-4 text-base" onClick={() => setPersonalizedMode((v) => !v)}>
-          <Icon name="sparkle" className="h-5 w-5" />
-          {gs.ctaButton}
-        </Button>
-      </div>
-
       <div className="mt-6">
-        {loading ? (
+        {loadingAnnouncements ? (
           <p className="text-sm text-slate-400">불러오는 중...</p>
         ) : visibleAnnouncements.length === 0 ? (
-          <p className="text-sm text-slate-400">
-            {listMode === "recommended" ? "조건에 맞는 추천 지원사업이 없습니다." : "등록된 지원사업이 없습니다."}
-          </p>
+          <p className="text-sm text-slate-400">조건에 맞는 지원사업이 없습니다.</p>
         ) : (
-          <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-            {visibleAnnouncements.map((b) => {
-              const eligible = isEligible(b, analysis);
-              const disabled = personalizedMode && eligible !== true;
-              return (
-                <AnnouncementCard
-                  key={b.id}
-                  business={b}
-                  disabled={disabled}
-                  badge={
-                    eligible === true ? (
-                      <Badge tone="success">
-                        <Icon name="checkCircle" className="h-3 w-3" /> 가능
-                      </Badge>
-                    ) : eligible === false ? (
-                      <Badge tone="neutral">미해당</Badge>
-                    ) : null
-                  }
-                  onClick={() => onCardClick(b)}
-                />
-              );
-            })}
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
+            {visibleAnnouncements.map((b) => (
+              <AnnouncementCard
+                key={b.id}
+                business={b}
+                highlighted={hasActiveFilter}
+                onClick={() => handleAnnouncementClick(b)}
+              />
+            ))}
           </div>
         )}
       </div>

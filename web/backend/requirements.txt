@@ -1,0 +1,8 @@
+fastapi
+python-multipart
+uvicorn[standard]
+python-docx
+supabase
+google-genai
+python-dotenv
+httpx

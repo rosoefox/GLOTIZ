@@ -1,20 +1,39 @@
 import { useEffect, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import Icon from "../components/Icon";
 import { Badge, Card, Button } from "../components/ui";
 import LoginPopup from "../components/LoginPopup";
 import { documentChecklist as dc, govAnnouncementDetails } from "../data/mockData";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
-import { DocumentAutoFillContent } from "./DocumentAutoFill";
+import { readErrorMessage } from "../lib/apiError";
+import { readDraft } from "../lib/draft";
 
-const GOV_STATUS_META = {
-  generated: { label: "완성", tone: "success" },
-  filled: { label: "AI 생성 대기", tone: "warning" },
-  none: { label: "미작성", tone: "neutral" },
+const SECONDARY_BUTTON_CLASS =
+  "inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50";
+
+// 서류 한 건의 상태 4가지. dot 색을 서로 다르게 줘서 한눈에 구분되게 한다.
+const STATUS_META = {
+  notStarted: { label: "작성전", dot: "bg-slate-300", buttonLabel: "서류작성하기" },
+  drafting: { label: "작성중", dot: "bg-amber-400", buttonLabel: "수정" },
+  reviewing: { label: "심사중", dot: "bg-blue-400", buttonLabel: "수정" },
+  reviewed: { label: "심사완료", dot: "bg-emerald-500", buttonLabel: "수정" },
 };
 
-function GovTemplateGroup({ title, templates, submissions, onOpenFill }) {
+function statusKeyFor(submission) {
+  if (!submission) return null;
+  return submission.review_status === "approved" ? "reviewed" : "reviewing";
+}
+
+function GovTemplateGroup({
+  title,
+  templates,
+  submissions,
+  percentByTemplate,
+  onOpenFill,
+  onUploadFile,
+  uploadingTemplateId,
+}) {
   return (
     <div className="mb-8">
       <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
@@ -24,37 +43,65 @@ function GovTemplateGroup({ title, templates, submissions, onOpenFill }) {
       <Card className="divide-y divide-slate-100 p-2 ring-2 ring-brand-400">
         {templates.map((t) => {
           const submission = submissions[t.id];
-          const statusKey =
-            submission?.status === "generated" ? "generated" : submission?.status === "filled" ? "filled" : "none";
-          const meta = GOV_STATUS_META[statusKey];
+          const statusKey = statusKeyFor(submission) || (percentByTemplate[t.id] > 0 ? "drafting" : "notStarted");
+          const meta = STATUS_META[statusKey];
+          const isUploading = uploadingTemplateId === t.id;
+          const percent = percentByTemplate[t.id] ?? 0;
           return (
             <div key={t.id} className="flex flex-wrap items-center justify-between gap-3 p-4">
               <div className="flex items-center gap-3">
                 <div
                   className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
-                    statusKey === "generated" ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-slate-400"
+                    statusKey === "reviewed" ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-slate-400"
                   }`}
                 >
-                  <Icon name={statusKey === "generated" ? "checkCircle" : "documents"} className="h-5 w-5" />
+                  <Icon name={statusKey === "reviewed" ? "checkCircle" : "documents"} className="h-5 w-5" />
                 </div>
                 <div>
-                  <p className="font-semibold text-slate-900">
-                    {t.form_number && <span className="mr-2 text-slate-400">{t.form_number}.</span>}
+                  <p className="flex items-center gap-2 font-semibold text-slate-900">
+                    {t.form_number && <span className="text-slate-400">{t.form_number}.</span>}
                     {t.name}
+                    {!t.user_upload_required && (
+                      <span className="text-xs font-normal text-slate-400">{percent}%</span>
+                    )}
                   </p>
                 </div>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  variant="secondary"
-                  className="px-3 py-1.5 text-xs"
-                  onClick={() => onOpenFill(t)}
-                >
-                  <Icon name="sparkle" className="h-3.5 w-3.5" />
-                  서류 작성하기
-                </Button>
-                <Badge tone={meta.tone}>{meta.label}</Badge>
+                {t.user_upload_required ? (
+                  <>
+                    <a href="#" target="_blank" rel="noopener noreferrer" className={SECONDARY_BUTTON_CLASS}>
+                      <Icon name="externalLink" className="h-3.5 w-3.5" />
+                      {dc.issueLinkLabel}
+                    </a>
+                    <label className={`cursor-pointer ${SECONDARY_BUTTON_CLASS} ${isUploading ? "opacity-50" : ""}`}>
+                      <Icon name="upload" className="h-3.5 w-3.5" />
+                      {isUploading ? dc.uploadingLabel : dc.uploadButtonLabel}
+                      <input
+                        type="file"
+                        className="hidden"
+                        disabled={isUploading}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0] || null;
+                          e.target.value = "";
+                          if (file) onUploadFile(t, file);
+                        }}
+                      />
+                    </label>
+                    <Badge tone={submission ? "success" : "neutral"}>{submission ? "업로드 완료" : "미제출"}</Badge>
+                  </>
+                ) : (
+                  <>
+                    <span className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
+                      <span className={`h-2.5 w-2.5 rounded-full ${meta.dot}`} />
+                      {meta.label}
+                    </span>
+                    <Button variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => onOpenFill(t)}>
+                      {meta.buttonLabel}
+                    </Button>
+                  </>
+                )}
               </div>
             </div>
           );
@@ -118,10 +165,12 @@ function ProgramPicker({ programs, progressByBusiness, loading, onSelect }) {
   );
 }
 
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
+
 export default function DocumentChecklist() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, isLoggedIn } = useAuth();
+  const { user, isLoggedIn, session } = useAuth();
   const activeItemName = location.state?.itemName ?? null;
 
   const [selectedBusinessId, setSelectedBusinessId] = useState(location.state?.businessId ?? null);
@@ -129,8 +178,10 @@ export default function DocumentChecklist() {
 
   const [govTemplates, setGovTemplates] = useState([]);
   const [govSubmissions, setGovSubmissions] = useState({});
+  const [percentByTemplate, setPercentByTemplate] = useState({});
   const [loadingGovTemplates, setLoadingGovTemplates] = useState(false);
-  const [fillTarget, setFillTarget] = useState(null);
+  const [uploadingTemplateId, setUploadingTemplateId] = useState(null);
+  const [uploadError, setUploadError] = useState(null);
 
   const [programs, setPrograms] = useState([]);
   const [loadingPrograms, setLoadingPrograms] = useState(false);
@@ -147,18 +198,59 @@ export default function DocumentChecklist() {
     setGovTemplates(templates || []);
 
     const templateIds = (templates || []).map((t) => t.id);
-    if (templateIds.length) {
-      const { data: submissions } = await supabase
-        .from("submissions")
-        .select("*")
-        .in("template_id", templateIds)
-        .order("created_at", { ascending: false });
-      const latestByTemplate = {};
-      (submissions || []).forEach((s) => {
-        if (!latestByTemplate[s.template_id]) latestByTemplate[s.template_id] = s;
-      });
-      setGovSubmissions(latestByTemplate);
+    if (!templateIds.length) {
+      setGovSubmissions({});
+      setPercentByTemplate({});
+      setLoadingGovTemplates(false);
+      return;
     }
+
+    const [{ data: submissions }, { data: allFields }] = await Promise.all([
+      supabase.from("submissions").select("*").in("template_id", templateIds).order("created_at", { ascending: false }),
+      supabase.from("template_fields").select("id,template_id").in("template_id", templateIds),
+    ]);
+
+    const latestByTemplate = {};
+    (submissions || []).forEach((s) => {
+      if (!latestByTemplate[s.template_id]) latestByTemplate[s.template_id] = s;
+    });
+    setGovSubmissions(latestByTemplate);
+
+    const fieldCountByTemplate = {};
+    (allFields || []).forEach((f) => {
+      fieldCountByTemplate[f.template_id] = (fieldCountByTemplate[f.template_id] || 0) + 1;
+    });
+
+    const submittedSubmissionIds = Object.values(latestByTemplate).map((s) => s.id);
+    const { data: allValues } = submittedSubmissionIds.length
+      ? await supabase.from("submission_values").select("submission_id,value").in("submission_id", submittedSubmissionIds)
+      : { data: [] };
+    const filledCountBySubmission = {};
+    (allValues || []).forEach((v) => {
+      if (v.value) filledCountBySubmission[v.submission_id] = (filledCountBySubmission[v.submission_id] || 0) + 1;
+    });
+
+    const percent = {};
+    (templates || []).forEach((t) => {
+      if (t.user_upload_required) return;
+      const total = fieldCountByTemplate[t.id] || 0;
+      if (!total) {
+        percent[t.id] = 0;
+        return;
+      }
+      const submission = latestByTemplate[t.id];
+      if (submission) {
+        percent[t.id] = Math.round(((filledCountBySubmission[submission.id] || 0) / total) * 100);
+      } else if (user?.id) {
+        const draft = readDraft(user.id, t.id);
+        const filled = draft ? Object.values(draft).filter(Boolean).length : 0;
+        percent[t.id] = Math.round((filled / total) * 100);
+      } else {
+        percent[t.id] = 0;
+      }
+    });
+    setPercentByTemplate(percent);
+
     setLoadingGovTemplates(false);
   };
 
@@ -240,8 +332,44 @@ export default function DocumentChecklist() {
     setSelectedBusinessName(business.name);
   };
 
-  const govDoneCount = Object.keys(govSubmissions).length;
-  const govPercent = govTemplates.length ? Math.round((govDoneCount / govTemplates.length) * 100) : 0;
+  const handleOpenFill = (template) => {
+    navigate(`/docs/fill/${template.id}`, {
+      state: {
+        templateName: template.name,
+        businessId: selectedBusinessId,
+        businessName: selectedBusinessName,
+      },
+    });
+  };
+
+  const handleUploadFile = async (template, file) => {
+    if (!session) return;
+    setUploadingTemplateId(template.id);
+    setUploadError(null);
+    try {
+      const form = new FormData();
+      form.append("template_id", template.id);
+      form.append("file", file);
+      const res = await fetch(`${BACKEND_URL}/submissions/user-upload`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        body: form,
+      });
+      if (!res.ok) throw new Error(await readErrorMessage(res, "파일 업로드에 실패했습니다."));
+      await refreshGovTemplates();
+    } catch (err) {
+      setUploadError(err.message);
+    } finally {
+      setUploadingTemplateId(null);
+    }
+  };
+
+  const perTemplatePercents = govTemplates.map((t) =>
+    t.user_upload_required ? (govSubmissions[t.id] ? 100 : 0) : percentByTemplate[t.id] ?? 0
+  );
+  const govPercent = perTemplatePercents.length
+    ? Math.round(perTemplatePercents.reduce((sum, p) => sum + p, 0) / perTemplatePercents.length)
+    : 0;
 
   return (
     <>
@@ -284,15 +412,14 @@ export default function DocumentChecklist() {
                 title="제출 서류"
                 templates={govTemplates}
                 submissions={govSubmissions}
-                onOpenFill={(t) =>
-                  setFillTarget({
-                    templateId: t.id,
-                    templateName: t.name,
-                    businessId: selectedBusinessId,
-                    businessName: selectedBusinessName,
-                  })
-                }
+                percentByTemplate={percentByTemplate}
+                onOpenFill={handleOpenFill}
+                onUploadFile={handleUploadFile}
+                uploadingTemplateId={uploadingTemplateId}
               />
+              {uploadError && (
+                <p className="mb-4 text-xs font-medium text-red-500">{uploadError}</p>
+              )}
               <Card className="mt-2 p-6">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                   <div>
@@ -313,6 +440,15 @@ export default function DocumentChecklist() {
                   <span>0%</span>
                   <span>100%</span>
                 </div>
+                {govPercent === 100 && (
+                  <Link
+                    to="/marketing"
+                    className="mt-4 flex w-full items-center justify-center gap-1.5 rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-brand-700"
+                  >
+                    <Icon name="sparkle" className="h-3.5 w-3.5" />
+                    마케팅을 위한 AI 이미지 생성하러 가기
+                  </Link>
+                )}
               </Card>
             </>
           ) : (
@@ -326,40 +462,6 @@ export default function DocumentChecklist() {
           loading={loadingPrograms}
           onSelect={handleSelectProgram}
         />
-      )}
-
-      {fillTarget && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"
-          onClick={() => setFillTarget(null)}
-        >
-          <div
-            className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-bold text-slate-900">서류 작성하기</h2>
-              <button
-                type="button"
-                onClick={() => setFillTarget(null)}
-                aria-label="닫기"
-                className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-              >
-                <Icon name="x" className="h-4 w-4" />
-              </button>
-            </div>
-            <DocumentAutoFillContent
-              templateId={fillTarget.templateId}
-              templateName={fillTarget.templateName}
-              businessId={fillTarget.businessId}
-              businessName={fillTarget.businessName}
-              onDone={() => {
-                setFillTarget(null);
-                refreshGovTemplates();
-              }}
-            />
-          </div>
-        </div>
       )}
       </div>
 

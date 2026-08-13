@@ -7,8 +7,6 @@ export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
   const [sessionLoading, setSessionLoading] = useState(true);
   const [profile, setProfile] = useState(undefined); // undefined = 아직 조회 전
-  const [lastQuery, setLastQuery] = useState(null);
-  const [lastFilters, setLastFilters] = useState(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -104,10 +102,6 @@ export function AuthProvider({ children }) {
         signup,
         logout,
         refreshProfile,
-        lastQuery,
-        setLastQuery,
-        lastFilters,
-        setLastFilters,
       }}
     >
       {children}
