@@ -17,7 +17,7 @@ create table if not exists notifications (
   user_id uuid not null references auth.users (id) on delete cascade,
   submission_id uuid references submissions (id) on delete cascade,
   template_id uuid references templates (id) on delete set null,
-  type text not null check (type in ('needs_revision', 'not_submitted')),
+  type text not null check (type in ('needs_revision', 'not_submitted', 'support_request', 'support_reply')),
   message text not null,
   is_read boolean not null default false,
   created_at timestamptz not null default now()

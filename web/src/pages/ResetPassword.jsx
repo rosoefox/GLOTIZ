@@ -67,7 +67,8 @@ export default function ResetPassword() {
 
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
-          <h1 className="text-4xl font-extrabold tracking-tight text-brand-700">{brand.name}</h1>
+          <img src={brand.logo} alt={brand.name} className="mx-auto h-12 w-12 rounded-2xl object-contain" />
+          <h1 className="mt-3 text-4xl font-extrabold tracking-tight text-brand-700">{brand.name}</h1>
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">

@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import Icon from "../components/Icon";
 import { Badge, Card, Button, TextField } from "../components/ui";
+import Modal from "../components/Modal";
 import { brand, adminPanel as ap } from "../data/mockData";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
 import { readErrorMessage } from "../lib/apiError";
+import { orderedSelect } from "../lib/supabaseOrder";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
 const FIELD_TYPE_OPTIONS = ["text", "number", "date", "select", "checkbox", "textarea", "long_text"];
@@ -19,81 +21,22 @@ const STATUS_META = {
 
 const COMPANY_NAME_KEYS = ["company_name_kr", "company_name"];
 
-function SubmissionDetailModal({ submission, templateName, onClose }) {
-  const [fields, setFields] = useState([]);
-  const [values, setValues] = useState({});
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    async function load() {
-      setLoading(true);
-      const [{ data: fieldRows }, { data: valueRows }] = await Promise.all([
-        supabase.from("template_fields").select("*").eq("template_id", submission.template_id),
-        supabase.from("submission_values").select("*").eq("submission_id", submission.id),
-      ]);
-      setFields(fieldRows || []);
-      const byFieldId = Object.fromEntries((valueRows || []).map((v) => [v.field_id, v.value]));
-      setValues(byFieldId);
-      setLoading(false);
-    }
-    load();
-  }, [submission.id, submission.template_id]);
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"
-      onClick={onClose}
-    >
-      <div
-        className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-slate-900">{templateName}</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="닫기"
-            className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-          >
-            <Icon name="x" className="h-4 w-4" />
-          </button>
-        </div>
-
-        {loading ? (
-          <p className="text-sm text-slate-400">불러오는 중...</p>
-        ) : fields.length === 0 ? (
-          <p className="text-sm text-slate-400">등록된 입력 필드가 없습니다.</p>
-        ) : (
-          <dl className="divide-y divide-slate-100 rounded-xl border border-slate-200">
-            {fields.map((field) => (
-              <div key={field.id} className="flex items-start justify-between gap-4 px-4 py-2.5 text-sm">
-                <dt className="shrink-0 text-slate-500">{field.field_label}</dt>
-                <dd className="text-right font-medium text-slate-900">{values[field.id] || "—"}</dd>
-              </div>
-            ))}
-          </dl>
-        )}
-      </div>
-    </div>
-  );
-}
-
 function SubmissionRow({
   item,
   isHistory,
   applicantUserId,
   onViewSubmission,
-  onDownload,
   onNotify,
   onSetReviewStatus,
   applicant,
   notifying,
   notified,
+  downloadingId,
 }) {
   const meta = STATUS_META[item.statusKey];
   const key = item.submission ? item.submission.id : `${applicantUserId}:${item.templateId}`;
   const canNotify = item.statusKey === "not_submitted" || item.statusKey === "needs_revision";
+  const isDownloading = item.submission && downloadingId === item.submission.id;
   return (
     <div className={`flex flex-wrap items-center justify-between gap-3 px-4 py-3 ${isHistory ? "bg-slate-50" : ""}`}>
       <div>
@@ -105,36 +48,39 @@ function SubmissionRow({
         )}
       </div>
       <div className="flex items-center gap-2">
-        <Badge tone={meta.tone}>{meta.label}</Badge>
+        <Badge tone={meta.tone} className={item.statusKey === "needs_revision" ? "animate-blink" : ""}>
+          {meta.label}
+        </Badge>
         {item.submission && (
-          <Button variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => onViewSubmission(item)}>
-            <Icon name="eye" className="h-3.5 w-3.5" />
-            {ap.viewDocumentLabel}
-          </Button>
-        )}
-        {item.generatedPath && (
-          <Button variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => onDownload(item.generatedPath)}>
-            <Icon name="download" className="h-3.5 w-3.5" />
-            {ap.downloadLabel}
+          <Button
+            variant="secondary"
+            className="px-3 py-1.5 text-xs"
+            disabled={isDownloading}
+            onClick={() => onViewSubmission(item)}
+          >
+            <Icon name={isDownloading ? "download" : "eye"} className="h-3.5 w-3.5" />
+            {isDownloading ? ap.generatingLabel : ap.viewDocumentLabel}
           </Button>
         )}
         {!isHistory && item.submission && item.statusKey !== "needs_revision" && (
-          <Button
-            variant="secondary"
-            className="px-3 py-1.5 text-xs text-amber-600 hover:bg-amber-50"
+          <button
+            type="button"
             onClick={() => onSetReviewStatus(item, "needs_revision")}
+            className="flex items-center gap-1 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700"
           >
+            <Icon name="x" className="h-3.5 w-3.5" />
             {ap.markNeedsRevisionLabel}
-          </Button>
+          </button>
         )}
         {!isHistory && item.submission && item.statusKey !== "approved" && (
-          <Button
-            variant="secondary"
-            className="px-3 py-1.5 text-xs text-emerald-600 hover:bg-emerald-50"
+          <button
+            type="button"
             onClick={() => onSetReviewStatus(item, "approved")}
+            className="flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
           >
+            <Icon name="check" className="h-3.5 w-3.5" />
             {ap.markApprovedLabel}
-          </Button>
+          </button>
         )}
         {!isHistory && canNotify && (
           <Button
@@ -152,7 +98,7 @@ function SubmissionRow({
   );
 }
 
-function SubmissionItem({ item, applicant, onViewSubmission, onDownload, onNotify, onSetReviewStatus, notifying, notified }) {
+function SubmissionItem({ item, applicant, onViewSubmission, onNotify, onSetReviewStatus, notifying, notified, downloadingId }) {
   const [showHistory, setShowHistory] = useState(false);
   return (
     <div>
@@ -161,11 +107,11 @@ function SubmissionItem({ item, applicant, onViewSubmission, onDownload, onNotif
         applicantUserId={applicant.userId}
         applicant={applicant}
         onViewSubmission={onViewSubmission}
-        onDownload={onDownload}
         onNotify={onNotify}
         onSetReviewStatus={onSetReviewStatus}
         notifying={notifying}
         notified={notified}
+        downloadingId={downloadingId}
       />
       {item.history.length > 0 && (
         <>
@@ -186,10 +132,10 @@ function SubmissionItem({ item, applicant, onViewSubmission, onDownload, onNotif
                   applicantUserId={applicant.userId}
                   applicant={applicant}
                   onViewSubmission={onViewSubmission}
-                  onDownload={onDownload}
                   onNotify={onNotify}
                   notifying={notifying}
                   notified={notified}
+                  downloadingId={downloadingId}
                 />
               </div>
             ))}
@@ -199,16 +145,20 @@ function SubmissionItem({ item, applicant, onViewSubmission, onDownload, onNotif
   );
 }
 
-function ApplicantRow({
-  applicant,
+// 지원사업(공고) 기준으로 묶어, 각 사업에 신청한 기업 수를 먼저 보여주고
+// 펼치면 신청 기업 목록 → 다시 펼치면 그 기업이 제출한 서류 목록이 나오는 2단 구조.
+function ProgramRow({
+  program,
   expanded,
   onToggle,
+  expandedApplicantKey,
+  onToggleApplicant,
   onViewSubmission,
-  onDownload,
   onNotify,
   onSetReviewStatus,
   notifying,
   notified,
+  downloadingId,
 }) {
   return (
     <Card className="p-0">
@@ -217,25 +167,16 @@ function ApplicantRow({
         onClick={onToggle}
         className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left"
       >
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700">
-            {applicant.name[0]}
-          </div>
-          <div>
-            <p className="font-bold text-slate-900">{applicant.name}</p>
-            <p className="text-xs text-slate-400">
-              {ap.tableHeaders.program} {applicant.programs.length}건 · {ap.tableHeaders.documents}{" "}
-              {applicant.submissions.length}건
-            </p>
-          </div>
+        <div>
+          <p className="font-bold text-slate-900">{program.businessName}</p>
+          <p className="mt-1 text-xs text-slate-400">
+            {ap.tableHeaders.lastUpdated} {program.lastUpdated}
+          </p>
         </div>
         <div className="flex items-center gap-3">
-          <Badge tone={applicant.percent === 100 ? "success" : "brand"}>
-            {ap.percentLabel} {applicant.percent}%
+          <Badge tone="brand">
+            {ap.applicantCountLabel} {program.applicants.length}개
           </Badge>
-          <span className="text-xs text-slate-400">
-            {ap.tableHeaders.lastUpdated} {applicant.lastUpdated}
-          </span>
           <Icon
             name="chevronDown"
             className={`h-4 w-4 text-slate-400 transition-transform ${expanded ? "rotate-180" : ""}`}
@@ -244,32 +185,53 @@ function ApplicantRow({
       </button>
 
       {expanded && (
-        <div className="border-t border-slate-100 px-5 py-4">
-          {applicant.programs.map((program) => (
-            <div key={program.businessId} className="mb-4 last:mb-0">
-              <div className="mb-2 flex items-center justify-between">
-                <p className="text-sm font-bold text-slate-800">{program.businessName}</p>
-                <span className="text-xs font-medium text-slate-400">
-                  {ap.percentLabel} {program.percent}%
-                </span>
+        <div className="space-y-2 border-t border-slate-100 px-5 py-4">
+          {program.applicants.map((applicant) => {
+            const key = `${program.businessId}:${applicant.userId}`;
+            const applicantExpanded = expandedApplicantKey === key;
+            return (
+              <div key={key} className="overflow-hidden rounded-xl border border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => onToggleApplicant(key)}
+                  className="flex w-full items-center justify-between gap-4 bg-white px-4 py-3 text-left"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-100 text-xs font-semibold text-brand-700">
+                      {applicant.name[0]}
+                    </div>
+                    <p className="text-sm font-semibold text-slate-900">{applicant.name}</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Badge tone={applicant.percent === 100 ? "success" : "brand"}>
+                      {ap.percentLabel} {applicant.percent}%
+                    </Badge>
+                    <Icon
+                      name="chevronDown"
+                      className={`h-3.5 w-3.5 text-slate-400 transition-transform ${applicantExpanded ? "rotate-180" : ""}`}
+                    />
+                  </div>
+                </button>
+                {applicantExpanded && (
+                  <div className="divide-y divide-slate-100 border-t border-slate-100">
+                    {applicant.items.map((item) => (
+                      <SubmissionItem
+                        key={item.submission ? item.submission.id : `${applicant.userId}:${item.templateId}`}
+                        item={item}
+                        applicant={applicant}
+                        onViewSubmission={onViewSubmission}
+                        onNotify={onNotify}
+                        onSetReviewStatus={onSetReviewStatus}
+                        notifying={notifying}
+                        notified={notified}
+                        downloadingId={downloadingId}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
-              <div className="divide-y divide-slate-100 rounded-xl border border-slate-200">
-                {program.items.map((item) => (
-                  <SubmissionItem
-                    key={item.submission ? item.submission.id : `${applicant.userId}:${item.templateId}`}
-                    item={item}
-                    applicant={applicant}
-                    onViewSubmission={onViewSubmission}
-                    onDownload={onDownload}
-                    onNotify={onNotify}
-                    onSetReviewStatus={onSetReviewStatus}
-                    notifying={notifying}
-                    notified={notified}
-                  />
-                ))}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </Card>
@@ -305,20 +267,8 @@ function NewBusinessModal({ session, onClose, onCreated }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4" onClick={onClose}>
-      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-slate-900">{bf.title}</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="닫기"
-            className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-          >
-            <Icon name="x" className="h-4 w-4" />
-          </button>
-        </div>
-        <form className="space-y-4" onSubmit={handleSubmit}>
+    <Modal title={bf.title} onClose={onClose}>
+      <form className="space-y-4" onSubmit={handleSubmit}>
           <TextField
             label={bf.nameLabel}
             required
@@ -340,9 +290,8 @@ function NewBusinessModal({ session, onClose, onCreated }) {
           <Button type="submit" className="w-full justify-center" disabled={saving}>
             {saving ? "등록 중..." : bf.submitLabel}
           </Button>
-        </form>
-      </div>
-    </div>
+      </form>
+    </Modal>
   );
 }
 
@@ -389,22 +338,8 @@ function NewTemplateModal({ session, business, onClose, onCreated }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4" onClick={onClose}>
-      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-slate-900">
-            {tf.title} · {business.name}
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="닫기"
-            className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-          >
-            <Icon name="x" className="h-4 w-4" />
-          </button>
-        </div>
-        <form className="space-y-4" onSubmit={handleSubmit}>
+    <Modal title={`${tf.title} · ${business.name}`} onClose={onClose}>
+      <form className="space-y-4" onSubmit={handleSubmit}>
           <TextField
             label={tf.nameLabel}
             required
@@ -451,9 +386,8 @@ function NewTemplateModal({ session, business, onClose, onCreated }) {
           <Button type="submit" className="w-full justify-center" disabled={saving}>
             {saving ? "업로드 중..." : tf.submitLabel}
           </Button>
-        </form>
-      </div>
-    </div>
+      </form>
+    </Modal>
   );
 }
 
@@ -491,20 +425,8 @@ function EditTemplateModal({ session, template, onClose, onUpdated }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4" onClick={onClose}>
-      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-slate-900">{ef.title}</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="닫기"
-            className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-          >
-            <Icon name="x" className="h-4 w-4" />
-          </button>
-        </div>
-        <form className="space-y-4" onSubmit={handleSubmit}>
+    <Modal title={ef.title} onClose={onClose}>
+      <form className="space-y-4" onSubmit={handleSubmit}>
           <TextField
             label={ef.nameLabel}
             required
@@ -531,9 +453,8 @@ function EditTemplateModal({ session, template, onClose, onUpdated }) {
           <Button type="submit" className="w-full justify-center" disabled={saving}>
             {saving ? "저장 중..." : ef.submitLabel}
           </Button>
-        </form>
-      </div>
-    </div>
+      </form>
+    </Modal>
   );
 }
 
@@ -610,25 +531,7 @@ function NewFieldsModal({ session, template, onClose, onSaved }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4" onClick={onClose}>
-      <div
-        className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-slate-900">
-            {ff.title} · {template.name}
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="닫기"
-            className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-          >
-            <Icon name="x" className="h-4 w-4" />
-          </button>
-        </div>
-
+    <Modal title={`${ff.title} · ${template.name}`} onClose={onClose} width="max-w-2xl">
         {loadingSuggestions && (
           <p className="mb-3 flex items-center gap-1.5 text-xs font-medium text-brand-600">
             <Icon name="sparkle" className="h-3.5 w-3.5" />
@@ -696,8 +599,7 @@ function NewFieldsModal({ session, template, onClose, onSaved }) {
             {saving ? "저장 중..." : ff.submitLabel}
           </Button>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -799,11 +701,45 @@ function BusinessManager({ session }) {
     }
   };
 
+  const swapOrder = async (kind, current, neighbor) => {
+    const path = kind === "business" ? "businesses" : "templates";
+    setActionError(null);
+    try {
+      await Promise.all([
+        fetch(`${BACKEND_URL}/admin/${path}/${current.id}/order`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+          body: JSON.stringify({ sort_order: neighbor.sort_order }),
+        }),
+        fetch(`${BACKEND_URL}/admin/${path}/${neighbor.id}/order`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+          body: JSON.stringify({ sort_order: current.sort_order }),
+        }),
+      ]);
+      await loadBusinessManager();
+    } catch (err) {
+      setActionError(err.message);
+    }
+  };
+
+  const moveBusiness = (index, direction) => {
+    const neighborIndex = index + direction;
+    if (neighborIndex < 0 || neighborIndex >= businesses.length) return;
+    swapOrder("business", businesses[index], businesses[neighborIndex]);
+  };
+
+  const moveTemplate = (list, index, direction) => {
+    const neighborIndex = index + direction;
+    if (neighborIndex < 0 || neighborIndex >= list.length) return;
+    swapOrder("template", list[index], list[neighborIndex]);
+  };
+
   async function loadBusinessManager() {
     setLoadingBM(true);
     const [{ data: biz }, { data: tpl }] = await Promise.all([
-      supabase.from("businesses").select("*").order("created_at", { ascending: false }),
-      supabase.from("templates").select("*").order("form_number"),
+      orderedSelect(() => supabase.from("businesses").select("*"), "created_at", { ascending: false }),
+      orderedSelect(() => supabase.from("templates").select("*"), "form_number"),
     ]);
     setBusinesses(biz || []);
     const grouped = {};
@@ -832,7 +768,7 @@ function BusinessManager({ session }) {
         <p className="text-sm text-slate-400">{bm.businessListEmptyMessage}</p>
       ) : (
         <div className="space-y-3">
-          {businesses.map((biz) => {
+          {businesses.map((biz, bizIndex) => {
             const templates = templatesByBusiness[biz.id] || [];
             return (
               <Card key={biz.id} className="p-5">
@@ -893,7 +829,27 @@ function BusinessManager({ session }) {
                       </Badge>
                     )}
                   </div>
-                  <div className="flex shrink-0 gap-2">
+                  <div className="flex shrink-0 items-center gap-2">
+                    <div className="flex flex-col">
+                      <button
+                        type="button"
+                        aria-label="사업 순서 위로"
+                        disabled={bizIndex === 0}
+                        onClick={() => moveBusiness(bizIndex, -1)}
+                        className="flex h-5 w-5 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30"
+                      >
+                        <Icon name="chevronDown" className="h-3.5 w-3.5 rotate-180" />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="사업 순서 아래로"
+                        disabled={bizIndex === businesses.length - 1}
+                        onClick={() => moveBusiness(bizIndex, 1)}
+                        className="flex h-5 w-5 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30"
+                      >
+                        <Icon name="chevronDown" className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                     <Button
                       variant="secondary"
                       className="px-3 py-1.5 text-xs"
@@ -918,7 +874,7 @@ function BusinessManager({ session }) {
                   <p className="text-xs text-slate-400">{bm.templateListEmptyMessage}</p>
                 ) : (
                   <div className="divide-y divide-slate-100 rounded-xl border border-slate-200">
-                    {templates.map((t) => (
+                    {templates.map((t, tIndex) => (
                       <div key={t.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
                         <div>
                           <p className="text-sm font-semibold text-slate-900">{t.name}</p>
@@ -930,7 +886,27 @@ function BusinessManager({ session }) {
                             t.form_number && <p className="text-xs text-slate-400">서식 번호 {t.form_number}</p>
                           )}
                         </div>
-                        <div className="flex shrink-0 gap-2">
+                        <div className="flex shrink-0 items-center gap-2">
+                          <div className="flex flex-col">
+                            <button
+                              type="button"
+                              aria-label="서식 순서 위로"
+                              disabled={tIndex === 0}
+                              onClick={() => moveTemplate(templates, tIndex, -1)}
+                              className="flex h-5 w-5 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30"
+                            >
+                              <Icon name="chevronDown" className="h-3.5 w-3.5 rotate-180" />
+                            </button>
+                            <button
+                              type="button"
+                              aria-label="서식 순서 아래로"
+                              disabled={tIndex === templates.length - 1}
+                              onClick={() => moveTemplate(templates, tIndex, 1)}
+                              className="flex h-5 w-5 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30"
+                            >
+                              <Icon name="chevronDown" className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
                           <Button
                             variant="secondary"
                             className="px-3 py-1.5 text-xs"
@@ -1004,22 +980,31 @@ export default function AdminPage() {
   const [activeTab, setActiveTab] = useState("submissions");
   const [loading, setLoading] = useState(true);
   const [applicants, setApplicants] = useState([]);
-  const [expandedId, setExpandedId] = useState(null);
-  const [viewingSubmission, setViewingSubmission] = useState(null);
+  const [supportRequests, setSupportRequests] = useState([]);
+  const [supportLoading, setSupportLoading] = useState(true);
+  const [replyDrafts, setReplyDrafts] = useState({});
+  const [expandedProgramId, setExpandedProgramId] = useState(null);
+  const [expandedApplicantKey, setExpandedApplicantKey] = useState(null);
   const [notifying, setNotifying] = useState({});
   const [notified, setNotified] = useState({});
   const [reviewStatusError, setReviewStatusError] = useState(null);
+  const [downloadingId, setDownloadingId] = useState(null);
 
   async function load() {
     setLoading(true);
 
-    const [{ data: businesses }, { data: templates }, { data: submissions }, { data: generatedDocs }] =
+    const [{ data: businesses }, templatesRes, { data: submissions }, { data: generatedDocs }] =
       await Promise.all([
         supabase.from("businesses").select("id,name"),
-        supabase.from("templates").select("id,name,business_id"),
+        supabase.from("templates").select("id,name,business_id,sort_order"),
         supabase.from("submissions").select("*").order("created_at", { ascending: false }),
         supabase.from("generated_documents").select("submission_id,file_path"),
       ]);
+    // sort_order 컬럼이 아직 마이그레이션되지 않았으면 위 select가 에러를 반환하므로,
+    // 그 컬럼 없이 다시 조회해 화면 자체는 계속 정상 동작하게 한다.
+    const templates = templatesRes.error
+      ? (await supabase.from("templates").select("id,name,business_id")).data
+      : templatesRes.data;
 
     const businessNameById = Object.fromEntries((businesses || []).map((b) => [b.id, b.name]));
     const templateById = Object.fromEntries((templates || []).map((t) => [t.id, t]));
@@ -1121,6 +1106,10 @@ export default function AdminPage() {
             });
           }
         }
+        // "사업 관리자" 탭과 동일하게 sort_order 기준으로 정렬해 두 탭의 서식 순서를 통일한다.
+        program.items.sort(
+          (a, b) => (templateById[a.templateId]?.sort_order ?? 0) - (templateById[b.templateId]?.sort_order ?? 0)
+        );
         program.totalTemplates = allTemplates.length;
         program.submittedCount = submittedTemplateIds.size;
         program.percent = allTemplates.length
@@ -1149,9 +1138,27 @@ export default function AdminPage() {
     setLoading(false);
   }
 
+  const loadSupportRequests = useCallback(async () => {
+    setSupportLoading(true);
+    try {
+      const res = await fetch(`${BACKEND_URL}/admin/support-requests`, {
+        headers: { Authorization: `Bearer ${session?.access_token}` },
+      });
+      if (!res.ok) throw new Error(await readErrorMessage(res, "추천 요청을 불러오지 못했습니다."));
+      const data = await res.json();
+      setSupportRequests(data.requests || []);
+    } catch (err) {
+      setReviewStatusError(err.message);
+      setSupportRequests([]);
+    } finally {
+      setSupportLoading(false);
+    }
+  }, [session.access_token]);
+
   useEffect(() => {
     load();
-  }, []);
+    if (session?.access_token) loadSupportRequests();
+  }, [loadSupportRequests, session?.access_token]);
 
   useEffect(() => {
     const channel = supabase
@@ -1174,9 +1181,66 @@ export default function AdminPage() {
     return { applicants: applicants.length, programs: programCount, completed: completedCount };
   }, [applicants]);
 
-  const handleDownload = async (filePath) => {
-    const { data, error } = await supabase.storage.from("generated").createSignedUrl(filePath, 3600);
+  // 신청자 기준으로 모아둔 applicants를 지원사업(공고) 기준으로 다시 묶는다 —
+  // 각 사업에 신청한 기업 수를 먼저 보여주고, 펼치면 기업별 서류를 볼 수 있게 하기 위함.
+  const programGroups = useMemo(() => {
+    const byBusiness = {};
+    for (const applicant of applicants) {
+      for (const program of applicant.programs) {
+        if (!byBusiness[program.businessId]) {
+          byBusiness[program.businessId] = {
+            businessId: program.businessId,
+            businessName: program.businessName,
+            applicants: [],
+            lastUpdated: applicant.lastUpdated,
+          };
+        }
+        const bucket = byBusiness[program.businessId];
+        if (applicant.lastUpdated > bucket.lastUpdated) bucket.lastUpdated = applicant.lastUpdated;
+        bucket.applicants.push({
+          userId: applicant.userId,
+          name: applicant.name,
+          percent: program.percent,
+          items: program.items,
+        });
+      }
+    }
+    return Object.values(byBusiness).sort((a, b) => b.applicants.length - a.applicants.length);
+  }, [applicants]);
+
+  const handleDownload = async (filePath, bucket = "generated") => {
+    const { data, error } = await supabase.storage.from(bucket).createSignedUrl(filePath, 3600);
     if (!error && data) window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+  };
+
+  // "제출 내용 보기"를 누르면 사용자가 입력한 값이 채워진 문서를 바로 다운로드한다.
+  // 사용자가 직접 업로드한 서류는 그 파일을, 서식형은 이미 생성된 문서가 있으면 그것을,
+  // 없으면 백엔드에 생성을 요청한 뒤 바로 다운로드한다.
+  const handleViewSubmission = async (item) => {
+    if (!item.submission) return;
+    if (item.submission.file_path) {
+      return handleDownload(item.submission.file_path, "templates");
+    }
+    if (item.generatedPath) {
+      return handleDownload(item.generatedPath);
+    }
+    setDownloadingId(item.submission.id);
+    setReviewStatusError(null);
+    try {
+      const res = await fetch(`${BACKEND_URL}/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ submission_id: item.submission.id }),
+      });
+      if (!res.ok) throw new Error(await readErrorMessage(res, "문서 생성에 실패했습니다."));
+      const data = await res.json();
+      await handleDownload(data.file_path);
+      await load();
+    } catch (err) {
+      setReviewStatusError(err.message);
+    } finally {
+      setDownloadingId(null);
+    }
   };
 
   const handleNotify = async (applicant, item) => {
@@ -1218,6 +1282,30 @@ export default function AdminPage() {
     await load();
   };
 
+  const handleSendSupportReply = async (request) => {
+    const reply = (replyDrafts[request.id] || "").trim();
+    if (!reply) return;
+    const { error } = await supabase.from("notifications").insert({
+      user_id: request.user_id,
+      type: "support_reply",
+      message: JSON.stringify(
+        {
+          replyTo: request.id,
+          text: reply,
+          created_at: new Date().toISOString(),
+        },
+        null,
+        0
+      ),
+    });
+    if (error) {
+      setReviewStatusError(error.message);
+      return;
+    }
+    setReplyDrafts((prev) => ({ ...prev, [request.id]: "" }));
+    await loadSupportRequests();
+  };
+
   const handleLogout = () => {
     logout();
     navigate("/");
@@ -1227,15 +1315,13 @@ export default function AdminPage() {
     <div className="min-h-screen bg-slate-50">
       <header className="flex h-16 items-center justify-between border-b border-slate-200 bg-white px-6">
         <Link to="/admin" className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-white">
-            <Icon name="building" className="h-4 w-4" />
-          </div>
+          <img src={brand.logo} alt={brand.name} className="h-8 w-8 rounded-lg object-contain" />
           <span className="text-sm font-bold text-slate-900">{brand.name} · 관리자</span>
         </Link>
         <button
           type="button"
           onClick={handleLogout}
-          className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+          className="inline-flex min-w-[5.5rem] items-center justify-center rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
         >
           로그아웃
         </button>
@@ -1270,6 +1356,75 @@ export default function AdminPage() {
           <BusinessManager session={session} />
         ) : (
           <>
+            <Card className="mb-6 p-5">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-base font-bold text-slate-900">맞춤 추천 요청</h2>
+                  <p className="mt-1 text-sm text-slate-500">사용자가 다시 받은 추천 요청과 관리자 답변을 함께 확인합니다.</p>
+                </div>
+                <Badge tone="brand">{supportRequests.length}건</Badge>
+              </div>
+              {supportLoading ? (
+                <p className="text-sm text-slate-400">불러오는 중...</p>
+              ) : supportRequests.length === 0 ? (
+                <p className="text-sm text-slate-400">아직 들어온 추천 요청이 없습니다.</p>
+              ) : (
+                <div className="space-y-4">
+                  {supportRequests.map((request) => (
+                    <div key={request.id} className="rounded-xl border border-slate-200 p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-bold text-slate-900">
+                            {request.company || request.user_name || ap.applicantFallbackName}
+                          </p>
+                          <p className="mt-1 text-xs text-slate-500">{request.email || request.user_id}</p>
+                        </div>
+                        <p className="text-xs text-slate-400">{new Date(request.created_at).toLocaleString("ko-KR")}</p>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                        <Badge tone="neutral">지역 {request.region || "전체"}</Badge>
+                        <Badge tone="brand">품목 {request.category_label || "전체"}</Badge>
+                        <Badge tone="success">추천 {request.matched_ids?.length || 0}건</Badge>
+                      </div>
+                      <div className="mt-3 space-y-2">
+                        <textarea
+                          rows={3}
+                          value={replyDrafts[request.id] || ""}
+                          onChange={(e) =>
+                            setReplyDrafts((prev) => ({ ...prev, [request.id]: e.target.value }))
+                          }
+                          placeholder="관리자 답변을 입력하세요."
+                          className="w-full rounded-xl border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
+                        />
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-xs text-slate-400">
+                            {request.replies?.length || 0}개의 답변이 저장되어 있습니다.
+                          </p>
+                          <Button
+                            type="button"
+                            className="px-4 py-2 text-xs"
+                            onClick={() => handleSendSupportReply(request)}
+                            disabled={!(replyDrafts[request.id] || "").trim()}
+                          >
+                            답변 저장
+                          </Button>
+                        </div>
+                        {request.replies?.length > 0 && (
+                          <div className="space-y-2 rounded-xl bg-slate-50 p-3">
+                            {request.replies.map((reply) => (
+                              <div key={reply.id} className="rounded-lg bg-white px-3 py-2 text-sm text-slate-700">
+                                {reply.message}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+
             <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
               <Card className="p-5">
                 <p className="text-sm text-slate-500">{ap.summaryLabels.applicants}</p>
@@ -1291,24 +1446,28 @@ export default function AdminPage() {
 
             {loading ? (
               <p className="text-sm text-slate-400">불러오는 중...</p>
-            ) : applicants.length === 0 ? (
+            ) : programGroups.length === 0 ? (
               <p className="text-sm text-slate-400">{ap.emptyMessage}</p>
             ) : (
               <div className="space-y-3">
-                {applicants.map((applicant) => (
-                  <ApplicantRow
-                    key={applicant.userId}
-                    applicant={applicant}
-                    expanded={expandedId === applicant.userId}
-                    onToggle={() => setExpandedId((id) => (id === applicant.userId ? null : applicant.userId))}
-                    onViewSubmission={(item) =>
-                      setViewingSubmission({ submission: item.submission, templateName: item.templateName })
+                {programGroups.map((program) => (
+                  <ProgramRow
+                    key={program.businessId}
+                    program={program}
+                    expanded={expandedProgramId === program.businessId}
+                    onToggle={() =>
+                      setExpandedProgramId((id) => (id === program.businessId ? null : program.businessId))
                     }
-                    onDownload={handleDownload}
+                    expandedApplicantKey={expandedApplicantKey}
+                    onToggleApplicant={(key) =>
+                      setExpandedApplicantKey((k) => (k === key ? null : key))
+                    }
+                    onViewSubmission={handleViewSubmission}
                     onNotify={handleNotify}
                     onSetReviewStatus={handleSetReviewStatus}
                     notifying={notifying}
                     notified={notified}
+                    downloadingId={downloadingId}
                   />
                 ))}
               </div>
@@ -1316,14 +1475,6 @@ export default function AdminPage() {
           </>
         )}
       </div>
-
-      {viewingSubmission && (
-        <SubmissionDetailModal
-          submission={viewingSubmission.submission}
-          templateName={viewingSubmission.templateName}
-          onClose={() => setViewingSubmission(null)}
-        />
-      )}
     </div>
   );
 }

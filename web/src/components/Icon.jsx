@@ -45,15 +45,20 @@ const paths = {
   bell: "M14.857 17.082a23.85 23.85 0 005.454-1.31A8.97 8.97 0 0118 9.75V9A6 6 0 006 9v.75a8.97 8.97 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.26 24.26 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0",
   pencil: "M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 18.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487z",
   externalLink: "M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25",
+  grid: "M4.5 4.5h6v6h-6zM13.5 4.5h6v6h-6zM4.5 13.5h6v6h-6zM13.5 13.5h6v6h-6z",
+  expand: "M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9M20.25 20.25h-4.5m4.5 0v-4.5m0 4.5L15 15",
+  collapse: "M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5M15 15l5.25 5.25",
+  bookmark: "M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.5 48.5 0 0111.186 0z",
+  calendar: "M6.75 3v2.25M17.25 3v2.25M3.75 18.75h16.5A1.5 1.5 0 0021.75 17.25V7.5a1.5 1.5 0 00-1.5-1.5H3.75a1.5 1.5 0 00-1.5 1.5v9.75a1.5 1.5 0 001.5 1.5zM3 9.75h18",
 };
 
-export default function Icon({ name, className = "w-5 h-5", strokeWidth = 1.8 }) {
+export default function Icon({ name, className = "w-5 h-5", strokeWidth = 1.8, filled = false }) {
   const d = paths[name];
   if (!d) return null;
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
-      fill="none"
+      fill={filled ? "currentColor" : "none"}
       viewBox="0 0 24 24"
       strokeWidth={strokeWidth}
       stroke="currentColor"

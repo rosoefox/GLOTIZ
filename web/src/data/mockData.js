@@ -1,7 +1,16 @@
+const logoUrl = new URL("../../로고.png", import.meta.url).href;
+const profileGreenLiving = new URL("../../profile/그린리빙.png", import.meta.url).href;
+const profileMisoFood = new URL("../../profile/미소식품.png", import.meta.url).href;
+const profileOurHangwa = new URL("../../profile/우리한과.png", import.meta.url).href;
+const profileCosmoTrade = new URL("../../profile/코스모트레이드.png", import.meta.url).href;
+const profileTechGlobal = new URL("../../profile/테크글로벌무역.png", import.meta.url).href;
+const profileHappyCosmetic = new URL("../../profile/해피코스메틱.png", import.meta.url).href;
+
 // UI 전용 더미 데이터 (백엔드/AI 연동 없음)
 export const brand = {
-  name: "JB-XPORT",
-  tagline: "AI 수출·마케팅 에이전트",
+  name: "GLOBIZ",
+  tagline: "GLOBAL BUSINESS SOLUTION",
+  logo: logoUrl,
 };
 
 export const user = {
@@ -19,6 +28,7 @@ export const nav = {
     { path: "/gov-support", label: "수출지원사업" },
     { path: "/marketing", label: "AI 이미지 생성", requiresAuth: true },
     { path: "/shopee", label: "해외 수출 플랫폼 입점 가이드", requiresAuth: true },
+    { path: "/help", label: "고객지원" },
   ],
 };
 
@@ -147,8 +157,12 @@ export const myExportItems = {
 };
 
 export const dashboard = {
-  greetingTitle: "해외에 판매하고 싶은 제품은 무엇인가요?",
-  greetingSubtitle: "당신의 해외 수출을 시작하세요.",
+  heroLines: [
+    "수출 지원사업 신청부터",
+    "해외 판매·마케팅까지,",
+    "GLOBIZ가",
+    "글로벌 비즈니스의 시작을 함께합니다.",
+  ],
   availablePrograms: 128,
   announcementsLabel: "지원사업공고",
   programStats: [
@@ -218,12 +232,54 @@ export const dashboard = {
   satisfactionRate: 98.7,
   satisfactionSubtitle: "고객 만족도",
   reviews: [
-    { name: "김해피", company: "해피코스메틱", rating: 5, text: "AI가 서류 초안을 잡아줘서 신청서 작성 시간이 절반으로 줄었어요. 담당자 확인만 하면 돼서 정말 편해요." },
-    { name: "박수출", company: "미소식품", rating: 5, text: "지원사업 매칭이 정확해서 놓칠 뻔한 마감임박 공고까지 챙길 수 있었습니다." },
-    { name: "이대표", company: "그린리빙", rating: 5, text: "디자인 시안을 여러 개 받아보고 고르기만 하면 돼서 외주 맡기는 것보다 훨씬 빨랐어요." },
-    { name: "최무역", company: "코스모트레이드", rating: 5, text: "수출 서류를 하나하나 준비할 필요 없이 AI가 자동으로 채워줘서 실수도 줄었습니다." },
-    { name: "정소상", company: "우리한과", rating: 5, text: "수출지원사업 정보를 한곳에서 볼 수 있어서 정보 찾는 시간이 크게 줄었어요." },
-    { name: "한바이어", company: "테크글로벌무역", rating: 5, text: "필수 서류 체크리스트 덕분에 빠뜨리는 서류 없이 준비할 수 있었습니다." },
+    {
+      name: "김해피",
+      company: "해피코스메틱",
+      rating: 5,
+      segment: "소상공인",
+      avatar: profileHappyCosmetic,
+      text: "AI가 서류 초안을 잡아줘서 신청서 작성 시간이 절반으로 줄었어요. 담당자 확인만 하면 돼서 정말 편해요.",
+    },
+    {
+      name: "박수출",
+      company: "미소식품",
+      rating: 5,
+      segment: "소상공인",
+      avatar: profileMisoFood,
+      text: "지원사업 매칭이 정확해서 놓칠 뻔한 마감임박 공고까지 챙길 수 있었습니다.",
+    },
+    {
+      name: "이대표",
+      company: "그린리빙",
+      rating: 5,
+      segment: "소상공인",
+      avatar: profileGreenLiving,
+      text: "디자인 시안을 여러 개 받아보고 고르기만 하면 돼서 외주 맡기는 것보다 훨씬 빨랐어요.",
+    },
+    {
+      name: "최무역",
+      company: "코스모트레이드",
+      rating: 5,
+      segment: "기업",
+      avatar: profileCosmoTrade,
+      text: "수출 서류를 하나하나 준비할 필요 없이 AI가 자동으로 채워줘서 실수도 줄었습니다.",
+    },
+    {
+      name: "정소상",
+      company: "우리한과",
+      rating: 5,
+      segment: "소상공인",
+      avatar: profileOurHangwa,
+      text: "수출지원사업 정보를 한곳에서 볼 수 있어서 정보 찾는 시간이 크게 줄었어요.",
+    },
+    {
+      name: "한바이어",
+      company: "테크글로벌무역",
+      rating: 5,
+      segment: "기업",
+      avatar: profileTechGlobal,
+      text: "필수 서류 체크리스트 덕분에 빠뜨리는 서류 없이 준비할 수 있었습니다.",
+    },
   ],
 
   itemCategoriesTitle: "품목별 지원사업 공고",
@@ -332,8 +388,8 @@ export const govSupport = {
       "진안군", "무주군", "장수군", "임실군", "순창군", "고창군", "부안군",
     ],
     statusOptions: [
-      { id: "all", label: "전체" },
       { id: "ongoing", label: "진행중" },
+      { id: "deadline", label: "마감일 빠른순" },
       { id: "closed", label: "마감" },
     ],
   },
@@ -729,12 +785,6 @@ export const helpAndFaq = {
     description: "수출 규정, 서류 작성, 시장 진입 전략에 대해 AI로부터 즉시 맞춤 답변을 받아보세요.",
     ctaLabel: "지금 상담 시작하기",
   },
-  categories: [
-    { id: "market-entry", label: "시장 진입", icon: "globe" },
-    { id: "documentation", label: "서류 작성", icon: "documents" },
-    { id: "tariffs-taxes", label: "관세·세금", icon: "bank" },
-    { id: "logistics", label: "물류", icon: "truck" },
-  ],
   faqSectionTitle: "자주 묻는 질문",
   faqs: [
     {
@@ -835,164 +885,47 @@ export const govConsultation = {
 
 export const shopeeListing = {
   title: "해외 수출 플랫폼 입점 가이드",
-  subtitle: "쇼피 셀러센터의 상품 등록 화면에 맞춰 필요한 정보만 정리했어요. 값을 복사해서 그대로 붙여넣으세요.",
+  subtitle: "해외 판매 등록에 꼭 필요한 항목만 모았어요. 작성 후 번역하거나 그대로 복사해서 붙여넣으세요.",
   introTitle: "쇼피 입점, 이렇게 진행하세요",
   introSteps: [
     { title: "쇼피 파트너센터 가입", description: "사업자 정보로 셀러 계정을 만들고 입점 심사를 신청하세요." },
     { title: "상품 등록 정보 준비", description: "아래 항목을 작성하거나 AI 자동완성/이전 정보 불러오기로 채우세요." },
-    { title: "쇼피 상품 등록 화면에 붙여넣기", description: "왼쪽 화면을 참고해 항목별 복사 버튼으로 옮겨 붙이세요." },
+    { title: "번역 후 붙여넣기", description: "원하는 언어로 번역한 뒤 복사해서 쇼피 상품 등록 화면에 붙여넣으세요." },
     { title: "검수 후 판매 시작", description: "쇼피 심사가 완료되면 등록한 상품이 바로 노출됩니다." },
   ],
   guideVideoLabel: "쇼피 입점 가이드 영상 보러가기",
   guideVideoUrl: "",
   guideVideoPendingNote: "영상 링크는 준비 중이에요. 링크가 등록되면 버튼이 바로 연결됩니다.",
-  referenceNote: "왼쪽은 쇼피 'Add a New Product' 화면 구성을 그대로 재현한 참고용 레이아웃입니다. 영문 항목명 밑에 작은 글씨로 한국어 뜻을 표기했어요.",
-  loadPreviousLabel: "이전에 등록한 품목 불러오기",
-  loadMyInfoLabel: "내 기본정보 불러오기",
+  loadPreviousLabel: "이전 정보 불러오기",
+  loadPreviousEmpty: "이전에 작성한 정보가 없어요.",
   aiFillLabel: "AI 자동완성",
   copyLabel: "복사",
   copiedLabel: "복사됨",
-  copyAllLabel: "전체 내용 복사",
+  translateAllLabel: "전체 내용 번역",
+  translatingLabel: "번역하는 중...",
+  translateResultTitle: "번역 결과",
+  translateEmptyNote: "번역할 내용을 먼저 입력하세요.",
+  translateLanguages: [
+    { code: "en", label: "English" },
+    { code: "th", label: "ไทย (태국어)" },
+    { code: "vi", label: "Tiếng Việt (베트남어)" },
+  ],
   imagePickerLabel: "AI 이미지 생성에서 불러오기",
   imagePickerEmpty: "AI 이미지 생성에서 만든 이미지가 아직 없어요.",
-  fieldSectionLabels: {
-    basic: "Basic information",
-    specification: "Specification",
-    sales: "Sales Information",
-    shipping: "Shipping",
-  },
+  imageUploadLabel: "직접 업로드",
+  priceSuggestLabel: "AI 적정가 추천",
+  priceSuggestPendingLabel: "추천받는 중...",
   fields: [
-    { key: "productName", section: "basic", label: "상품명", enLabel: "Product Name", placeholder: "예: Dalba Waterjel Sun Cream SPF50+", required: true },
-    { key: "category", section: "basic", label: "카테고리", enLabel: "Category", placeholder: "예: Beauty > Skincare > Face Sunscreen", required: true },
-    { key: "description", section: "basic", label: "상품 설명", enLabel: "Product Description", placeholder: "최소 20자 이상 입력하세요.", required: true, multiline: true, aiFillable: true },
-    { key: "brand", section: "specification", label: "브랜드", enLabel: "Brand", placeholder: "예: Dalba" },
-    { key: "shelfLife", section: "specification", label: "유통기한", enLabel: "Shelf life", placeholder: "예: 24 Months" },
-    { key: "skinType", section: "specification", label: "피부 타입", enLabel: "Skin Type", placeholder: "예: All Skin Types" },
-    { key: "volume", section: "specification", label: "용량", enLabel: "Volume", placeholder: "예: 50ml" },
-    { key: "spf", section: "specification", label: "자외선 차단지수", enLabel: "SPF", placeholder: "예: SPF50+" },
-    { key: "price", section: "sales", label: "판매가", enLabel: "Global SKU Price", placeholder: "예: 15000", required: true },
-    { key: "stock", section: "sales", label: "재고 수량", enLabel: "Stock", placeholder: "예: 100", required: true },
-    { key: "weight", section: "shipping", label: "상품 무게(kg)", enLabel: "Weight", placeholder: "예: 0.3", required: true },
-    { key: "daysToShip", section: "shipping", label: "배송 준비 일수", enLabel: "Days to ship", placeholder: "예: 2", required: true },
+    { key: "productName", label: "Product Name", ko: "상품명", placeholder: "예: Dalba Waterjel Sun Cream SPF50+" },
+    { key: "category", label: "Category", ko: "카테고리", placeholder: "예: Beauty > Skincare > Face Sunscreen" },
+    { key: "description", label: "Product Description", ko: "상품 설명", placeholder: "최소 20자 이상 입력하세요.", multiline: true, aiFillable: true },
+    { key: "brand", label: "Brand", ko: "브랜드", placeholder: "예: Dalba" },
+    { key: "shelfLife", label: "Shelf life", ko: "유통기한", placeholder: "예: 24 Months" },
+    { key: "price", label: "Global SKU Price", ko: "글로벌 판매가", placeholder: "예: 15000", priceSuggestable: true },
+    { key: "stock", label: "Stock", ko: "재고 수량", placeholder: "예: 100" },
+    { key: "weight", label: "Weight (kg)", ko: "무게(kg)", placeholder: "예: 0.3" },
+    { key: "daysToShip", label: "Days to ship", ko: "배송 준비 일수", placeholder: "예: 2" },
   ],
-};
-
-// 왼쪽 참고 레이아웃: 실제 쇼피 'Add a New Product' 화면 구성을 그대로 재현.
-// 영문 항목명(en) 아래 작은 한국어 뜻(ko)을 함께 표기한다.
-export const shopeeReferenceForm = {
-  breadcrumb: ["Home", "Global SKU", "Add a New Product"],
-  steps: [
-    { en: "Basic information", ko: "기본 정보" },
-    { en: "Specification", ko: "상세 스펙" },
-    { en: "Sales Information", ko: "판매 정보" },
-    { en: "Shipping", ko: "배송" },
-    { en: "Others", ko: "기타" },
-  ],
-  basic: {
-    title: "Basic information",
-    ko: "기본 정보",
-    images: {
-      en: "Product Images",
-      ko: "상품 이미지",
-      note: "Size: Max 30MB, resolution should not less than 1x1px",
-    },
-    video: {
-      en: "Product Video",
-      ko: "상품 동영상",
-      note: "Duration: 10s-60s · Format: MP4",
-    },
-    name: { key: "productName", en: "Product Name", ko: "상품명", meta: "15/180", required: true, placeholder: "예: Dalba Waterjel Sun Cream SPF50+" },
-    category: { key: "category", en: "Category", ko: "카테고리", required: true, placeholder: "예: Beauty > Skincare > Face Sunscreen" },
-    description: {
-      key: "description",
-      en: "Product Description",
-      ko: "상품 설명",
-      error: "Your product description is too short. Please input at least 20 characters.",
-      meta: "0/5000",
-      required: true,
-      multiline: true,
-      aiFillable: true,
-      placeholder: "최소 20자 이상 입력하세요.",
-    },
-  },
-  specification: {
-    title: "Specification",
-    ko: "상세 스펙",
-    completeNote: "Complete: 7/48",
-    toolbar: ["Cancel", "Create", "Create and Publish"],
-    fields: [
-      { key: "brand", en: "Brand", ko: "브랜드", required: true, placeholder: "예: Dalba" },
-      { key: "shelfLife", en: "shelf lifes", ko: "유통기한", required: true, tag: "Pre-filled", placeholder: "예: 24 Months" },
-      { en: "FDA Registration No.", ko: "FDA 등록번호" },
-      { en: "pack type", ko: "포장 유형", tag: "Pre-filled", errorTag: "1 error(s)" },
-      { en: "Ingredient Preference", ko: "성분 선호도" },
-      { key: "skinType", en: "Skin Type", ko: "피부 타입", placeholder: "예: All Skin Types" },
-      { en: "Expiry Date", ko: "유효기간" },
-      { en: "Weight", ko: "중량" },
-      { en: "Skin Care Benefits", ko: "스킨케어 효능" },
-      { en: "Specialty Type", ko: "특수 유형" },
-      { key: "volume", en: "Volume", ko: "용량", placeholder: "예: 50ml" },
-      { key: "spf", en: "SPF", ko: "자외선 차단지수", placeholder: "예: SPF50+" },
-      { en: "Condition", ko: "상태", tag: "Pre-filled" },
-      { en: "Edition Type", ko: "에디션 유형" },
-      { en: "Advertisement License No.", ko: "광고 허가번호" },
-      { en: "Ingredient", ko: "성분" },
-      { en: "Quantity", ko: "수량" },
-      { en: "Days to Expire", ko: "유효 잔여일" },
-      { en: "indication", ko: "용법/용량" },
-      { en: "Storage Condition", ko: "보관 조건", tag: "Pre-filled" },
-      { en: "Production batch number", ko: "생산 배치번호" },
-      { en: "Manufacturer/trader name", ko: "제조/유통사명" },
-      { en: "Manufacturer/trader address", ko: "제조/유통사 주소" },
-      { en: "INVIMA certification", ko: "INVIMA 인증번호" },
-      { en: "Custom Product", ko: "맞춤 제작 상품", tag: "Pre-filled" },
-      { en: "HSA Notification No.", ko: "HSA 신고번호" },
-      { en: "Labled in Chinese", ko: "중문 라벨 표기" },
-      { en: "Filed product registration or inspection permit", ko: "제품 등록/검사 허가 신고" },
-      { en: "Certificate No. (Halal)", ko: "할랄 인증번호" },
-      { en: "NA", ko: "해당 없음", tag: "Pre-filled" },
-      { en: "Item Batch code", ko: "상품 배치코드" },
-      { en: "Item Code", ko: "상품 코드" },
-      { en: "Exemption Reason", ko: "면제 사유" },
-      { en: "Alcohol Or Aerosol", ko: "알코올/에어로졸 여부" },
-      { en: "Allergen Information", ko: "알레르기 유발 정보" },
-      { en: "Franchise", ko: "프랜차이즈" },
-      { en: "Item Qty. same batch", ko: "동일 배치 수량" },
-      { en: "Expire Date", ko: "유효기한" },
-      { en: "Model", ko: "모델명" },
-      { en: "NPRA Notification", ko: "NPRA 신고번호" },
-      { en: "HALAL Certificates", ko: "할랄 인증서" },
-      { en: "Bundle", ko: "묶음 상품" },
-      { en: "Series", ko: "시리즈" },
-      { en: "Non Halal Ingredients", ko: "비할랄 성분" },
-      { en: "Cosmetic Product Notification Completed", ko: "화장품 신고 완료 여부" },
-      { en: "Product Information File (PIF) Established", ko: "제품정보파일(PIF) 구축 여부" },
-    ],
-    showLessLabel: "Show less",
-  },
-  sales: {
-    title: "Sales Information",
-    ko: "판매 정보",
-    variations: { en: "Variations", ko: "옵션(변형)", action: "Enable Variations" },
-    price: { key: "price", en: "Global SKU Price", ko: "글로벌 SKU 판매가", required: true, placeholder: "예: 15000" },
-    priceNote: "Shop SKU price is auto calculated based on the Price Calculation Formula Setting.",
-    stock: { key: "stock", en: "Stock", ko: "재고", required: true, placeholder: "예: 100" },
-  },
-  shipping: {
-    title: "Shipping",
-    ko: "배송",
-    weight: { key: "weight", en: "Weight", ko: "무게", required: true, placeholder: "예: 0.3 kg" },
-    parcelSize: { en: "Parcel Size", ko: "박스 규격 (W × L × H)" },
-    daysToShip: { key: "daysToShip", en: "Days to ship", ko: "배송 준비일", required: true, placeholder: "예: 2" },
-  },
-  others: {
-    title: "Others",
-    ko: "기타",
-    condition: { en: "Condition", ko: "상품 상태" },
-    parentSku: { en: "Parent SKU", ko: "상위 SKU" },
-  },
-  bottomToolbar: ["Cancel", "Create", "Create and Publish"],
-  bottomErrorTag: "1 error(s)",
 };
 
 export const adminPanel = {
@@ -1026,9 +959,11 @@ export const adminPanel = {
   notifiedLabel: "알림 전송됨",
   emptyMessage: "아직 제출된 신청서가 없습니다.",
   viewDocumentLabel: "제출 내용 보기",
+  generatingLabel: "문서 생성 중...",
   downloadLabel: "다운로드",
-  markNeedsRevisionLabel: "보완 필요로 표시",
-  markApprovedLabel: "심사완료로 표시",
+  markNeedsRevisionLabel: "반려",
+  markApprovedLabel: "승인",
+  applicantCountLabel: "신청 기업",
 
   tabs: {
     submissions: "제출 현황",

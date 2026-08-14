@@ -70,6 +70,20 @@ class ChatRequest(BaseModel):
     history: list[ChatMessage] = []
 
 
+class FaqSuggestRequest(BaseModel):
+    focus: str | None = None
+
+
+class GovSupportMatchRequest(BaseModel):
+    region: str
+    category_label: str
+
+
+class SupportReplyRequest(BaseModel):
+    request_id: str
+    reply: str
+
+
 CHATBOT_SYSTEM_PROMPT = """당신은 전북 지역 소상공인의 해외 수출을 돕는 JB-XPORT 서비스의 AI 챗봇입니다.
 수출 서류, 정부 지원사업, 관세·통관, 해외 시장 진출 관련 질문에 친절하고 간결하게 한국어로 답변하세요.
 확실하지 않은 법률·세무 정보는 단정짓지 말고 전문가 상담을 권하세요."""
@@ -87,6 +101,243 @@ def chat(req: ChatRequest):
         contents=prompt,
     )
     return {"answer": (response.text or "").strip()}
+
+
+FAQ_FALLBACKS = [
+    {
+        "question": "저한테 맞는 지원사업을 찾아볼 수 있나요?",
+        "answer": "네. 지역과 품목을 선택하면 조건에 맞는 지원사업을 골라볼 수 있고, 결과는 다시 저장해서 다음에 이어볼 수 있어요.",
+    },
+    {
+        "question": "서류 작성하다가 중간에 저장할 수 있나요?",
+        "answer": "네. 임시저장으로 남겨두고 나중에 다시 열어 이어서 작성할 수 있습니다.",
+    },
+    {
+        "question": "AI가 서류를 자동으로 채워주나요?",
+        "answer": "네. 입력한 정보와 이전 작성 내용을 바탕으로 AI가 일부 항목을 자동으로 채워줍니다.",
+    },
+    {
+        "question": "관리자가 검토한 내용도 확인할 수 있나요?",
+        "answer": "네. 제출 후 심사 상태와 보완 요청은 저장되며, 나의 지원사업 현황에서 확인할 수 있습니다.",
+    },
+]
+
+FAQ_SUGGEST_PROMPT = """당신은 JB-XPORT 고객지원 FAQ를 구성하는 어시스턴트입니다.
+전북 소상공인의 해외 수출, 정부 지원사업, 서류 작성, AI 자동화 관련 자주 묻는 질문 4개를 한국어로 작성하세요.
+각 항목은 question / answer 형태의 JSON 배열이어야 하며, 답변은 2문장 이내로 친절하고 구체적으로 작성하세요.
+사용자가 막히기 쉬운 주제를 우선적으로 고르세요.
+"""
+
+
+@app.get("/faq/suggest")
+def suggest_faqs():
+    try:
+        response = gemini_client.models.generate_content(
+            model="gemini-flash-latest",
+            contents=FAQ_SUGGEST_PROMPT,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema={
+                    "type": "ARRAY",
+                    "items": {
+                        "type": "OBJECT",
+                        "properties": {
+                            "question": {"type": "STRING"},
+                            "answer": {"type": "STRING"},
+                        },
+                        "required": ["question", "answer"],
+                    },
+                },
+            ),
+        )
+        faqs = json.loads(response.text or "[]")
+        cleaned = []
+        seen = set()
+        for item in faqs:
+            question = (item.get("question") or "").strip()
+            answer = (item.get("answer") or "").strip()
+            if not question or not answer or question in seen:
+                continue
+            seen.add(question)
+            cleaned.append({"question": question, "answer": answer})
+        if cleaned:
+            return {"faqs": cleaned[:4]}
+    except Exception:
+        pass
+    return {"faqs": FAQ_FALLBACKS}
+
+
+SUPPORT_CATEGORY_KEYWORDS = {
+    "화장품": ["화장품", "뷰티", "코스메틱", "스킨케어"],
+    "식품": ["식품", "푸드", "농산물", "가공식품", "음료", "한과", "고추장"],
+    "AI·Tech": ["AI", "IT", "스마트", "기술", "디지털", "전자"],
+    "Life style": ["생활", "리빙", "패션", "잡화", "인테리어"],
+}
+
+
+def parse_notification_message(message: str) -> dict:
+    try:
+        data = json.loads(message)
+        return data if isinstance(data, dict) else {"text": message}
+    except Exception:
+        return {"text": message}
+
+
+def support_business_matches(business: dict, region: str, category_label: str) -> bool:
+    haystack = json.dumps(
+        {
+            "name": business.get("name") or "",
+            "description": business.get("description") or "",
+            "basic_info": business.get("basic_info") or {},
+        },
+        ensure_ascii=False,
+    )
+
+    region = (region or "").strip()
+    if region and region not in haystack:
+        return False
+
+    labels = [part.strip() for part in (category_label or "").split(",") if part.strip()]
+    if not labels:
+        return True
+
+    for label in labels:
+        if label in haystack:
+            return True
+        for keyword in SUPPORT_CATEGORY_KEYWORDS.get(label, []):
+            if keyword in haystack:
+                return True
+    return False
+
+
+@app.post("/gov-support/match")
+def match_gov_support(req: GovSupportMatchRequest, authorization: str | None = Header(None)):
+    businesses = supabase.table("businesses").select("id,name,description,basic_info").execute().data or []
+    matched_ids = [b["id"] for b in businesses if support_business_matches(b, req.region, req.category_label)]
+    if not matched_ids:
+        matched_ids = [b["id"] for b in businesses]
+
+    request_payload = {
+        "region": req.region,
+        "category_label": req.category_label,
+        "matched_ids": matched_ids,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    if authorization and authorization.lower().startswith("bearer "):
+        try:
+            user_id = require_user(authorization)
+            supabase.table("notifications").insert({
+                "user_id": user_id,
+                "type": "support_request",
+                "message": json.dumps(request_payload, ensure_ascii=False),
+            }).execute()
+        except Exception:
+            # 저장 실패는 추천 결과 자체를 막지 않는다.
+            pass
+
+    return {"matchedIds": matched_ids}
+
+
+@app.get("/admin/support-requests")
+def list_support_requests(authorization: str | None = Header(None)):
+    require_admin(authorization)
+
+    requests = (
+        supabase.table("notifications")
+        .select("*")
+        .eq("type", "support_request")
+        .order("created_at", desc=True)
+        .execute()
+        .data
+        or []
+    )
+    replies = (
+        supabase.table("notifications")
+        .select("*")
+        .eq("type", "support_reply")
+        .order("created_at", desc=False)
+        .execute()
+        .data
+        or []
+    )
+    profiles = []
+    if requests:
+        profiles = (
+            supabase.table("profiles")
+            .select("id,name,company,email")
+            .in_("id", [req["user_id"] for req in requests])
+            .execute()
+            .data
+            or []
+        )
+    profile_by_id = {p["id"]: p for p in profiles}
+
+    reply_by_request = {}
+    for reply in replies:
+        payload = parse_notification_message(reply.get("message") or "")
+        request_id = payload.get("replyTo")
+        if not request_id:
+            continue
+        reply_by_request.setdefault(request_id, []).append({
+            "id": reply["id"],
+            "message": payload.get("text") or reply.get("message") or "",
+            "created_at": reply["created_at"],
+        })
+
+    items = []
+    for req_row in requests:
+        payload = parse_notification_message(req_row.get("message") or "")
+        items.append({
+            "id": req_row["id"],
+            "user_id": req_row["user_id"],
+            "user_name": profile_by_id.get(req_row["user_id"], {}).get("name"),
+            "company": profile_by_id.get(req_row["user_id"], {}).get("company"),
+            "email": profile_by_id.get(req_row["user_id"], {}).get("email"),
+            "created_at": req_row["created_at"],
+            "region": payload.get("region", ""),
+            "category_label": payload.get("category_label", ""),
+            "matched_ids": payload.get("matched_ids", []),
+            "replies": reply_by_request.get(req_row["id"], []),
+        })
+
+    return {"requests": items}
+
+
+@app.post("/admin/support-requests/reply")
+def reply_support_request(req: SupportReplyRequest, authorization: str | None = Header(None)):
+    require_admin(authorization)
+
+    request_row = (
+        supabase.table("notifications")
+        .select("*")
+        .eq("id", req.request_id)
+        .maybe_single()
+        .execute()
+        .data
+    )
+    if not request_row or request_row.get("type") != "support_request":
+        raise HTTPException(status_code=404, detail="대상 요청을 찾을 수 없습니다.")
+
+    message = json.dumps(
+        {
+            "replyTo": req.request_id,
+            "text": req.reply,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        },
+        ensure_ascii=False,
+    )
+    row = (
+        supabase.table("notifications")
+        .insert({
+            "user_id": request_row["user_id"],
+            "type": "support_reply",
+            "message": message,
+        })
+        .execute()
+        .data[0]
+    )
+    return row
 
 
 # --- 시장 분석: 관세청 품목별 국가별 수출입실적(GW) 연동 + Gemini 코멘터리 ---

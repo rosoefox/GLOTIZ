@@ -45,7 +45,7 @@ export default function App() {
                   <Route path="/my-items" element={<RequireAuth><MyExportItems /></RequireAuth>} />
                   <Route path="/mypage" element={<RequireAuth><MyPage /></RequireAuth>} />
                   <Route path="/my-applications" element={<RequireAuth><MyApplicationStatus /></RequireAuth>} />
-                  <Route path="/docs" element={<RequireAuth><DocumentChecklist /></RequireAuth>} />
+                  <Route path="/docs" element={<DocumentChecklist />} />
                   <Route path="/docs/fill/:templateId" element={<RequireAuth><DocumentFill /></RequireAuth>} />
                   <Route path="/docs/translate" element={<RequireAuth><TranslationEditor /></RequireAuth>} />
                   <Route path="/marketing" element={<RequireAuth><MarketingMaterialCreator /></RequireAuth>} />

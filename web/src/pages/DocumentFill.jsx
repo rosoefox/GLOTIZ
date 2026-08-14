@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import Icon from "../components/Icon";
 import { Card, Button } from "../components/ui";
+import Modal from "../components/Modal";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
 import { readErrorMessage } from "../lib/apiError";
 import { draftKey, readDraft } from "../lib/draft";
+import { documentPreview } from "../data/mockData";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
 
@@ -39,14 +41,18 @@ function guessFromProfile(fieldKey, profile, authUser) {
   return null;
 }
 
+function isMultilineField(field) {
+  return field.field_type === "textarea" || field.field_type === "long_text";
+}
+
 function FieldInput({ field, value, onChange }) {
   const inputClass =
-    "w-full rounded-lg border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100";
+    "w-full rounded-lg border border-slate-300 bg-slate-50 px-4 py-3 text-base text-slate-900 placeholder:text-slate-400 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100";
 
-  if (field.field_type === "textarea" || field.field_type === "long_text") {
+  if (isMultilineField(field)) {
     return (
       <textarea
-        rows={3}
+        rows={4}
         className={inputClass}
         value={value ?? ""}
         onChange={(e) => onChange(field.id, e.target.value)}
@@ -98,6 +104,9 @@ export default function DocumentFill() {
   const [aiFilling, setAiFilling] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+  const [showComplete, setShowComplete] = useState(false);
+
+  const allFilled = fields.length > 0 && fields.every((f) => (values[f.id] ?? "").toString().trim() !== "");
 
   useEffect(() => {
     if (!templateId || !authUser?.id) return;
@@ -120,17 +129,21 @@ export default function DocumentFill() {
         .limit(1);
       const latest = subs?.[0];
 
-      if (latest) {
+      if (latest) setIsEditing(true);
+
+      // 임시저장(draft)이 있으면 항상 그 내용을 최우선으로 보여준다 — 제출 이후에도
+      // "임시저장"으로 남겨둔 최신 수정 내용이 있으면 그게 화면에 보여야 하기 때문.
+      // draft는 실제 제출 시에만 지워지므로, 없으면 최근 제출값으로, 그것도 없으면 빈 값으로 시작한다.
+      const draft = readDraft(authUser.id, templateId);
+      if (draft) {
+        setValues(draft);
+      } else if (latest) {
         const { data: valueRows } = await supabase
           .from("submission_values")
           .select("field_id, value")
           .eq("submission_id", latest.id);
         if (cancelled) return;
         setValues(Object.fromEntries((valueRows || []).map((v) => [v.field_id, v.value])));
-        setIsEditing(true);
-      } else {
-        const draft = readDraft(authUser.id, templateId);
-        if (draft) setValues(draft);
       }
       setLoading(false);
     }
@@ -249,6 +262,10 @@ export default function DocumentFill() {
       setError("로그인이 필요합니다.");
       return;
     }
+    if (!allFilled) {
+      setError("모든 항목을 입력해야 제출할 수 있습니다.");
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
@@ -290,7 +307,7 @@ export default function DocumentFill() {
         // 문서 생성 실패해도 제출(submission/값)은 이미 저장됐으니 관리자가 확인할 수 있다.
       }
 
-      navigate("/docs", { state: { businessId, businessName } });
+      setShowComplete(true);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -299,7 +316,7 @@ export default function DocumentFill() {
   };
 
   return (
-    <div className="mx-auto max-w-3xl px-8 py-8">
+    <div className="mx-auto max-w-4xl px-8 py-8">
       <button
         type="button"
         onClick={() => navigate("/docs", { state: { businessId, businessName } })}
@@ -308,16 +325,16 @@ export default function DocumentFill() {
         <Icon name="arrowLeft" className="h-4 w-4" /> 목록으로
       </button>
 
-      <h1 className="text-2xl font-bold text-slate-900">{templateName || "서류 작성하기"}</h1>
-      {businessName && <p className="mt-1 text-sm text-slate-500">{businessName}</p>}
+      <h1 className="text-3xl font-extrabold text-slate-900">{templateName || "서류 작성하기"}</h1>
+      {businessName && <p className="mt-1.5 text-base text-slate-500">{businessName}</p>}
 
       <div className="mt-5 flex flex-wrap gap-2">
-        <Button type="button" variant="outlineBrand" className="px-3 py-2 text-xs" onClick={handleTransferInfo} disabled={transferring}>
-          <Icon name="user" className="h-3.5 w-3.5" />
+        <Button type="button" variant="outlineBrand" className="px-4 py-2.5 text-sm" onClick={handleTransferInfo} disabled={transferring}>
+          <Icon name="user" className="h-4 w-4" />
           {transferring ? "불러오는 중..." : "정보 이전"}
         </Button>
-        <Button type="button" variant="outlineBrand" className="px-3 py-2 text-xs" onClick={handleAiFill} disabled={aiFilling}>
-          <Icon name="sparkle" className="h-3.5 w-3.5" />
+        <Button type="button" variant="outlineBrand" className="px-4 py-2.5 text-sm" onClick={handleAiFill} disabled={aiFilling}>
+          <Icon name="sparkle" className="h-4 w-4" />
           {aiFilling ? "AI가 채우는 중..." : "AI 채우기"}
         </Button>
       </div>
@@ -332,13 +349,18 @@ export default function DocumentFill() {
         <p className="mt-6 text-sm text-slate-400">등록된 입력 필드가 없습니다.</p>
       ) : (
         <div className="mt-6 space-y-6">
-          {categorizedFields.map((group) => (
-            <Card key={group.name} className="p-6">
-              <h2 className="mb-4 text-sm font-bold text-slate-900">{group.name}</h2>
-              <div className="space-y-5">
+          {categorizedFields.map((group, groupIdx) => (
+            <Card key={group.name} className="p-6 sm:p-7">
+              <h2 className="mb-5 flex items-center gap-2.5 text-lg font-bold text-slate-900">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-600 text-sm font-bold text-white">
+                  {groupIdx + 1}
+                </span>
+                {group.name}
+              </h2>
+              <div className="grid grid-cols-1 gap-x-6 gap-y-6 sm:grid-cols-2">
                 {group.fields.map((field) => (
-                  <label key={field.id} className="block">
-                    <span className="mb-1.5 block text-sm font-medium text-slate-700">{field.field_label}</span>
+                  <label key={field.id} className={`block ${isMultilineField(field) ? "sm:col-span-2" : ""}`}>
+                    <span className="mb-2 block text-base font-semibold text-slate-800">{field.field_label}</span>
                     <FieldInput field={field} value={values[field.id]} onChange={updateValue} />
                   </label>
                 ))}
@@ -352,7 +374,7 @@ export default function DocumentFill() {
         <Button
           type="button"
           variant="secondary"
-          className="flex-1 justify-center py-3"
+          className="flex-1 justify-center py-3.5 text-base"
           onClick={handleTempSave}
           disabled={submitting || loading}
         >
@@ -360,13 +382,36 @@ export default function DocumentFill() {
         </Button>
         <Button
           type="button"
-          className="flex-1 justify-center py-3"
+          className="flex-1 justify-center py-3.5 text-base"
           onClick={handleSubmitDocument}
-          disabled={submitting || loading}
+          disabled={submitting || loading || !allFilled}
         >
           {submitting ? "제출하는 중..." : isEditing ? "수정 제출하기" : "서류 제출하기"}
         </Button>
       </div>
+      {!loading && fields.length > 0 && !allFilled && (
+        <p className="mt-2 text-right text-xs font-medium text-amber-600">
+          모든 항목을 입력해야 제출할 수 있습니다.
+        </p>
+      )}
+
+      {showComplete && (
+        <Modal title={documentPreview.submitted.title} onClose={() => navigate("/docs", { state: { businessId, businessName } })} width="max-w-sm">
+          <div className="flex flex-col items-center text-center">
+            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+              <Icon name="checkCircle" className="h-6 w-6" />
+            </div>
+            <p className="text-sm text-slate-600">{documentPreview.submitted.message}</p>
+            <Button
+              type="button"
+              className="mt-5 w-full justify-center"
+              onClick={() => navigate("/docs", { state: { businessId, businessName } })}
+            >
+              {documentPreview.submitted.backLabel}
+            </Button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

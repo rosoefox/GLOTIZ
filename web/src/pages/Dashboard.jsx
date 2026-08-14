@@ -14,12 +14,12 @@ import {
 } from "lucide-react";
 import BaseIcon from "../components/Icon";
 import Header from "../components/Header";
+import HeroOceanScene from "../components/HeroOceanScene";
 import FloatingChatbot from "../components/FloatingChatbot";
 import { brand, dashboard, govAnnouncementDetails } from "../data/mockData";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
 import { periodEndDate as sharedPeriodEndDate, formatTodayKorean } from "../lib/period";
-import jeonbukLogo from "../assets/jeonbuk-logo.svg";
 
 // 홈 화면 전용으로 단순하고 깔끔한 라인 아이콘(lucide)을 쓰고, 다른 페이지가 함께 쓰는
 // components/Icon.jsx는 건드리지 않도록 이 페이지 안에서만 이름을 덮어써서 렌더링한다.
@@ -89,6 +89,32 @@ function useReplayOnView(threshold = 0.4) {
   }, [threshold]);
 
   return [ref, replayKey];
+}
+
+// 섹션이 뷰포트에 들어오고 나갈 때마다 true/false를 토글한다 — 스태거 리빌 애니메이션이
+// 지나쳐간 섹션으로 다시 스크롤해 돌아왔을 때도 매번 새로 재생되도록 한다.
+function useSectionReveal(threshold = 0.35) {
+  const ref = useRef(null);
+  const [inView, setInView] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(([entry]) => setInView(entry.isIntersecting), { threshold });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [threshold]);
+
+  return [ref, inView];
+}
+
+// 제목(H2)/본문(P)/버튼 요소에 공통으로 적용하는 스태거 리빌 스타일. index가 클수록
+// 0.15초씩 늦게 나타나 순차적으로 아래에서 위로 올라오며 페이드인된다.
+function revealCls(inView) {
+  return `transition duration-500 ease-out ${inView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"}`;
+}
+function revealStyle(index) {
+  return { transitionDelay: `${index * 150}ms` };
 }
 
 function useCountUp(target, { duration = 1500, decimals = 0 } = {}) {
@@ -161,6 +187,23 @@ export default function Dashboard() {
   const [hoverPreview, setHoverPreview] = useState(null);
 
   const [statsRef, statsReplayKey] = useReplayOnView();
+
+  // 홈 화면 히어로 전용: 스크롤하면 상단 네비게이션이 투명→불투명으로 바뀐다.
+  const scrollContainerRef = useRef(null);
+  const [headerSolid, setHeaderSolid] = useState(false);
+
+  const handleScroll = () => {
+    const el = scrollContainerRef.current;
+    if (el) setHeaderSolid(el.scrollTop > 8);
+  };
+
+  // 섹션별 스크롤 트리거 스태거 애니메이션용 ref/inView (섹션마다 독립적으로 재진입 감지)
+  const [heroRef, heroInView] = useSectionReveal();
+  const [programsRef, programsInView] = useSectionReveal();
+  const [featuresRef, featuresInView] = useSectionReveal();
+  const [caseStudiesRef, caseStudiesInView] = useSectionReveal();
+  const [satisfactionRef, satisfactionInView] = useSectionReveal();
+  const [categoriesRef, categoriesInView] = useSectionReveal();
 
   const [businesses, setBusinesses] = useState([]);
   const [loadingOngoing, setLoadingOngoing] = useState(true);
@@ -330,19 +373,46 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-white">
-      <Header />
+    <div className="relative h-screen overflow-hidden bg-white">
+      <Header overlay scrolled={headerSolid} />
 
-      <div className="flex-1 snap-y snap-proximity overflow-y-auto scroll-smooth">
-        {/* 1: 인사말 + 통계 (검색창 제거, 두 섹션을 하나로 병합) */}
-        <section className="flex min-h-full w-full snap-start flex-col items-center justify-center bg-[#deecfb] px-6 py-16">
-          <div className="w-full max-w-5xl text-center">
-            <h1 className="text-5xl font-extrabold tracking-tight text-slate-900 sm:text-6xl">
-              {dashboard.greetingTitle}
+      <div
+        ref={scrollContainerRef}
+        onScroll={handleScroll}
+        className="h-full snap-y snap-mandatory overflow-y-auto scroll-smooth pb-24"
+      >
+        {/* 1: 히어로 — 배/파도/낙하산 3-레이어 배경(HeroOceanScene) */}
+        <section
+          ref={heroRef}
+          className="relative flex h-[calc(100dvh-4rem)] w-full snap-start flex-col items-center justify-center overflow-hidden bg-black px-6 py-6 sm:py-8 lg:py-10"
+        >
+          <HeroOceanScene />
+
+          <div className="relative z-10 w-full max-w-4xl text-center">
+            <h1
+              className={`text-4xl font-extrabold uppercase tracking-tight text-white sm:text-6xl lg:text-7xl ${revealCls(heroInView)}`}
+              style={revealStyle(0)}
+            >
+              {brand.name}
             </h1>
-            <p className="mt-4 text-lg font-medium text-brand-600">{dashboard.greetingSubtitle}</p>
+            <p
+              className={`mt-2 text-base font-bold uppercase tracking-[0.15em] text-white/90 sm:text-xl ${revealCls(heroInView)}`}
+              style={revealStyle(1)}
+            >
+              {brand.tagline}
+            </p>
+            <p
+              className={`mx-auto mt-4 max-w-2xl text-xs font-medium leading-relaxed text-white/80 sm:whitespace-nowrap sm:text-sm ${revealCls(heroInView)}`}
+              style={revealStyle(2)}
+            >
+              {dashboard.heroLines.join(" ")}
+            </p>
 
-            <div ref={statsRef} className="mx-auto mt-12 max-w-3xl rounded-2xl border border-slate-200 bg-white px-5 py-5 shadow-sm sm:px-8 sm:py-6">
+            <div
+              ref={statsRef}
+              className={`mx-auto mt-6 max-w-3xl rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-xl sm:mt-8 sm:px-6 sm:py-5 ${revealCls(heroInView)}`}
+              style={revealStyle(3)}
+            >
               <p className="mb-4 text-xs font-bold text-slate-500">
                 {dashboard.statsHeadline}
                 <span className="ml-2 font-normal text-slate-400">({formatTodayKorean()} 기준)</span>
@@ -359,13 +429,21 @@ export default function Dashboard() {
         </section>
 
         {/* 2: 지원사업공고 — 왼쪽 박스를 위(내가 지원한 공고 현황)/아래(지원사업공고)로 반반 나누고, 오른쪽엔 진행중인 지원사업 */}
-        <section className="min-h-full w-full snap-start bg-white px-6 py-16">
-          <div className="mx-auto max-w-5xl">
+        <section
+          ref={programsRef}
+          className="flex h-[calc(100dvh-4rem)] w-full snap-start flex-col items-center justify-center bg-white px-6 py-6 sm:py-8 lg:py-10"
+        >
+          <div className="mx-auto w-full max-w-5xl">
             <div className="grid grid-cols-1 gap-6 md:grid-cols-5">
               <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white md:col-span-2">
                 <div className="relative p-6">
                   <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                    <h3 className="text-sm font-bold text-slate-900">{dashboard.myApplicationStatusTitle}</h3>
+                    <h3
+                      className={`text-sm font-bold text-slate-900 ${revealCls(programsInView)}`}
+                      style={revealStyle(0)}
+                    >
+                      {dashboard.myApplicationStatusTitle}
+                    </h3>
                     <span className="text-[11px] text-slate-400">({formatTodayKorean()} 기준)</span>
                   </div>
                   <div
@@ -418,7 +496,12 @@ export default function Dashboard() {
               </div>
 
               <div className="rounded-2xl border border-slate-200 bg-white p-6 md:col-span-3">
-                <h3 className="mb-2 text-base font-bold text-slate-900">{dashboard.ongoingProgramsTitle}</h3>
+                <h3
+                  className={`mb-2 text-base font-bold text-slate-900 ${revealCls(programsInView)}`}
+                  style={revealStyle(1)}
+                >
+                  {dashboard.ongoingProgramsTitle}
+                </h3>
                 {loadingOngoing ? (
                   <p className="py-6 text-sm text-slate-400">불러오는 중...</p>
                 ) : (
@@ -457,7 +540,8 @@ export default function Dashboard() {
                 <button
                   type="button"
                   onClick={() => navigate("/gov-support")}
-                  className="mt-4 flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-2.5 text-sm font-semibold text-brand-600 transition-colors hover:bg-brand-50"
+                  className={`mt-4 flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-2.5 text-sm font-semibold text-brand-600 hover:bg-brand-50 ${revealCls(programsInView)}`}
+                  style={revealStyle(2)}
                 >
                   {dashboard.ongoingProgramsMoreLabel}
                   <Icon name="arrowRight" className="h-3.5 w-3.5" />
@@ -468,26 +552,35 @@ export default function Dashboard() {
         </section>
 
         {/* 3: JB-XPORT로 서류 작성/디자인 고민을 해결해보세요! */}
-        <section className="flex min-h-full w-full snap-start flex-col items-center justify-center bg-slate-50 px-6 py-16">
+        <section
+          ref={featuresRef}
+          className="flex h-[calc(100dvh-4rem)] w-full snap-start flex-col items-center justify-center overflow-hidden bg-slate-50 px-6 py-6 sm:py-8 lg:py-10"
+        >
           <div className="mx-auto max-w-4xl text-center">
-            <h2 className="text-2xl font-bold text-slate-900">{dashboard.featuresTitle}</h2>
-            <p className="mx-auto mt-3 max-w-2xl text-sm leading-relaxed text-slate-600">
+            <h2 className={`text-xl font-bold text-slate-900 sm:text-2xl ${revealCls(featuresInView)}`} style={revealStyle(0)}>
+              {dashboard.featuresTitle}
+            </h2>
+            <p
+              className={`mx-auto mt-2 max-w-2xl text-xs leading-relaxed text-slate-600 sm:text-sm ${revealCls(featuresInView)}`}
+              style={revealStyle(1)}
+            >
               {dashboard.featuresDescription}
             </p>
 
-            <div className="mt-10 grid grid-cols-1 gap-6 sm:grid-cols-3">
-              {dashboard.features.map((f) => (
+            <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4 lg:gap-5">
+              {dashboard.features.map((f, i) => (
                 <Link
                   key={f.title}
                   to={f.to}
-                  className="flex flex-col items-center rounded-2xl border border-slate-200 bg-white p-6 text-center transition-shadow hover:shadow-md"
+                  className={`flex flex-col items-center rounded-2xl border border-slate-200 bg-white p-4 text-center hover:shadow-md sm:p-5 ${revealCls(featuresInView)}`}
+                  style={revealStyle(i + 2)}
                 >
-                  <div className={`mb-4 flex h-14 w-14 items-center justify-center rounded-2xl ${FEATURE_TONES[f.tone]}`}>
-                    <Icon name={f.icon} className="h-7 w-7" />
+                  <div className={`mb-3 flex h-12 w-12 items-center justify-center rounded-2xl ${FEATURE_TONES[f.tone]}`}>
+                    <Icon name={f.icon} className="h-6 w-6" />
                   </div>
-                  <p className="mb-1.5 text-base font-bold text-slate-900">{f.title}</p>
-                  <p className="mb-4 text-sm leading-relaxed text-slate-500">{f.description}</p>
-                  <span className="mt-auto inline-flex items-center gap-1 text-sm font-semibold text-brand-600">
+                  <p className="mb-1 text-sm font-bold text-slate-900 sm:text-base">{f.title}</p>
+                  <p className="mb-3 text-xs leading-relaxed text-slate-500 sm:text-sm">{f.description}</p>
+                  <span className="mt-auto inline-flex items-center gap-1 text-xs font-semibold text-brand-600 sm:text-sm">
                     {f.linkLabel}
                     <Icon name="arrowRight" className="h-3.5 w-3.5" />
                   </span>
@@ -498,11 +591,18 @@ export default function Dashboard() {
         </section>
 
         {/* 4: AI · 디자인 진행 사례 */}
-        <section className="flex min-h-full w-full snap-start flex-col items-center justify-center bg-black px-6 py-16">
+        <section
+          ref={caseStudiesRef}
+          className="flex h-[calc(100dvh-4rem)] w-full snap-start flex-col items-center justify-center overflow-hidden bg-black px-6 py-6 sm:py-8 lg:py-10"
+        >
           <div className="mx-auto max-w-5xl">
-            <div className="mb-6 text-center">
-              <h2 className="text-xl font-bold text-white">{dashboard.caseStudiesTitle}</h2>
-              <p className="mt-2 text-sm text-slate-300">{dashboard.caseStudiesDescription}</p>
+            <div className="mb-3 text-center sm:mb-4">
+              <h2 className={`text-lg font-bold text-white sm:text-xl ${revealCls(caseStudiesInView)}`} style={revealStyle(0)}>
+                {dashboard.caseStudiesTitle}
+              </h2>
+              <p className={`mt-1.5 text-xs text-slate-300 sm:text-sm ${revealCls(caseStudiesInView)}`} style={revealStyle(1)}>
+                {dashboard.caseStudiesDescription}
+              </p>
             </div>
 
             {[
@@ -511,13 +611,13 @@ export default function Dashboard() {
             ].map((row, rowIdx) => (
               <div
                 key={rowIdx}
-                className={`overflow-hidden py-2 [mask-image:linear-gradient(to_right,transparent,black_5%,black_95%,transparent)] ${rowIdx === 1 ? "mt-5" : ""}`}
+                className={`overflow-hidden py-1 [mask-image:linear-gradient(to_right,transparent,black_5%,black_95%,transparent)] ${rowIdx === 1 ? "mt-2.5 sm:mt-3" : ""}`}
               >
-                <div className="flex w-max gap-5 animate-marquee hover:[animation-play-state:paused]">
+                <div className="flex w-max gap-3 animate-marquee hover:[animation-play-state:paused] sm:gap-4">
                   {[...row, ...row].map((c, idx) => (
                     <div
                       key={`${c.id}-${idx}`}
-                      className="w-64 shrink-0 cursor-default transition-transform duration-300 ease-out hover:-translate-y-2"
+                      className="w-48 shrink-0 cursor-default transition-transform duration-300 ease-out hover:-translate-y-1 sm:w-56"
                       onMouseEnter={() => {
                         if (!c.image) return;
                         setHoverPreview({ image: c.image, title: c.title });
@@ -530,17 +630,17 @@ export default function Dashboard() {
                           alt={c.title}
                           loading="lazy"
                           referrerPolicy="no-referrer"
-                          className="h-40 w-full rounded-2xl object-cover shadow-lg"
+                          className="h-32 w-full rounded-2xl object-cover shadow-lg sm:h-36"
                         />
                       ) : (
                         <div
-                          className={`flex h-40 w-full items-center justify-center rounded-2xl bg-gradient-to-br shadow-lg ${CASE_TONES[c.tone]}`}
+                          className={`flex h-32 w-full items-center justify-center rounded-2xl bg-gradient-to-br shadow-lg sm:h-36 ${CASE_TONES[c.tone]}`}
                         >
-                          <Icon name={c.icon} className="h-12 w-12 text-white" strokeWidth={1.3} />
+                          <Icon name={c.icon} className="h-10 w-10 text-white" strokeWidth={1.3} />
                         </div>
                       )}
-                      <p className="mt-3 text-xs font-bold text-brand-100">{c.tag}</p>
-                      <p className="mt-1 text-sm font-bold leading-snug text-white">{c.title}</p>
+                      <p className="mt-2 text-[11px] font-bold text-brand-100">{c.tag}</p>
+                      <p className="mt-1 text-xs font-bold leading-snug text-white sm:text-sm">{c.title}</p>
                     </div>
                   ))}
                 </div>
@@ -561,19 +661,29 @@ export default function Dashboard() {
         </section>
 
         {/* 5: 소상공인 · 공공기관의 이유있는 선택 */}
-        <section className="flex min-h-full w-full snap-start flex-col items-center justify-center bg-[#067ff8] px-6 py-16">
+        <section
+          ref={satisfactionRef}
+          className="flex h-[calc(100dvh-4rem)] w-full snap-start flex-col items-center justify-center overflow-hidden bg-brand-600 px-6 py-6 sm:py-8 lg:py-10"
+        >
           <div className="mx-auto max-w-5xl">
-            <div className="mb-8 text-center">
-              <p className="mb-3 text-sm font-bold text-white">고객 만족도 {dashboard.satisfactionRate}%</p>
-              <h2 className="text-2xl font-bold text-white">{dashboard.satisfactionTitle}</h2>
+            <div className="mb-3 text-center sm:mb-4">
+              <p
+                className={`mb-2 text-xs font-bold text-white sm:text-sm ${revealCls(satisfactionInView)}`}
+                style={revealStyle(0)}
+              >
+                고객 만족도 {dashboard.satisfactionRate}%
+              </p>
+              <h2 className={`text-xl font-bold text-white sm:text-2xl ${revealCls(satisfactionInView)}`} style={revealStyle(1)}>
+                {dashboard.satisfactionTitle}
+              </h2>
             </div>
 
-            <div className="overflow-hidden py-2 [mask-image:linear-gradient(to_right,transparent,black_5%,black_95%,transparent)]">
-              <div className="flex w-max gap-5 animate-marquee-reverse hover:[animation-play-state:paused]">
+            <div className="overflow-hidden py-1 [mask-image:linear-gradient(to_right,transparent,black_5%,black_95%,transparent)]">
+              <div className="flex w-max gap-3 animate-marquee-reverse hover:[animation-play-state:paused] sm:gap-4">
                 {[...dashboard.reviews, ...dashboard.reviews].map((r, idx) => (
                   <div
                     key={`${r.name}-${idx}`}
-                    className="w-80 shrink-0 rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-lg transition-transform duration-300 ease-out hover:-translate-y-2"
+                    className="w-64 shrink-0 rounded-2xl border border-slate-200 bg-white p-3 text-left shadow-lg transition-transform duration-300 ease-out hover:-translate-y-1 sm:w-72 sm:p-4"
                   >
                     <div className="mb-3 flex items-center justify-between">
                       <ReviewStars rating={r.rating} />
@@ -581,14 +691,17 @@ export default function Dashboard() {
                         {r.rating.toFixed(1)}점
                       </span>
                     </div>
-                    <p className="mb-4 text-sm leading-relaxed text-slate-600">&ldquo;{r.text}&rdquo;</p>
+                    <p className="mb-2.5 text-xs leading-relaxed text-slate-600 sm:mb-3 sm:text-sm">&ldquo;{r.text}&rdquo;</p>
                     <div className="flex items-center gap-2.5">
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-100 text-xs font-bold text-brand-700">
-                        {r.name[0]}
-                      </div>
+                      <img
+                        src={r.avatar}
+                        alt={r.company}
+                        className="h-8 w-8 shrink-0 rounded-full object-cover ring-1 ring-slate-200"
+                      />
                       <div>
-                        <p className="text-xs font-bold text-slate-900">{r.name}</p>
-                        <p className="text-[11px] text-slate-400">{r.company}</p>
+                        <p className="text-[11px] font-bold text-slate-900 sm:text-xs">{r.name}</p>
+                        <p className="text-[10px] text-slate-400 sm:text-[11px]">{r.company}</p>
+                        <p className="text-[10px] font-semibold text-brand-500">{r.segment}</p>
                       </div>
                     </div>
                   </div>
@@ -599,21 +712,30 @@ export default function Dashboard() {
         </section>
 
         {/* 6: 품목별 지원사업 공고 */}
-        <section className="min-h-full w-full snap-start bg-white px-6 py-16">
-          <div className="mx-auto max-w-5xl">
-            <h2 className="mb-6 text-center text-xl font-bold text-slate-900">{dashboard.itemCategoriesTitle}</h2>
+        <section
+          ref={categoriesRef}
+          className="flex h-[calc(100dvh-4rem)] w-full snap-start flex-col items-center justify-center overflow-hidden bg-white px-6 py-6 sm:py-8 lg:py-10"
+        >
+          <div className="mx-auto w-full max-w-5xl">
+            <h2
+              className={`mb-4 text-center text-xl font-bold text-slate-900 sm:mb-6 ${revealCls(categoriesInView)}`}
+              style={revealStyle(0)}
+            >
+              {dashboard.itemCategoriesTitle}
+            </h2>
 
-            <div className="mb-8 flex flex-wrap justify-center gap-2">
-              {dashboard.itemCategories.map((c) => (
+            <div className="mb-6 flex flex-wrap justify-center gap-2 sm:mb-8">
+              {dashboard.itemCategories.map((c, i) => (
                 <button
                   type="button"
                   key={c.id}
                   onClick={() => setItemFilter(c.id)}
-                  className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
+                  className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold ${revealCls(categoriesInView)} ${
                     itemFilter === c.id
                       ? "bg-brand-600 text-white"
                       : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
                   }`}
+                  style={revealStyle(i + 1)}
                 >
                   <Icon name={c.icon} className="h-4 w-4" />
                   {c.label}
@@ -649,11 +771,8 @@ export default function Dashboard() {
         <footer className="w-full border-t border-slate-100 bg-white px-6 py-8">
           <div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-4 sm:flex-row">
             <div className="flex items-center gap-3">
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-600 text-white">
-                <Icon name="sparkle" className="h-3.5 w-3.5" />
-              </div>
+              <img src={brand.logo} alt={brand.name} className="h-7 w-7 rounded-lg object-contain" />
               <span className="text-sm font-bold text-slate-900">{brand.name}</span>
-              <img src={jeonbukLogo} alt="전북특별자치도" className="h-6 w-auto" />
             </div>
             <p className="text-xs text-slate-400">© {new Date().getFullYear()} {brand.name}. All rights reserved.</p>
           </div>

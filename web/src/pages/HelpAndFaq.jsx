@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Icon from "../components/Icon";
 import { Card, Button } from "../components/ui";
 import { helpAndFaq as hf } from "../data/mockData";
 import { useChatbot } from "../context/ChatbotContext";
+
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
 
 function FaqItem({ question, answer }) {
   const [open, setOpen] = useState(false);
@@ -25,6 +27,27 @@ function FaqItem({ question, answer }) {
 
 export default function HelpAndFaq() {
   const { openChatbot } = useChatbot();
+  const [faqs, setFaqs] = useState(hf.faqs);
+  const [loadingFaqs, setLoadingFaqs] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${BACKEND_URL}/faq/suggest`)
+      .then((res) => (res.ok ? res.json() : Promise.reject()))
+      .then((data) => {
+        if (!cancelled && Array.isArray(data.faqs) && data.faqs.length) setFaqs(data.faqs);
+      })
+      .catch(() => {
+        // AI 추천 실패 시 mockData의 고정 FAQ를 그대로 보여준다.
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingFaqs(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <div className="mx-auto max-w-4xl px-8 py-8">
       <div className="mb-8 text-center">
@@ -48,22 +71,20 @@ export default function HelpAndFaq() {
         </Button>
       </Card>
 
-      <div className="mb-8 grid grid-cols-2 gap-4 sm:grid-cols-4">
-        {hf.categories.map((c) => (
-          <button
-            key={c.id}
-            className="flex flex-col items-center gap-2 rounded-xl border border-slate-200 bg-white p-5 hover:border-brand-300 hover:bg-brand-50"
-          >
-            <Icon name={c.icon} className="h-6 w-6 text-brand-600" />
-            <span className="text-sm font-medium text-slate-700">{c.label}</span>
-          </button>
-        ))}
-      </div>
-
       <Card className="p-6">
-        <h2 className="mb-2 text-lg font-bold text-slate-900">{hf.faqSectionTitle}</h2>
+        <div className="mb-2 flex items-center gap-2">
+          <h2 className="text-lg font-bold text-slate-900">{hf.faqSectionTitle}</h2>
+          {loadingFaqs ? (
+            <span className="text-xs font-medium text-slate-400">AI가 질문을 고르는 중...</span>
+          ) : (
+            <span className="flex items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-semibold text-brand-700">
+              <Icon name="sparkle" className="h-3 w-3" />
+              AI 추천
+            </span>
+          )}
+        </div>
         <div>
-          {hf.faqs.map((f) => (
+          {faqs.map((f) => (
             <FaqItem key={f.question} {...f} />
           ))}
         </div>

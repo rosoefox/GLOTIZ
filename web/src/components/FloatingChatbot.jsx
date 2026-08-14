@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Icon from "./Icon";
 import { helpAndFaq } from "../data/mockData";
 import { useChatbot } from "../context/ChatbotContext";
@@ -10,11 +10,30 @@ export default function FloatingChatbot() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const [lastAsked, setLastAsked] = useState("");
   const { floatingChatbot: fc, faqs } = helpAndFaq;
+
+  const relatedFaqs = useMemo(() => {
+    const basis = (lastAsked || messages.filter((m) => m.role === "user").slice(-1)[0]?.message || "").toLowerCase();
+    const tokens = basis
+      .split(/[\s,.;!?/()]+/)
+      .map((token) => token.trim())
+      .filter((token) => token.length >= 2);
+    return [...faqs]
+      .map((faq) => {
+        const haystack = `${faq.question} ${faq.answer}`.toLowerCase();
+        const score = tokens.reduce((acc, token) => acc + (haystack.includes(token) ? 1 : 0), 0);
+        return { ...faq, score };
+      })
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3);
+  }, [faqs, lastAsked, messages]);
 
   const ask = async (question) => {
     const trimmed = question.trim();
     if (!trimmed) return;
+    setLastAsked(trimmed);
     setInput("");
 
     const exact = faqs.find((f) => f.question === trimmed);
@@ -50,15 +69,28 @@ export default function FloatingChatbot() {
   return (
     <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end">
       {open && (
-        <div className="mb-3 flex h-[420px] w-80 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
+        <div
+          className={`mb-3 flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl transition-all duration-200 ${
+            expanded ? "h-[80vh] w-[36rem] max-w-[90vw]" : "h-[420px] w-80"
+          }`}
+        >
           <div className="flex items-center justify-between bg-brand-600 px-4 py-3 text-white">
             <div className="flex items-center gap-2">
               <Icon name="chatbot" className="h-5 w-5" />
               <span className="text-sm font-semibold">{fc.title}</span>
             </div>
-            <button onClick={() => setOpen(false)} aria-label="닫기">
-              <Icon name="x" className="h-4 w-4" />
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setExpanded((v) => !v)}
+                aria-label={expanded ? "화면 줄이기" : "화면 키우기"}
+                className="text-white/80 hover:text-white"
+              >
+                <Icon name={expanded ? "collapse" : "expand"} className="h-4 w-4" />
+              </button>
+              <button onClick={() => setOpen(false)} aria-label="닫기">
+                <Icon name="x" className="h-4 w-4" />
+              </button>
+            </div>
           </div>
 
           <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50 p-4">
@@ -66,18 +98,43 @@ export default function FloatingChatbot() {
               {fc.greeting}
             </div>
 
-            {messages.length === 0 && (
+            <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="text-xs font-bold text-slate-400">{fc.suggestionsLabel}</p>
+                <span className="text-[11px] text-slate-400">항상 표시</span>
+              </div>
               <div className="space-y-1.5">
-                <p className="px-1 text-xs font-medium text-slate-400">{fc.suggestionsLabel}</p>
                 {faqs.map((f) => (
                   <button
                     key={f.question}
                     onClick={() => ask(f.question)}
-                    className="block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-sm text-slate-600 shadow-sm hover:border-brand-300 hover:bg-brand-50"
+                    className="block w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-left text-sm text-slate-600 shadow-sm hover:border-brand-300 hover:bg-brand-50"
                   >
                     {f.question}
                   </button>
                 ))}
+              </div>
+            </div>
+
+            {lastAsked && relatedFaqs.length > 0 && (
+              <div className="rounded-2xl border border-brand-100 bg-brand-50/60 p-3">
+                <div className="mb-2">
+                  <p className="text-xs font-bold text-brand-700">관련 질문 추천</p>
+                  <p className="mt-1 text-[11px] leading-relaxed text-brand-700/70">
+                    {relatedFaqs[0]?.answer || fc.fallbackAnswer}
+                  </p>
+                </div>
+                <div className="space-y-1.5">
+                  {relatedFaqs.map((faq) => (
+                    <button
+                      key={faq.question}
+                      onClick={() => ask(faq.question)}
+                      className="block w-full rounded-xl border border-brand-200 bg-white px-3 py-2 text-left text-sm text-slate-700 shadow-sm hover:bg-brand-50"
+                    >
+                      {faq.question}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
 

@@ -89,6 +89,43 @@ def chat(req: ChatRequest):
     return {"answer": (response.text or "").strip()}
 
 
+FAQ_SUGGEST_PROMPT = """당신은 JB-XPORT(전북 소상공인의 해외 수출을 돕는 서비스: 수출지원사업 매칭,
+서류 자동작성·번역, AI 마케팅 이미지 생성, 쇼피 등 해외 플랫폼 입점 가이드 제공) 고객지원 담당자입니다.
+
+이 서비스를 처음 쓰는 소상공인 사장님이 가장 헷갈려하거나 어려워할 만한 질문 5개를 스스로 떠올려서,
+자주 묻는 질문(FAQ) 형태로 만들어주세요. 각 답변은 2문장 이내로 친절하고 구체적으로 작성하세요.
+"""
+
+
+@app.get("/faq/suggest")
+def suggest_faq():
+    """고객지원 페이지의 '자주 묻는 질문'을, 사용자가 가장 어려워할 만한 주제로 AI가 스스로
+    골라 채운다. 실패하면 프런트에서 mockData의 고정 FAQ로 대체한다."""
+    try:
+        response = gemini_client.models.generate_content(
+            model="gemini-flash-latest",
+            contents=FAQ_SUGGEST_PROMPT,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema={
+                    "type": "ARRAY",
+                    "items": {
+                        "type": "OBJECT",
+                        "properties": {
+                            "question": {"type": "STRING"},
+                            "answer": {"type": "STRING"},
+                        },
+                        "required": ["question", "answer"],
+                    },
+                },
+            ),
+        )
+        faqs = json.loads(response.text)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"FAQ 추천에 실패했습니다: {e}")
+    return {"faqs": faqs}
+
+
 # --- 시장 분석: 관세청 품목별 국가별 수출입실적(GW) 연동 + Gemini 코멘터리 ---
 
 TRADE_API_URL = "https://apis.data.go.kr/1220000/nitemtrade/getNitemtradeList"
@@ -451,6 +488,46 @@ def delete_additional_document(path: str, authorization: str | None = Header(Non
     return {"deleted": True}
 
 
+@app.post("/submissions/user-upload")
+def upload_user_submission(
+    template_id: str = Form(...),
+    file: UploadFile = File(...),
+    authorization: str | None = Header(None),
+):
+    """관리자가 서식(docx)을 따로 주지 않고 '사용자가 직접 발급받아 올리는' 서류
+    (예: 사업자등록증)를 사용자가 업로드하는 엔드포인트."""
+    user_id = require_user(authorization)
+
+    template = (
+        supabase.table("templates").select("*").eq("id", template_id).maybe_single().execute().data
+    )
+    if not template:
+        raise HTTPException(status_code=404, detail="해당 서식을 찾을 수 없습니다.")
+    if not template.get("user_upload_required"):
+        raise HTTPException(status_code=400, detail="직접 업로드가 필요한 서류가 아닙니다.")
+
+    ext = Path(file.filename or "").suffix.lower()
+    if ext not in ADDITIONAL_DOC_ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="PDF, DOCX, HWP, JPG, PNG 파일만 업로드할 수 있습니다.")
+
+    file_bytes = file.file.read()
+    object_path = f"user-submissions/{template_id}/{user_id}/{uuid.uuid4().hex}_{file.filename}"
+    try:
+        supabase.storage.from_(TEMPLATES_BUCKET).upload(
+            object_path, file_bytes, {"content-type": file.content_type or "application/octet-stream"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"파일 업로드에 실패했습니다: {e}")
+
+    row = (
+        supabase.table("submissions")
+        .insert({"template_id": template_id, "user_id": user_id, "status": "uploaded", "file_path": object_path})
+        .execute()
+        .data[0]
+    )
+    return row
+
+
 def require_admin(authorization: str | None) -> str:
     """bearer 토큰을 검증하고 profiles.account_type == 'admin'인지 확인한다.
     성공 시 user_id를 반환하고, 실패 시 HTTPException을 던진다."""
@@ -481,6 +558,25 @@ class CreateBusinessRequest(BaseModel):
     description: str | None = None
 
 
+def next_business_sort_order() -> int | None:
+    """sort_order 컬럼은 backend/sql/reorder_and_uploads.sql 마이그레이션 실행 후에 생긴다.
+    아직 실행 전이라면 조회 자체가 에러이므로, None을 반환해 호출부가 그 컬럼 없이 진행하게 한다."""
+    try:
+        existing = (
+            supabase.table("businesses")
+            .select("sort_order")
+            .order("sort_order", desc=True)
+            .limit(1)
+            .execute()
+            .data
+        )
+    except Exception:
+        return None
+    if existing and existing[0]["sort_order"] is not None:
+        return existing[0]["sort_order"] + 1
+    return 1
+
+
 @app.post("/admin/businesses")
 def create_business(req: CreateBusinessRequest, authorization: str | None = Header(None)):
     require_admin(authorization)
@@ -488,13 +584,37 @@ def create_business(req: CreateBusinessRequest, authorization: str | None = Head
     if not req.name.strip():
         raise HTTPException(status_code=400, detail="사업명을 입력해주세요.")
 
-    row = (
-        supabase.table("businesses")
-        .insert({"name": req.name.strip(), "description": req.description})
-        .execute()
-        .data[0]
-    )
+    payload = {"name": req.name.strip(), "description": req.description}
+    next_order = next_business_sort_order()
+    if next_order is not None:
+        payload["sort_order"] = next_order
+
+    row = supabase.table("businesses").insert(payload).execute().data[0]
     return row
+
+
+class UpdateOrderRequest(BaseModel):
+    sort_order: int
+
+
+@app.patch("/admin/businesses/{business_id}/order")
+def reorder_business(business_id: str, req: UpdateOrderRequest, authorization: str | None = Header(None)):
+    require_admin(authorization)
+    try:
+        row = (
+            supabase.table("businesses")
+            .update({"sort_order": req.sort_order})
+            .eq("id", business_id)
+            .execute()
+            .data
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=409, detail=f"순서 변경에 실패했습니다 (DB 마이그레이션을 먼저 실행해주세요): {e}"
+        )
+    if not row:
+        raise HTTPException(status_code=404, detail="해당 사업을 찾을 수 없습니다.")
+    return row[0]
 
 
 class UpdateBusinessNameRequest(BaseModel):
@@ -635,18 +755,38 @@ def upload_reference_doc(
     return row
 
 
+def next_template_sort_order(business_id: str, user_upload_required: bool) -> int | None:
+    """새 서식은 항상 그룹(사용자 업로드형/서식 제공형)의 가장자리에 배치한다.
+    사용자 업로드형은 매번 맨 위(가장 작은 sort_order)로, 서식 제공형은 맨 아래로 추가한다.
+    sort_order 컬럼이 아직 마이그레이션되지 않았으면(select 자체가 에러) None을 반환해
+    호출부가 그 컬럼 없이 진행하게 한다."""
+    try:
+        rows = (
+            supabase.table("templates")
+            .select("sort_order")
+            .eq("business_id", business_id)
+            .execute()
+            .data
+            or []
+        )
+    except Exception:
+        return None
+    orders = [r["sort_order"] for r in rows if r["sort_order"] is not None]
+    if user_upload_required:
+        return (min(orders) - 1) if orders else 0
+    return (max(orders) + 1) if orders else 0
+
+
 @app.post("/admin/templates")
 def create_template(
     business_id: str = Form(...),
     name: str = Form(...),
     form_number: str | None = Form(None),
-    file: UploadFile = File(...),
+    user_upload_required: bool = Form(False),
+    file: UploadFile | None = File(None),
     authorization: str | None = Header(None),
 ):
     require_admin(authorization)
-
-    if not file.filename.lower().endswith(".docx"):
-        raise HTTPException(status_code=400, detail="docx 파일만 업로드할 수 있습니다.")
 
     business = (
         supabase.table("businesses").select("id").eq("id", business_id).maybe_single().execute().data
@@ -654,35 +794,64 @@ def create_template(
     if not business:
         raise HTTPException(status_code=404, detail="해당 사업을 찾을 수 없습니다.")
 
-    file_bytes = file.file.read()
-    # Supabase Storage 오브젝트 키는 비-ASCII(한글 등)를 허용하지 않아 InvalidKey로 거부한다.
-    # 원본 파일명은 storage 경로에 쓰지 않고 templates.name(서식명)에만 사람이 읽을 형태로 남긴다.
-    object_path = f"{business_id}/{uuid.uuid4().hex}.docx"
+    object_path = None
+    if not user_upload_required:
+        if not file or not file.filename or not file.filename.lower().endswith(".docx"):
+            raise HTTPException(status_code=400, detail="docx 파일만 업로드할 수 있습니다.")
+
+        file_bytes = file.file.read()
+        # Supabase Storage 오브젝트 키는 비-ASCII(한글 등)를 허용하지 않아 InvalidKey로 거부한다.
+        # 원본 파일명은 storage 경로에 쓰지 않고 templates.name(서식명)에만 사람이 읽을 형태로 남긴다.
+        object_path = f"{business_id}/{uuid.uuid4().hex}.docx"
+
+        try:
+            supabase.storage.from_(TEMPLATES_BUCKET).upload(
+                object_path,
+                file_bytes,
+                {
+                    "content-type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    "upsert": "false",
+                },
+            )
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"파일 업로드에 실패했습니다: {e}")
+
+    payload = {
+        "business_id": business_id,
+        "name": name,
+        "form_number": None if user_upload_required else form_number,
+        "original_file_path": object_path,
+        "user_upload_required": user_upload_required,
+    }
+    sort_order = next_template_sort_order(business_id, user_upload_required)
+    if sort_order is not None:
+        payload["sort_order"] = sort_order
 
     try:
-        supabase.storage.from_(TEMPLATES_BUCKET).upload(
-            object_path,
-            file_bytes,
-            {
-                "content-type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                "upsert": "false",
-            },
+        row = supabase.table("templates").insert(payload).execute().data[0]
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"서류 양식 저장에 실패했습니다: {e}")
+    return row
+
+
+@app.patch("/admin/templates/{template_id}/order")
+def reorder_template(template_id: str, req: UpdateOrderRequest, authorization: str | None = Header(None)):
+    require_admin(authorization)
+    try:
+        row = (
+            supabase.table("templates")
+            .update({"sort_order": req.sort_order})
+            .eq("id", template_id)
+            .execute()
+            .data
         )
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"파일 업로드에 실패했습니다: {e}")
-
-    row = (
-        supabase.table("templates")
-        .insert({
-            "business_id": business_id,
-            "name": name,
-            "form_number": form_number,
-            "original_file_path": object_path,
-        })
-        .execute()
-        .data[0]
-    )
-    return row
+        raise HTTPException(
+            status_code=409, detail=f"순서 변경에 실패했습니다 (DB 마이그레이션을 먼저 실행해주세요): {e}"
+        )
+    if not row:
+        raise HTTPException(status_code=404, detail="해당 서식을 찾을 수 없습니다.")
+    return row[0]
 
 
 @app.patch("/admin/templates/{template_id}")
@@ -1327,6 +1496,224 @@ def preview_reference_doc_pdf(business_id: str):
             return Response(content=pdf_path.read_bytes(), media_type="application/pdf")
 
     raise HTTPException(status_code=415, detail="이 파일 형식은 미리보기를 지원하지 않습니다. 다운로드해서 확인해주세요.")
+
+
+class MatchProgramsRequest(BaseModel):
+    region: str
+    category_label: str
+
+
+def build_gov_support_match_prompt(region, category_label, candidates):
+    lines = []
+    for b in candidates:
+        info = b.get("basic_info") or {}
+        lines.append(
+            f"- id: {b['id']} | 사업명: {b['name']} | 주관기관: {info.get('org', '')} | "
+            f"지원대상: {info.get('target', '')} | 지원내용: {info.get('support', '')}"
+        )
+    return f"""당신은 전북 지역 소상공인에게 수출지원사업 공고를 추천하는 도우미입니다.
+사용자가 선택한 시군: {region}
+사용자가 선택한 수출 품목: {category_label}
+
+아래는 현재 모집 중인 공고 목록입니다 (각 공고의 상세페이지 '기본 정보' 기준):
+{chr(10).join(lines)}
+
+이 시군·품목의 소상공인이 신청할 만한 공고의 id만 골라주세요. 판단 기준:
+- 지원대상에 특정 시군이 명시돼 있으면 선택한 시군과 일치하거나 "전북 전역"처럼 포괄적인 경우만 포함하고,
+  다른 지역으로 명확히 한정된 공고는 제외하세요.
+- 지원내용/지원대상이 선택한 품목과 관련 있어 보이는 공고를 포함하세요. 특정 품목으로 한정돼 있지 않고
+  업종 무관 지원사업이면 포함하세요.
+- 정보가 부족해 판단이 애매하면 포함하세요(과도하게 걸러내지 마세요).
+"""
+
+
+@app.post("/gov-support/match")
+def match_gov_support_programs(req: MatchProgramsRequest):
+    """지역/품목 선택 마법사 결과 화면에서, 등록된 공고 중 이 조건에 맞는 공고를
+    AI가 각 공고의 '기본 정보'(basic_info)를 보고 골라준다."""
+    businesses = supabase.table("businesses").select("id,name,basic_info").execute().data or []
+    candidates = [b for b in businesses if b.get("basic_info")]
+    if not candidates:
+        return {"matchedIds": []}
+
+    prompt = build_gov_support_match_prompt(req.region, req.category_label, candidates)
+    try:
+        response = gemini_client.models.generate_content(
+            model="gemini-flash-latest",
+            contents=[prompt],
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema={
+                    "type": "OBJECT",
+                    "properties": {"matchedIds": {"type": "ARRAY", "items": {"type": "STRING"}}},
+                    "required": ["matchedIds"],
+                },
+            ),
+        )
+        matched = set(json.loads(response.text).get("matchedIds") or [])
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"AI 추천에 실패했습니다: {e}")
+
+    candidate_ids = {b["id"] for b in candidates}
+    return {"matchedIds": [i for i in matched if i in candidate_ids]}
+
+
+TRANSLATE_LANGUAGE_NAMES = {"en": "English", "th": "Thai", "vi": "Vietnamese"}
+
+
+class TranslateFieldsRequest(BaseModel):
+    fields: dict[str, str]
+    target_lang: str  # "en" | "th" | "vi"
+
+
+def build_translate_fields_prompt(fields, lang_name):
+    lines = "\n".join(f"- {k}: {v}" for k, v in fields.items())
+    return f"""다음은 한국어로 작성된 해외 이커머스 플랫폼(쇼피 등) 상품 등록 정보입니다.
+아래 각 항목의 값을 자연스럽고 상업적으로 매력적인 {lang_name}로 번역해주세요.
+브랜드명 등 고유명사는 발음을 살려 표기하고, 이커머스 상품 페이지에 바로 쓸 수 있는 문체로 작성하세요.
+
+{lines}
+
+반드시 원본과 동일한 키를 사용한 JSON 객체로만 응답하세요.
+"""
+
+
+@app.post("/translate-fields")
+def translate_fields(req: TranslateFieldsRequest):
+    """쇼피 입점 폼에 입력한 한국어 값들을 선택한 언어(영/태국/베트남)로 한번에 번역한다."""
+    lang_name = TRANSLATE_LANGUAGE_NAMES.get(req.target_lang)
+    if not lang_name:
+        raise HTTPException(status_code=400, detail="지원하지 않는 언어입니다.")
+
+    non_empty = {k: v for k, v in req.fields.items() if (v or "").strip()}
+    if not non_empty:
+        return {"translated": {k: "" for k in req.fields}}
+
+    prompt = build_translate_fields_prompt(non_empty, lang_name)
+    try:
+        response = gemini_client.models.generate_content(
+            model="gemini-flash-latest",
+            contents=[prompt],
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema={
+                    "type": "OBJECT",
+                    "properties": {k: {"type": "STRING"} for k in non_empty},
+                    "required": list(non_empty.keys()),
+                },
+            ),
+        )
+        translated = json.loads(response.text)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"번역에 실패했습니다: {e}")
+
+    return {"translated": {k: translated.get(k, "") for k in req.fields}}
+
+
+PRICE_MARKET_INFO = {
+    "en": {"currency": "USD", "label": "Global (English-speaking markets)"},
+    "th": {"currency": "THB", "label": "Thailand"},
+    "vi": {"currency": "VND", "label": "Vietnam"},
+}
+
+
+class PriceSuggestionRequest(BaseModel):
+    product_name: str
+    category: str = ""
+    description: str = ""
+    brand: str = ""
+    krw_price: str = ""
+    target_market: str  # "en" | "th" | "vi"
+
+
+def build_price_suggestion_prompt(req: PriceSuggestionRequest, market):
+    krw_note = f"현재 국내(원화) 판매가: {req.krw_price}원" if req.krw_price else "국내 판매가 정보 없음"
+    return f"""당신은 한국 소상공인의 상품을 해외 이커머스 플랫폼(쇼피 등)에 등록하는 것을 돕는 가격 책정 전문가입니다.
+아래 상품을 {market['label']} 시장에 판매할 때 적정한 Global SKU Price를 {market['currency']} 통화로 추천해주세요.
+
+상품명: {req.product_name}
+카테고리: {req.category}
+브랜드: {req.brand}
+상품 설명: {req.description}
+{krw_note}
+
+고려 사항:
+- 원화 가격이 있다면 최근 환율 감각으로 환산한 금액을 기준으로, 현지 동종 상품 시세와 구매력을 반영해 조정하세요.
+- 플랫폼 수수료, 배송비, 관세 등을 고려해 판매자에게 남는 마진이 있도록 다소 여유있게 책정하세요.
+- suggestedPrice는 숫자만(콤마 없이) 문자열로 반환하세요.
+
+아래 JSON으로 응답하세요:
+- suggestedPrice: 추천 가격(숫자 문자열)
+- currency: "{market['currency']}"
+- reasoning: 추천 근거를 2~3문장의 한국어로 설명
+"""
+
+
+@app.post("/price-suggestion")
+def suggest_price(req: PriceSuggestionRequest):
+    """쇼피 입점 폼의 Global SKU Price 필드에서, 선택한 시장 통화 기준 적정가를 AI가 추천한다."""
+    market = PRICE_MARKET_INFO.get(req.target_market)
+    if not market:
+        raise HTTPException(status_code=400, detail="지원하지 않는 시장입니다.")
+    if not req.product_name.strip():
+        raise HTTPException(status_code=400, detail="상품명을 먼저 입력해주세요.")
+
+    prompt = build_price_suggestion_prompt(req, market)
+    try:
+        response = gemini_client.models.generate_content(
+            model="gemini-flash-latest",
+            contents=[prompt],
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema={
+                    "type": "OBJECT",
+                    "properties": {
+                        "suggestedPrice": {"type": "STRING"},
+                        "currency": {"type": "STRING"},
+                        "reasoning": {"type": "STRING"},
+                    },
+                    "required": ["suggestedPrice", "currency", "reasoning"],
+                },
+            ),
+        )
+        data = json.loads(response.text)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"가격 추천에 실패했습니다: {e}")
+
+    return data
+
+
+class AiFillRequest(BaseModel):
+    values: dict[str, str] = {}
+
+
+@app.post("/templates/{template_id}/ai-fill")
+def ai_fill_template(template_id: str, req: AiFillRequest, authorization: str | None = Header(None)):
+    """작성 중인 서류 화면에서 'AI 채우기'를 누르면, 지금까지 입력한 값을 참고해 AI가 채울 수
+    있는 필드(long_text/checkbox)만 채워서 돌려준다. 제출/문서 생성과는 별개로 값만 미리보고
+    편집할 수 있게 하기 위한 용도라 submission을 만들거나 저장하지 않는다."""
+    require_user(authorization)
+
+    template = (
+        supabase.table("templates").select("*").eq("id", template_id).maybe_single().execute().data
+    )
+    if not template:
+        raise HTTPException(status_code=404, detail="해당 서류를 찾을 수 없습니다.")
+    business = (
+        supabase.table("businesses").select("name").eq("id", template["business_id"]).maybe_single().execute().data
+    )
+    business_name = business["name"] if business else template["name"]
+
+    fields = (
+        supabase.table("template_fields").select("*").eq("template_id", template_id).execute().data or []
+    )
+    ai_fields = [f for f in fields if f["field_type"] in AI_FIELD_TYPES]
+
+    try:
+        results = call_gemini(business_name, template["name"], ai_fields, req.values)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"AI 채우기에 실패했습니다: {e}")
+    return {"fields": results}
 
 
 @app.post("/generate")

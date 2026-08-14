@@ -1,25 +1,41 @@
-import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { login } from "../data/mockData";
+import { supabase } from "../lib/supabase";
+import { Button } from "./ui";
 
-// 모든 페이지에서 동일하게 보이는 상단 네비게이션 오른쪽 영역
-// (마이페이지 | 고객지원 | 로그인/로그아웃). 마이페이지는 로그인 상태일 때만
-// "나의 지원사업 현황"/"나의 정보 수정" 두 페이지로 가는 작은 팝업을 띄운다.
-export default function NavUserMenu() {
-  const { isLoggedIn, logout } = useAuth();
+export default function NavUserMenu({ light = false }) {
+  const { isLoggedIn, logout, user } = useAuth();
   const navigate = useNavigate();
-  const [open, setOpen] = useState(false);
-  const menuRef = useRef(null);
+  const [needsRevisionCount, setNeedsRevisionCount] = useState(0);
 
   useEffect(() => {
-    if (!open) return;
-    const handleClickOutside = (e) => {
-      if (menuRef.current && !menuRef.current.contains(e.target)) setOpen(false);
+    if (!user?.id) {
+      setNeedsRevisionCount(0);
+      return;
+    }
+    let cancelled = false;
+    const loadCount = () => {
+      supabase
+        .from("submissions")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", user.id)
+        .eq("review_status", "needs_revision")
+        .then(({ count }) => {
+          if (!cancelled) setNeedsRevisionCount(count || 0);
+        });
     };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [open]);
+    loadCount();
+    const channel = supabase
+      .channel(`nav-submissions-${user.id}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "submissions", filter: `user_id=eq.${user.id}` }, loadCount)
+      .subscribe();
+    return () => {
+      cancelled = true;
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id]);
 
   const handleMyPageClick = () => {
     if (!isLoggedIn) {
@@ -27,53 +43,60 @@ export default function NavUserMenu() {
       navigate("/login");
       return;
     }
-    setOpen((v) => !v);
+    navigate("/mypage");
+  };
+
+  const handleMyApplicationsClick = () => {
+    if (!isLoggedIn) {
+      window.alert(login.requiredMessage);
+      navigate("/login");
+      return;
+    }
+    navigate("/my-applications");
   };
 
   const handleLogout = () => {
-    setOpen(false);
     logout();
     navigate("/");
   };
 
+  const linkCls = light ? "hover:text-white" : "hover:text-slate-900";
+  const actionCls =
+    "inline-flex w-[6.5rem] items-center justify-center rounded-lg px-2.5 py-1 text-[13px] font-semibold leading-none transition-colors whitespace-nowrap";
+  const authCls =
+    "inline-flex w-[4.8rem] items-center justify-center rounded-lg border px-2 py-1 text-[13px] font-semibold leading-none transition-colors whitespace-nowrap";
+
   return (
-    <div className="flex items-center gap-3 text-sm font-semibold text-slate-600">
-      <div className="relative" ref={menuRef}>
-        <button type="button" onClick={handleMyPageClick} className="hover:text-slate-900">
-          마이페이지
-        </button>
-        {open && (
-          <div className="absolute right-0 top-full z-50 mt-2 w-48 overflow-hidden rounded-xl border border-slate-200 bg-white py-1.5 shadow-lg">
-            <Link
-              to="/my-applications"
-              onClick={() => setOpen(false)}
-              className="block px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-            >
-              나의 지원사업 현황
-            </Link>
-            <Link
-              to="/mypage"
-              onClick={() => setOpen(false)}
-              className="block px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-            >
-              나의 정보 수정
-            </Link>
-          </div>
+    <div className={`flex items-center gap-1.5 text-sm font-semibold transition-colors ${light ? "text-white/90" : "text-slate-600"}`}>
+      <button type="button" onClick={handleMyApplicationsClick} className={`${actionCls} ${linkCls}`}>
+        나의 지원사업 현황
+      </button>
+      <span className={`px-0.5 ${light ? "text-white/40" : "text-slate-300"}`}>|</span>
+      <button type="button" onClick={handleMyPageClick} className={`relative ${actionCls} ${linkCls}`}>
+        마이페이지
+        {needsRevisionCount > 0 && (
+          <span className="animate-blink absolute -right-2 -top-1 h-2.5 w-2.5 rounded-full bg-red-500" />
         )}
-      </div>
-      <span className="text-slate-300">|</span>
-      <Link to="/help" className="hover:text-slate-900">
-        고객지원
-      </Link>
-      <span className="text-slate-300">|</span>
+      </button>
+      <span className={`px-0.5 ${light ? "text-white/40" : "text-slate-300"}`}>|</span>
       {isLoggedIn ? (
-        <button type="button" onClick={handleLogout} className="hover:text-slate-900">
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={handleLogout}
+          className={`${authCls} ${light ? "border-white/20 bg-white/10 text-white hover:bg-white/15" : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"}`}
+        >
           로그아웃
-        </button>
+        </Button>
       ) : (
-        <Link to="/login" className="hover:text-slate-900">
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={() => navigate("/login")}
+          className={`${authCls} ${light ? "border-white/20 bg-white/10 text-white hover:bg-white/15" : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"}`}
+        >
           로그인
-        </Link>
+        </Button>
       )}
     </div>
   );

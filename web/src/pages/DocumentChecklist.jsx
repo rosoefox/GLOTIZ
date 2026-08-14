@@ -8,21 +8,25 @@ import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
 import { readErrorMessage } from "../lib/apiError";
 import { readDraft } from "../lib/draft";
+import { orderedSelect } from "../lib/supabaseOrder";
 
 const SECONDARY_BUTTON_CLASS =
   "inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50";
 
-// 서류 한 건의 상태 4가지. dot 색을 서로 다르게 줘서 한눈에 구분되게 한다.
+// 서류 한 건의 상태들. dot 색을 서로 다르게 줘서 한눈에 구분되게 한다.
 const STATUS_META = {
   notStarted: { label: "작성전", dot: "bg-slate-300", buttonLabel: "서류작성하기" },
   drafting: { label: "작성중", dot: "bg-amber-400", buttonLabel: "수정" },
   reviewing: { label: "심사중", dot: "bg-blue-400", buttonLabel: "수정" },
+  needsRevision: { label: "서류보완필요", dot: "bg-red-500", buttonLabel: "보완하기" },
   reviewed: { label: "심사완료", dot: "bg-emerald-500", buttonLabel: "수정" },
 };
 
 function statusKeyFor(submission) {
   if (!submission) return null;
-  return submission.review_status === "approved" ? "reviewed" : "reviewing";
+  if (submission.review_status === "approved") return "reviewed";
+  if (submission.review_status === "needs_revision") return "needsRevision";
+  return "reviewing";
 }
 
 function GovTemplateGroup({
@@ -52,7 +56,11 @@ function GovTemplateGroup({
               <div className="flex items-center gap-3">
                 <div
                   className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
-                    statusKey === "reviewed" ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-slate-400"
+                    statusKey === "reviewed"
+                      ? "bg-emerald-50 text-emerald-600"
+                      : statusKey === "needsRevision"
+                        ? "bg-red-50 text-red-500"
+                        : "bg-slate-100 text-slate-400"
                   }`}
                 >
                   <Icon name={statusKey === "reviewed" ? "checkCircle" : "documents"} className="h-5 w-5" />
@@ -61,10 +69,18 @@ function GovTemplateGroup({
                   <p className="flex items-center gap-2 font-semibold text-slate-900">
                     {t.form_number && <span className="text-slate-400">{t.form_number}.</span>}
                     {t.name}
-                    {!t.user_upload_required && (
-                      <span className="text-xs font-normal text-slate-400">{percent}%</span>
-                    )}
                   </p>
+                  {!t.user_upload_required && (
+                    <div className="mt-1.5 flex items-center gap-2">
+                      <div className="h-1.5 w-24 overflow-hidden rounded-full bg-slate-100">
+                        <div
+                          className="h-1.5 rounded-full bg-brand-500 transition-all"
+                          style={{ width: `${percent}%` }}
+                        />
+                      </div>
+                      <span className="text-xs font-medium text-slate-400">{percent}%</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -93,11 +109,21 @@ function GovTemplateGroup({
                   </>
                 ) : (
                   <>
-                    <span className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
-                      <span className={`h-2.5 w-2.5 rounded-full ${meta.dot}`} />
+                    <span
+                      className={`flex items-center gap-1.5 text-xs font-medium ${
+                        statusKey === "needsRevision" ? "text-red-500" : "text-slate-500"
+                      }`}
+                    >
+                      <span className={`h-2.5 w-2.5 rounded-full ${meta.dot} ${statusKey === "needsRevision" ? "animate-blink" : ""}`} />
                       {meta.label}
                     </span>
-                    <Button variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => onOpenFill(t)}>
+                    <Button
+                      variant="secondary"
+                      className={`px-3 py-1.5 text-xs ${
+                        statusKey === "needsRevision" ? "border-red-300 text-red-600 hover:bg-red-50" : ""
+                      }`}
+                      onClick={() => onOpenFill(t)}
+                    >
                       {meta.buttonLabel}
                     </Button>
                   </>
@@ -170,7 +196,8 @@ const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
 export default function DocumentChecklist() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, isLoggedIn, session } = useAuth();
+  const { user, isLoggedIn, session, ready } = useAuth();
+  const showLoginGate = ready && !isLoggedIn;
   const activeItemName = location.state?.itemName ?? null;
 
   const [selectedBusinessId, setSelectedBusinessId] = useState(location.state?.businessId ?? null);
@@ -190,11 +217,10 @@ export default function DocumentChecklist() {
   const refreshGovTemplates = async () => {
     if (!selectedBusinessId) return;
     setLoadingGovTemplates(true);
-    const { data: templates } = await supabase
-      .from("templates")
-      .select("*")
-      .eq("business_id", selectedBusinessId)
-      .order("form_number");
+    const { data: templates } = await orderedSelect(
+      () => supabase.from("templates").select("*").eq("business_id", selectedBusinessId),
+      "form_number"
+    );
     setGovTemplates(templates || []);
 
     const templateIds = (templates || []).map((t) => t.id);
@@ -373,7 +399,7 @@ export default function DocumentChecklist() {
 
   return (
     <>
-      <div className={`mx-auto max-w-6xl px-8 py-8 ${!isLoggedIn ? "pointer-events-none blur-sm" : ""}`}>
+      <div className={`mx-auto max-w-6xl px-8 py-8 ${showLoginGate ? "pointer-events-none blur-sm" : ""}`}>
       <h1 className="text-2xl font-bold text-slate-900">{dc.title}</h1>
 
       <div className="mt-1 mb-6 flex flex-wrap items-center gap-2 text-sm text-slate-500">
@@ -390,10 +416,7 @@ export default function DocumentChecklist() {
         <div className="mb-8">
           <button
             type="button"
-            onClick={() => {
-              setSelectedBusinessId(null);
-              setSelectedBusinessName(null);
-            }}
+            onClick={() => navigate("/gov-support")}
             className="mb-4 flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-800"
           >
             <Icon name="arrowLeft" className="h-4 w-4" /> 지원사업 목록으로
@@ -465,7 +488,7 @@ export default function DocumentChecklist() {
       )}
       </div>
 
-      {!isLoggedIn && (
+      {showLoginGate && (
         <LoginPopup onClose={() => navigate("/gov-support")} onSuccess={() => {}} />
       )}
     </>

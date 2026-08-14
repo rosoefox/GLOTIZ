@@ -48,9 +48,7 @@ export default function Login() {
         <div className="pointer-events-none absolute bottom-0 right-0 h-96 w-96 translate-x-1/3 translate-y-1/3 rounded-full bg-brand-400/20 blur-3xl" />
 
         <Link to="/" className="relative z-10 flex items-center gap-2.5 text-white">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/15 backdrop-blur">
-            <Icon name="sparkle" className="h-4.5 w-4.5" />
-          </div>
+          <img src={brand.logo} alt={brand.name} className="h-9 w-9 rounded-xl object-contain" />
           <span className="text-lg font-bold tracking-tight">{brand.name}</span>
         </Link>
 
@@ -75,9 +73,7 @@ export default function Login() {
       <div className="flex flex-1 flex-col items-center justify-center px-6 py-12">
         <div className="mb-8 flex w-full max-w-sm items-center justify-between lg:hidden">
           <Link to="/" className="flex items-center gap-2 text-brand-700">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-white">
-              <Icon name="sparkle" className="h-4 w-4" />
-            </div>
+            <img src={brand.logo} alt={brand.name} className="h-8 w-8 rounded-lg object-contain" />
             <span className="text-base font-bold">{brand.name}</span>
           </Link>
           <Link
