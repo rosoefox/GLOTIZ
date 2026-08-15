@@ -47,8 +47,8 @@ app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:5173/",
-        "https://jbxport-frontend-639709983318.asia-northeast3.run.app/",
+        "http://localhost:5173",
+        "https://jbxport-frontend-639709983318.asia-northeast3.run.app",
     ],
     allow_methods=["*"],
     allow_headers=["*"],
