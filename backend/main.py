@@ -32,6 +32,11 @@ DATA_GO_KR_TRADE_SERVICE_KEY = os.environ["DATA_GO_KR_TRADE_SERVICE_KEY"]
 # 시장 분석은 서류 자동완성/챗봇과 별도의 Gemini 프로젝트(무료 티어 할당량 분리)를 쓸 수 있도록
 # 전용 키가 있으면 그것을, 없으면 기존 GEMINI_API_KEY를 그대로 사용한다.
 MARKET_ANALYSIS_GEMINI_API_KEY = os.environ.get("MARKET_ANALYSIS_GEMINI_API_KEY") or GEMINI_API_KEY
+# AI 이미지 생성(마케팅 이미지)은 Gemini Developer API가 아니라 Vertex AI를 통해 호출한다.
+# GOOGLE_APPLICATION_CREDENTIALS(서비스 계정 키 경로)는 google-auth ADC가 자동으로 읽는다.
+VERTEX_AI_PROJECT_ID = os.environ.get("VERTEX_AI_PROJECT_ID")
+VERTEX_AI_LOCATION = os.environ.get("VERTEX_AI_LOCATION", "us-central1")
+IMAGE_GEN_MODEL = os.environ.get("IMAGE_GEN_MODEL", "gemini-2.5-flash-image")
 
 TEMPLATES_BUCKET = "templates"
 GENERATED_BUCKET = "generated"
@@ -41,6 +46,11 @@ VALID_FIELD_TYPES = {"text", "number", "date", "select", "checkbox", "textarea",
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 gemini_client = genai.Client(api_key=GEMINI_API_KEY)
 market_gemini_client = genai.Client(api_key=MARKET_ANALYSIS_GEMINI_API_KEY)
+vertex_image_client = (
+    genai.Client(vertexai=True, project=VERTEX_AI_PROJECT_ID, location=VERTEX_AI_LOCATION)
+    if VERTEX_AI_PROJECT_ID
+    else None
+)
 
 app = FastAPI()
 
@@ -1900,3 +1910,267 @@ def review(req: ReviewRequest):
         "review_status": updated["review_status"],
         "review_note": updated["review_note"],
     }
+
+
+# --- AI 이미지 생성 (마케팅 이미지: 포스터 / 카드뉴스 / 상세설명) ---
+# 이미지 생성 자체는 Vertex AI(vertex_image_client)를 쓰고, 문구(카피) 생성은 기존 Developer API
+# gemini_client를 그대로 재사용한다. 이미지 안에는 어떤 문자도 렌더링하지 않고, 실제 문구는 프론트엔드가
+# 이미지 위에 CSS로 오버레이한다 (NO_TEXT_INSTRUCTION 참고).
+
+ALLOWED_PRODUCT_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
+
+NO_TEXT_INSTRUCTION = (
+    "이미지 안에 어떠한 문자, 숫자, 로고 텍스트, 워터마크도 절대 렌더링하지 마세요. "
+    "문구·캡션·타이포그래피 요소 없이 순수한 사진/장면 이미지만 생성하세요. 문구는 이후 별도로 합성됩니다."
+)
+
+
+def _generate_image(prompt: str, reference_bytes: bytes, reference_mime: str, aspect_ratio: str) -> tuple[bytes, str]:
+    """Vertex AI 이미지 생성 모델을 호출해 (이미지 bytes, mime_type)을 반환한다."""
+    response = vertex_image_client.models.generate_content(
+        model=IMAGE_GEN_MODEL,
+        contents=[
+            types.Part.from_bytes(data=reference_bytes, mime_type=reference_mime),
+            prompt,
+        ],
+        config=types.GenerateContentConfig(
+            image_config=types.ImageConfig(aspect_ratio=aspect_ratio),
+        ),
+    )
+    if response.candidates:
+        for part in response.candidates[0].content.parts:
+            if getattr(part, "inline_data", None) is not None:
+                return part.inline_data.data, part.inline_data.mime_type
+    raise RuntimeError("이미지가 생성되지 않았습니다.")
+
+
+def _generate_copy_json(prompt: str, schema: dict) -> dict:
+    """문구(JSON) 생성 — 기존 Developer API gemini_client를 그대로 재사용한다."""
+    response = gemini_client.models.generate_content(
+        model="gemini-flash-latest",
+        contents=[prompt],
+        config=types.GenerateContentConfig(response_mime_type="application/json", response_schema=schema),
+    )
+    return json.loads(response.text)
+
+
+def _upload_generated_image(user_id: str, gen_id: str, slot: str, image_bytes: bytes, mime_type: str) -> dict:
+    ext = "png" if "png" in mime_type else "jpg"
+    path = f"marketing-images/{user_id}/{gen_id}/{slot}.{ext}"
+    supabase.storage.from_(GENERATED_BUCKET).upload(
+        path, image_bytes, {"content-type": mime_type, "upsert": "true"}
+    )
+    signed = supabase.storage.from_(GENERATED_BUCKET).create_signed_url(path, 3600)
+    return {"slot": slot, "path": path, "url": signed.get("signedURL")}
+
+
+def _poster_prompt(description: str, must_have_photo: str) -> str:
+    scene = must_have_photo.strip() or "상품을 돋보이게 하는 매력적인 장면을 자유롭게 구성하세요."
+    return f"""당신은 상업 광고 사진작가입니다. 아래 정보를 바탕으로 마케팅 포스터용 배경 이미지를 만들어주세요.
+상품 설명: {description or '(설명 없음)'}
+반드시 포함되어야 하는 장면: {scene}
+
+요구사항: 첨부된 참고 사진 속 실제 상품과 동일한 형태·색상·재질로 등장시키세요. 세로로 긴 9:16 포스터 구도로 구성하고,
+화면 중앙 부근에 나중에 제목/태그라인/가격 문구가 강하게 얹힐 수 있도록 그 부분의 배경이 너무 산만하지 않게 여백과 대비를 의도적으로 남겨주세요.
+역동적이고 임팩트 있는 고급 상업광고 포스터 스타일.
+{NO_TEXT_INSTRUCTION}"""
+
+
+def _card1_prompt(description: str) -> str:
+    return f"""상업 제품 사진작가로서, 상품이 화면 중앙에 크고(화면의 60% 이상) 뚜렷하게 부각되는 정사각형 제품 사진을 만들어주세요.
+상품 설명: {description or '(설명 없음)'}
+참고 사진 속 실제 상품 형태·색상·재질을 정확히 유지하세요. 화면 하단에 나중에 상품명 텍스트가 얹힐 수 있도록 여백을 남기세요.
+{NO_TEXT_INSTRUCTION}"""
+
+
+def _card2_prompt(features: list[str]) -> str:
+    feature_text = ", ".join(features) if features else "상품의 핵심 장점"
+    return f"""아래 상품의 핵심 특징을 시각적으로(글자 없이) 표현하는 정사각형 이미지를 만들어주세요.
+표현해야 할 특징: {feature_text}
+참고 사진 속 실제 상품을 등장시키거나 상품의 디테일(질감·소재·기능 부위)을 클로즈업으로 보여주는 방식으로 이 특징들을 암시하세요.
+화면 하단에 텍스트가 얹힐 여백을 남기세요.
+{NO_TEXT_INSTRUCTION}"""
+
+
+def _card3_prompt(description: str, must_have_photo: str) -> str:
+    scene = must_have_photo.strip() or description.strip() or "상품이 자연스럽게 사용되는 일상적인 장면"
+    return f"""장면 설명: {scene}
+이 장면 안에 참고 사진 속 실제 상품을 자연스럽게 등장시켜(형태·색상·재질 유지) 사실적인 상업 사진으로 연출하세요.
+{NO_TEXT_INSTRUCTION}"""
+
+
+def _card4_prompt(description: str) -> str:
+    return f"""카드뉴스의 마지막 장을 장식할 임팩트 있는 클로징 이미지를 만들어주세요.
+상품 설명: {description or '(설명 없음)'}
+참고 사진 속 실제 상품을 매력적으로 등장시키고, 화면 중앙 또는 하단에 나중에 가격과 짧은 홍보 문구가 얹힐 수 있도록 여백을 남기세요.
+신뢰감 있고 세련된 톤.
+{NO_TEXT_INSTRUCTION}"""
+
+
+def _detail_hero_prompt(description: str) -> str:
+    return f"""상세페이지 상단에 들어갈 대형 히어로 상품 사진을 가로로 넓은 비율로 만들어주세요.
+상품 설명: {description or '(설명 없음)'}
+상품이 화면을 압도적으로 채우는 임팩트 있는 구도. 참고 사진 속 실제 상품 형태·색상·재질을 정확히 유지하세요.
+고급스럽고 시선을 사로잡는 상업광고 사진 스타일.
+{NO_TEXT_INSTRUCTION}"""
+
+
+def _detail_feature_prompt(caption: dict) -> str:
+    return f"""아래 주제를 시각적으로 표현하는 상품 사진을 정사각형에 가까운 비율로 만들어주세요.
+주제: {caption.get('eyebrow', '')} — {caption.get('heading', '')}
+참고 설명: {caption.get('description', '')}
+참고 사진 속 실제 상품을 등장시키고, 이 주제에 맞는 디테일(소재 질감·기능 부위·사용 장면)을 클로즈업 또는 연출 컷으로 보여주세요.
+{NO_TEXT_INSTRUCTION}"""
+
+
+def _detail_angle_prompt(angle_label: str) -> str:
+    return f"""첨부된 참고 사진은 이 상품의 정면 실제 사진입니다. 이 상품과 동일한 형태·색상·재질·디자인을 유지한 채,
+카메라 앵글을 {angle_label}으로 상상하여 생성해주세요.
+실제 상품 사진처럼 사실적인 스튜디오 제품 사진 스타일(깨끗한 배경, 균일한 조명)로, 참고 사진과 동일한 상품임을 알아볼 수 있도록 디자인 일관성을 유지하세요.
+{NO_TEXT_INSTRUCTION}"""
+
+
+CARD_NEWS_COPY_SCHEMA = {
+    "type": "OBJECT",
+    "properties": {
+        "features": {"type": "ARRAY", "items": {"type": "STRING"}},
+        "promoLine": {"type": "STRING"},
+    },
+    "required": ["features", "promoLine"],
+}
+
+DETAIL_CAPTIONS_SCHEMA = {
+    "type": "OBJECT",
+    "properties": {
+        "captions": {
+            "type": "ARRAY",
+            "items": {
+                "type": "OBJECT",
+                "properties": {
+                    "eyebrow": {"type": "STRING"},
+                    "heading": {"type": "STRING"},
+                    "description": {"type": "STRING"},
+                },
+                "required": ["eyebrow", "heading", "description"],
+            },
+        }
+    },
+    "required": ["captions"],
+}
+
+
+def _card_news_copy_prompt(product_name: str, description: str) -> str:
+    return f"""당신은 이커머스 카드뉴스 카피라이터입니다.
+상품명: {product_name}
+상품 설명: {description or '(설명 없음)'}
+
+features: 상품 설명에서 도출한 핵심 특징 2~4개, 각 8~14자 내외 짧은 한글 문구 (설명에 근거하여, 지어내지 마세요).
+promoLine: 마지막 장 CTA용 15자 내외 짧고 임팩트 있는 홍보 문구."""
+
+
+def _detail_captions_prompt(product_name: str, description: str) -> str:
+    return f"""당신은 이커머스 상세페이지 카피라이터입니다.
+상품명: {product_name}
+상품 설명: {description or '(설명 없음)'}
+
+상세페이지 '특징 소개' 섹션에 들어갈 3개의 캡션 세트를 작성하세요 — 소재/기능/디자인 등 서로 다른 3가지 매력 포인트를 각각 다루도록.
+각 세트: eyebrow(영문 대문자 2~3단어, 예: 'PREMIUM QUALITY'), heading(굵은 한글 소제목 6~12자),
+description(1~2문장 한글, 상품 설명에 근거하여 자연스럽게 확장, 지어내지 마세요)."""
+
+
+def _generate_poster(user_id, gen_id, ref_bytes, ref_mime, product_name, description, must_have_photo):
+    image_bytes, mime = _generate_image(_poster_prompt(description, must_have_photo), ref_bytes, ref_mime, "9:16")
+    return {"images": [_upload_generated_image(user_id, gen_id, "poster", image_bytes, mime)]}
+
+
+def _generate_card_news(user_id, gen_id, ref_bytes, ref_mime, product_name, description, must_have_photo):
+    copy = _generate_copy_json(_card_news_copy_prompt(product_name, description), CARD_NEWS_COPY_SCHEMA)
+    features = copy.get("features") or []
+    promo_line = copy.get("promoLine") or ""
+
+    slot_prompts = [
+        ("card-1", _card1_prompt(description)),
+        ("card-2", _card2_prompt(features)),
+        ("card-3", _card3_prompt(description, must_have_photo)),
+        ("card-4", _card4_prompt(description)),
+    ]
+    images = []
+    for slot, prompt in slot_prompts:
+        image_bytes, mime = _generate_image(prompt, ref_bytes, ref_mime, "1:1")
+        images.append(_upload_generated_image(user_id, gen_id, slot, image_bytes, mime))
+
+    return {"images": images, "copy": {"features": features, "promoLine": promo_line}}
+
+
+def _generate_detail(user_id, gen_id, ref_bytes, ref_mime, product_name, description):
+    captions_result = _generate_copy_json(_detail_captions_prompt(product_name, description), DETAIL_CAPTIONS_SCHEMA)
+    captions = (captions_result.get("captions") or [])[:3]
+    while len(captions) < 3:
+        captions.append({"eyebrow": "", "heading": "", "description": ""})
+
+    images = []
+
+    hero_bytes, hero_mime = _generate_image(_detail_hero_prompt(description), ref_bytes, ref_mime, "16:9")
+    images.append(_upload_generated_image(user_id, gen_id, "hero", hero_bytes, hero_mime))
+
+    for i, caption in enumerate(captions, start=1):
+        f_bytes, f_mime = _generate_image(_detail_feature_prompt(caption), ref_bytes, ref_mime, "1:1")
+        images.append(_upload_generated_image(user_id, gen_id, f"feature-{i}", f_bytes, f_mime))
+
+    angle_slots = [
+        ("angle-front", "정면에서 본 모습"),
+        ("angle-back", "후면에서 본 모습"),
+        ("angle-top", "위에서 내려다본 모습"),
+    ]
+    for slot, label in angle_slots:
+        a_bytes, a_mime = _generate_image(_detail_angle_prompt(label), ref_bytes, ref_mime, "1:1")
+        images.append(_upload_generated_image(user_id, gen_id, slot, a_bytes, a_mime))
+
+    return {"images": images, "copy": {"captions": captions}}
+
+
+@app.post("/marketing/generate")
+def generate_marketing_images(
+    layout: str = Form(...),
+    product_name: str = Form(...),
+    tagline: str = Form(""),
+    description: str = Form(""),
+    must_have_photo: str = Form(""),
+    price: str = Form(""),
+    product_image: UploadFile = File(...),
+    authorization: str | None = Header(None),
+):
+    """상품 정보 + 상품 사진을 바탕으로 AI 마케팅 이미지를 생성한다 (포스터 1장 / 카드뉴스 4장 / 상세설명 7장).
+    이미지에는 문구를 렌더링하지 않으며, 실제 문구는 프론트엔드가 오버레이한다."""
+    user_id = require_user(authorization)
+
+    if layout not in {"poster", "card-news", "detail"}:
+        raise HTTPException(status_code=400, detail="layout 값이 올바르지 않습니다.")
+    if not vertex_image_client:
+        raise HTTPException(status_code=503, detail="이미지 생성 기능이 아직 설정되지 않았습니다.")
+    if (product_image.content_type or "") not in ALLOWED_PRODUCT_IMAGE_TYPES:
+        raise HTTPException(status_code=400, detail="JPG, PNG, WEBP 이미지만 업로드할 수 있습니다.")
+    if not product_name.strip():
+        raise HTTPException(status_code=400, detail="상품명을 입력해주세요.")
+
+    reference_bytes = product_image.file.read()
+    reference_mime = product_image.content_type
+    gen_id = uuid.uuid4().hex
+
+    try:
+        if layout == "poster":
+            result = _generate_poster(
+                user_id, gen_id, reference_bytes, reference_mime, product_name, description, must_have_photo
+            )
+        elif layout == "card-news":
+            result = _generate_card_news(
+                user_id, gen_id, reference_bytes, reference_mime, product_name, description, must_have_photo
+            )
+        else:
+            result = _generate_detail(user_id, gen_id, reference_bytes, reference_mime, product_name, description)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"이미지 생성에 실패했습니다: {e}")
+
+    return {"layout": layout, **result}

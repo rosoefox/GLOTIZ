@@ -40,7 +40,7 @@ export function Button({ children, variant = "primary", className = "", ...props
   );
 }
 
-export function TextField({ label, required, className = "", ...props }) {
+export function TextField({ label, required, className = "", inputClassName = "", ...props }) {
   return (
     <label className={`block ${className}`}>
       {label && (
@@ -49,7 +49,7 @@ export function TextField({ label, required, className = "", ...props }) {
         </span>
       )}
       <input
-        className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
+        className={`w-full rounded-lg border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100 ${inputClassName}`}
         {...props}
       />
     </label>

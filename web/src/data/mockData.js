@@ -750,16 +750,16 @@ export const documentPreview = {
 export const marketingMaterialCreator = {
   title: "AI 이미지 생성",
   subtitle: "제품 마케팅 이미지를 빠르게 생성하세요.",
-  actions: { loadFromDoc: "기존 서류 정보 불러오기", saveImage: "이미지 저장" },
+  actions: { saveImage: "이미지 저장" },
   uploadLabel: "상품 사진 업로드",
   uploadHint: { title: "클릭하거나 파일을 끌어다 놓으세요", sub: "SVG, PNG, JPG, GIF (최대 800x400px)" },
   templateSectionTitle: "템플릿 선택",
   templates: {
-    categories: ["전체", "SNS", "B2B 카탈로그", "배너"],
+    categories: ["전체", "포스터", "카드뉴스", "상세설명"],
     items: [
-      { id: "tpl-modern-minimal", name: "모던 미니멀", selected: true },
-      { id: "tpl-b2b-spec-sheet", name: "B2B 스펙시트", selected: false },
-      { id: "tpl-promo-banner", name: "프로모션 배너", selected: false },
+      { id: "tpl-poster", name: "포스터", category: "포스터", selected: true },
+      { id: "tpl-card-news", name: "카드뉴스", category: "카드뉴스", selected: false },
+      { id: "tpl-detail", name: "상세설명", category: "상세설명", selected: false },
     ],
   },
   previewTitle: "미리보기",
