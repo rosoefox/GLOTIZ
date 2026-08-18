@@ -13,7 +13,29 @@ function reviewStatusKey(submission) {
   return "reviewing";
 }
 
-function ProgramRow({ index, program, expanded, onToggle, onViewDocument, onGoToDocs }) {
+// 승인 확인 여부는 서버에 저장하지 않고, 이 브라우저에 로컬로만 기록한다 —
+// "사용자가 확인하면 사라진다"는 건 이 사용자 화면에서의 강조 표시가 사라진다는 뜻이라
+// 굳이 새 테이블/컬럼을 만들 필요 없이 localStorage로 충분하다.
+function ackKey(userId) {
+  return `jbxport:approved-ack:${userId}`;
+}
+function loadAcked(userId) {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(ackKey(userId)) || "[]"));
+  } catch {
+    return new Set();
+  }
+}
+function saveAcked(userId, set) {
+  localStorage.setItem(ackKey(userId), JSON.stringify([...set]));
+}
+// submissionId만으로는 "그 서류가 다시 반려됐다가 재승인된" 경우를 구분 못 하니,
+// 승인 시각까지 같이 묶어서 키로 쓴다.
+function approvalAckId(doc) {
+  return `${doc.submissionId}:${doc.reviewedAt || ""}`;
+}
+
+function ProgramRow({ index, program, expanded, onToggle, onViewDocument, onGoToDocs, onFixDocument, isNewApproval }) {
   return (
     <Card className="overflow-hidden p-0">
       <div className="flex w-full items-center justify-between gap-4 px-5 py-4">
@@ -47,33 +69,47 @@ function ProgramRow({ index, program, expanded, onToggle, onViewDocument, onGoTo
           {program.documents.length === 0 ? (
             <p className="px-5 py-4 text-sm text-slate-400">{mas.documentsEmptyMessage}</p>
           ) : (
-            program.documents.map((doc) => (
-              <div key={doc.templateId} className="flex items-center justify-between gap-3 px-5 py-3">
-                <p className="text-sm font-medium text-slate-800">{doc.templateName}</p>
-                <div className="flex items-center gap-3">
-                  <span
-                    className={`flex items-center gap-1.5 text-xs font-semibold ${
-                      doc.statusKey === "needsRevision" ? "text-red-500" : "text-slate-600"
-                    }`}
-                  >
+            program.documents.map((doc) => {
+              const isNeedsRevision = doc.statusKey === "needsRevision";
+              const isApproved = doc.statusKey === "approved";
+              const isUnseenApproval = isApproved && isNewApproval(doc);
+              return (
+                <div key={doc.templateId} className="flex items-center justify-between gap-3 px-5 py-3">
+                  <p className="text-sm font-medium text-slate-800">{doc.templateName}</p>
+                  <div className="flex items-center gap-3">
                     <span
-                      className={`h-2.5 w-2.5 rounded-full ${mas.statusDotClasses[doc.statusKey]} ${
-                        doc.statusKey === "needsRevision" ? "animate-blink" : ""
+                      className={`flex items-center gap-1.5 text-xs font-semibold ${
+                        isNeedsRevision ? "text-red-500" : isApproved ? "text-emerald-600" : "text-slate-600"
                       }`}
-                    />
-                    {mas.statusLabels[doc.statusKey]}
-                  </span>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    className="px-3 py-1.5 text-xs"
-                    onClick={() => onViewDocument(doc)}
-                  >
-                    확인하기
-                  </Button>
+                    >
+                      <span
+                        className={`h-2.5 w-2.5 rounded-full ${mas.statusDotClasses[doc.statusKey]} ${
+                          isNeedsRevision || isUnseenApproval ? "animate-blink" : ""
+                        }`}
+                      />
+                      {mas.statusLabels[doc.statusKey]}
+                    </span>
+                    {isNeedsRevision && (
+                      <Button
+                        type="button"
+                        className="px-3 py-1.5 text-xs"
+                        onClick={() => onFixDocument(program, doc)}
+                      >
+                        보완하기
+                      </Button>
+                    )}
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="px-3 py-1.5 text-xs"
+                      onClick={() => onViewDocument(doc)}
+                    >
+                      확인하기
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       )}
@@ -90,6 +126,23 @@ export default function MyApplicationStatus() {
   const [viewingDoc, setViewingDoc] = useState(null);
   const [bookmarks, setBookmarks] = useState([]);
   const [loadingBookmarks, setLoadingBookmarks] = useState(true);
+  const [ackedApprovals, setAckedApprovals] = useState(new Set());
+
+  useEffect(() => {
+    if (!user?.id) return;
+    setAckedApprovals(loadAcked(user.id));
+  }, [user?.id]);
+
+  const isNewApproval = (doc) => !ackedApprovals.has(approvalAckId(doc));
+
+  const acknowledgeApproval = (doc) => {
+    if (!user?.id || doc.statusKey !== "approved") return;
+    const id = approvalAckId(doc);
+    if (ackedApprovals.has(id)) return;
+    const next = new Set(ackedApprovals).add(id);
+    setAckedApprovals(next);
+    saveAcked(user.id, next);
+  };
 
   useEffect(() => {
     if (!user?.id) return;
@@ -180,6 +233,7 @@ export default function MyApplicationStatus() {
           templateName: template.name,
           statusKey: reviewStatusKey(s),
           submissionId: s.id,
+          reviewedAt: s.reviewed_at,
         });
       });
 
@@ -189,8 +243,21 @@ export default function MyApplicationStatus() {
       }
     }
     load();
+
+    // 관리자가 승인/반려 버튼을 누르면 이 화면을 새로고침하지 않아도 바로 반영되도록,
+    // 이 사용자의 submissions 변경을 실시간으로 구독해 다시 불러온다.
+    const channel = supabase
+      .channel(`my-applications-${user.id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "submissions", filter: `user_id=eq.${user.id}` },
+        () => load()
+      )
+      .subscribe();
+
     return () => {
       cancelled = true;
+      supabase.removeChannel(channel);
     };
   }, [user?.id]);
 
@@ -198,7 +265,7 @@ export default function MyApplicationStatus() {
     <div className="mx-auto max-w-3xl px-8 py-8">
       <button
         type="button"
-        onClick={() => navigate("/mypage")}
+        onClick={() => navigate(-1)}
         className="mb-4 flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-800"
       >
         <Icon name="arrowLeft" className="h-4 w-4" /> 마이페이지로
@@ -263,7 +330,16 @@ export default function MyApplicationStatus() {
               program={program}
               expanded={expandedId === program.businessId}
               onToggle={() => setExpandedId((id) => (id === program.businessId ? null : program.businessId))}
-              onViewDocument={setViewingDoc}
+              onViewDocument={(doc) => {
+                acknowledgeApproval(doc);
+                setViewingDoc(doc);
+              }}
+              onFixDocument={(p, doc) =>
+                navigate(`/docs/fill/${doc.templateId}`, {
+                  state: { templateName: doc.templateName, businessId: p.businessId, businessName: p.businessName },
+                })
+              }
+              isNewApproval={isNewApproval}
               onGoToDocs={(p) =>
                 navigate("/docs", { state: { businessId: p.businessId, businessName: p.businessName } })
               }

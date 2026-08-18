@@ -101,10 +101,14 @@ export default function DocumentFill() {
   const [isEditing, setIsEditing] = useState(false);
 
   const [transferring, setTransferring] = useState(false);
+  const [extractingUploads, setExtractingUploads] = useState(false);
   const [aiFilling, setAiFilling] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const [showComplete, setShowComplete] = useState(false);
+  const [generatingDoc, setGeneratingDoc] = useState(false);
+  const [generatedDocUrl, setGeneratedDocUrl] = useState(null);
+  const [generateError, setGenerateError] = useState(null);
 
   const allFilled = fields.length > 0 && fields.every((f) => (values[f.id] ?? "").toString().trim() !== "");
 
@@ -220,6 +224,36 @@ export default function DocumentFill() {
     }
   };
 
+  // 예전에 이 포털에 업로드했던 서류(사업자등록증 등) 파일을 AI가 직접 읽어서 아직 안 채운
+  // 칸만 채운다 — "정보 이전"과 달리 다른 제출값이 아니라 실제 파일 내용을 읽는다.
+  const handleExtractFromUploads = async () => {
+    if (!session) return;
+    setExtractingUploads(true);
+    setError(null);
+    try {
+      const res = await fetch(`${BACKEND_URL}/templates/${templateId}/extract-from-uploads`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (!res.ok) throw new Error(await readErrorMessage(res, "업로드한 서류에서 정보를 불러오지 못했습니다."));
+      const data = await res.json();
+      const fieldIdByKey = Object.fromEntries(fields.map((f) => [f.field_key, f.id]));
+      setValues((prev) => {
+        const next = { ...prev };
+        (data.fields || []).forEach((item) => {
+          if (!item.value) return;
+          const fieldId = fieldIdByKey[item.field_key];
+          if (fieldId && !next[fieldId]) next[fieldId] = item.value;
+        });
+        return next;
+      });
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setExtractingUploads(false);
+    }
+  };
+
   const handleAiFill = async () => {
     setAiFilling(true);
     setError(null);
@@ -297,17 +331,37 @@ export default function DocumentFill() {
         // AI 검토 실패는 화면에 에러로 띄우지 않는다 - 미검토 상태로 남아도 제출 자체는 유효하다.
       }
 
+      setShowComplete(true);
+      setGeneratingDoc(true);
+      setGeneratedDocUrl(null);
+      setGenerateError(null);
       try {
-        await fetch(`${BACKEND_URL}/generate`, {
+        const genRes = await fetch(`${BACKEND_URL}/generate`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ submission_id: submission.id }),
         });
-      } catch {
-        // 문서 생성 실패해도 제출(submission/값)은 이미 저장됐으니 관리자가 확인할 수 있다.
+        if (!genRes.ok) throw new Error(await readErrorMessage(genRes, "완성된 서류를 만드는 데 실패했습니다."));
+        const genData = await genRes.json();
+        const { data: signedData, error: signedErr } = await supabase.storage
+          .from("generated")
+          .createSignedUrl(genData.file_path, 3600);
+        if (signedErr || !signedData) throw new Error("완성된 서류 다운로드 링크를 만드는 데 실패했습니다.");
+        setGeneratedDocUrl(signedData.signedUrl);
+        // 준비되는 즉시 바로 다운로드까지 시도한다 — 브라우저가 막으면 모달의 버튼으로 받으면 된다.
+        const a = document.createElement("a");
+        a.href = signedData.signedUrl;
+        a.download = `${templateName || "제출서류"}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      } catch (err) {
+        // 문서 생성이 실패해도 제출(submission/값)은 이미 저장됐으니 관리자가 확인/재생성할 수 있다 —
+        // 다만 사용자에게도 실패 사실은 알려준다.
+        setGenerateError(err.message);
+      } finally {
+        setGeneratingDoc(false);
       }
-
-      setShowComplete(true);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -319,7 +373,7 @@ export default function DocumentFill() {
     <div className="mx-auto max-w-4xl px-8 py-8">
       <button
         type="button"
-        onClick={() => navigate("/docs", { state: { businessId, businessName } })}
+        onClick={() => navigate(-1)}
         className="mb-4 flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-800"
       >
         <Icon name="arrowLeft" className="h-4 w-4" /> 목록으로
@@ -332,6 +386,16 @@ export default function DocumentFill() {
         <Button type="button" variant="outlineBrand" className="px-4 py-2.5 text-sm" onClick={handleTransferInfo} disabled={transferring}>
           <Icon name="user" className="h-4 w-4" />
           {transferring ? "불러오는 중..." : "정보 이전"}
+        </Button>
+        <Button
+          type="button"
+          variant="outlineBrand"
+          className="px-4 py-2.5 text-sm"
+          onClick={handleExtractFromUploads}
+          disabled={extractingUploads}
+        >
+          <Icon name="upload" className="h-4 w-4" />
+          {extractingUploads ? "서류 읽는 중..." : "업로드한 서류에서 불러오기"}
         </Button>
         <Button type="button" variant="outlineBrand" className="px-4 py-2.5 text-sm" onClick={handleAiFill} disabled={aiFilling}>
           <Icon name="sparkle" className="h-4 w-4" />
@@ -399,12 +463,39 @@ export default function DocumentFill() {
         <Modal title={documentPreview.submitted.title} onClose={() => navigate("/docs", { state: { businessId, businessName } })} width="max-w-sm">
           <div className="flex flex-col items-center text-center">
             <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
-              <Icon name="checkCircle" className="h-6 w-6" />
+              {generatingDoc ? (
+                <div className="h-6 w-6 animate-spin rounded-full border-2 border-emerald-200 border-t-emerald-600" />
+              ) : (
+                <Icon name="checkCircle" className="h-6 w-6" />
+              )}
             </div>
-            <p className="text-sm text-slate-600">{documentPreview.submitted.message}</p>
+            <p className="text-sm text-slate-600">
+              {generatingDoc ? "완성된 서류 PDF를 만들고 있어요" : documentPreview.submitted.message}
+            </p>
+
+            {generatingDoc && (
+              <p className="mt-3 text-xs font-medium text-slate-400">잠시만 기다려주세요. 완료되면 자동으로 다운로드돼요.</p>
+            )}
+            {!generatingDoc && generatedDocUrl && (
+              <a
+                href={generatedDocUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-4 flex w-full items-center justify-center gap-1.5 rounded-xl border border-brand-200 bg-brand-50 py-2.5 text-sm font-semibold text-brand-700 hover:bg-brand-100"
+              >
+                <Icon name="download" className="h-4 w-4" />
+                완성된 서류 PDF 다운로드
+              </a>
+            )}
+            {!generatingDoc && generateError && (
+              <p className="mt-3 text-xs font-medium text-red-500">
+                완성된 서류 생성에 실패했습니다. 잠시 후 목록에서 다시 시도해주세요.
+              </p>
+            )}
+
             <Button
               type="button"
-              className="mt-5 w-full justify-center"
+              className="mt-3 w-full justify-center"
               onClick={() => navigate("/docs", { state: { businessId, businessName } })}
             >
               {documentPreview.submitted.backLabel}

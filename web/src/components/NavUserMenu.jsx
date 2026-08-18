@@ -5,7 +5,7 @@ import { login } from "../data/mockData";
 import { supabase } from "../lib/supabase";
 import { Button } from "./ui";
 
-export default function NavUserMenu({ light = false }) {
+export default function NavUserMenu({ light = false, mobile = false, onNavigate }) {
   const { isLoggedIn, logout, user } = useAuth();
   const navigate = useNavigate();
   const [needsRevisionCount, setNeedsRevisionCount] = useState(0);
@@ -38,6 +38,7 @@ export default function NavUserMenu({ light = false }) {
   }, [user?.id]);
 
   const handleMyPageClick = () => {
+    onNavigate?.();
     if (!isLoggedIn) {
       window.alert(login.requiredMessage);
       navigate("/login");
@@ -47,6 +48,7 @@ export default function NavUserMenu({ light = false }) {
   };
 
   const handleMyApplicationsClick = () => {
+    onNavigate?.();
     if (!isLoggedIn) {
       window.alert(login.requiredMessage);
       navigate("/login");
@@ -56,9 +58,52 @@ export default function NavUserMenu({ light = false }) {
   };
 
   const handleLogout = () => {
+    onNavigate?.();
     logout();
     navigate("/");
   };
+
+  const handleLoginClick = () => {
+    onNavigate?.();
+    navigate("/login");
+  };
+
+  // 좁은 화면에서는 헤더 안에 한 줄로 우겨넣으면 넘치므로, 햄버거 메뉴 패널 안에서
+  // 세로로 쌓이는 형태로 렌더링한다 (같은 상태/핸들러를 재사용).
+  if (mobile) {
+    return (
+      <div className="flex flex-col gap-1.5">
+        <button
+          type="button"
+          onClick={handleMyApplicationsClick}
+          className="rounded-lg px-3 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"
+        >
+          나의 지원사업 현황
+        </button>
+        <button
+          type="button"
+          onClick={handleMyPageClick}
+          className="relative rounded-lg px-3 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"
+        >
+          마이페이지
+          {needsRevisionCount > 0 && (
+            <span className="animate-blink absolute right-3 top-2.5 h-2.5 w-2.5 rounded-full bg-red-500" />
+          )}
+        </button>
+        <div className="mt-1.5">
+          {isLoggedIn ? (
+            <Button type="button" variant="secondary" onClick={handleLogout} className="w-full justify-center">
+              로그아웃
+            </Button>
+          ) : (
+            <Button type="button" onClick={handleLoginClick} className="w-full justify-center">
+              로그인
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   const linkCls = light ? "hover:text-white" : "hover:text-slate-900";
   const actionCls =

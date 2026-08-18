@@ -1,3 +1,4 @@
+
 """
 fill_docx.py
 서류 자동생성 파이프라인의 핵심 함수 모음.
@@ -51,6 +52,7 @@ def replace_placeholders(doc, values: dict, review_fields: set = None):
     review_fields = review_fields or set()
 
     for p in _iter_all_paragraphs(doc):
+    
         full_text = p.text
         if '{{' not in full_text:
             continue

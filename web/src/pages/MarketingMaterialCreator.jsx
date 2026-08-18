@@ -223,6 +223,63 @@ function DetailPreview({ images, copy, preview, specLines }) {
   );
 }
 
+const TRANSLATE_LANGUAGES = [
+  { code: "en", label: "English" },
+  { code: "vi", label: "Tiếng Việt" },
+  { code: "th", label: "ภาษาไทย" },
+];
+
+// 생성된 이미지 위에 얹히는 문구(preview/copy)를 다른 언어로 바꿔치기하는 드롭다운.
+// 이미지 자체는 다시 만들지 않고, 오버레이 텍스트만 번역해서 그 위에 얹는다.
+function TranslateMenu({ activeLang, translating, onTranslate, disabled }) {
+  const [open, setOpen] = useState(false);
+  const activeLabel = TRANSLATE_LANGUAGES.find((l) => l.code === activeLang)?.label;
+  return (
+    <div className="relative">
+      <Button
+        variant="secondary"
+        className="py-2"
+        onClick={() => setOpen((v) => !v)}
+        disabled={translating || disabled}
+        title={disabled ? "먼저 이미지를 생성해주세요." : undefined}
+      >
+        <Icon name="globe" className="h-4 w-4" />
+        {translating ? "번역 중..." : activeLabel ? `이미지 언어: ${activeLabel}` : "이미지 언어 변경하기"}
+        <Icon name="chevronDown" className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
+      </Button>
+      {open && !disabled && (
+        <div className="absolute right-0 top-full z-10 mt-2 w-48 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg">
+          <button
+            type="button"
+            onClick={() => {
+              onTranslate("ko");
+              setOpen(false);
+            }}
+            className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+          >
+            한국어(원본)
+            {activeLang === null && <Icon name="check" className="h-3.5 w-3.5 text-brand-600" />}
+          </button>
+          {TRANSLATE_LANGUAGES.map((lang) => (
+            <button
+              key={lang.code}
+              type="button"
+              onClick={() => {
+                onTranslate(lang.code);
+                setOpen(false);
+              }}
+              className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+            >
+              {lang.label}
+              {activeLang === lang.code && <Icon name="check" className="h-3.5 w-3.5 text-brand-600" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function MarketingMaterialCreator() {
   const [activeTemplate, setActiveTemplate] = useState(
     mc.templates.items.find((t) => t.selected)?.id
@@ -243,6 +300,13 @@ export default function MarketingMaterialCreator() {
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState("");
   const [generatedResult, setGeneratedResult] = useState(null);
+  const [aiFillingInfo, setAiFillingInfo] = useState(false);
+  const [aiFillError, setAiFillError] = useState("");
+  const [translating, setTranslating] = useState(false);
+  const [translateError, setTranslateError] = useState(null);
+  const [activeLang, setActiveLang] = useState(null); // null이면 한국어 원본
+  const [originalPreview, setOriginalPreview] = useState(null);
+  const [originalCopy, setOriginalCopy] = useState(null);
   const fileInputRef = useRef(null);
   const previewRef = useRef(null);
   const { addImage } = useMarketingImages();
@@ -269,6 +333,32 @@ export default function MarketingMaterialCreator() {
 
   const handlePreviewChange = (field) => (e) => {
     setPreview((p) => ({ ...p, [field]: e.target.value }));
+  };
+
+  // 내 기본 정보(회사명/수출 희망 국가)를 바탕으로 AI가 그럴듯한 상품 정보 예시를 채운다.
+  const handleAiFillInfo = async () => {
+    if (!session) return;
+    setAiFillingInfo(true);
+    setAiFillError("");
+    try {
+      const res = await fetch(`${BACKEND_URL}/marketing/ai-fill`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (!res.ok) throw new Error(await readErrorMessage(res, "AI로 채우기에 실패했습니다."));
+      const data = await res.json();
+      setPreview((p) => ({
+        productName: p.productName || data.product_name || "",
+        tagline: p.tagline || data.tagline || "",
+        description: p.description || data.description || "",
+        price: p.price || data.price || "",
+        mustHavePhoto: p.mustHavePhoto || data.must_have_photo || "",
+      }));
+    } catch (err) {
+      setAiFillError(err.message || "AI로 채우기에 실패했습니다.");
+    } finally {
+      setAiFillingInfo(false);
+    }
   };
 
   const handleFileChange = (e) => {
@@ -315,11 +405,85 @@ export default function MarketingMaterialCreator() {
       if (!res.ok) throw new Error(await readErrorMessage(res, "이미지 생성에 실패했습니다."));
       const data = await res.json();
       setGeneratedResult(data);
+      setActiveLang(null);
+      setOriginalPreview(null);
+      setOriginalCopy(null);
       (data.images || []).forEach((img) => addImage(img.url, `${preview.productName} - ${img.slot}`));
     } catch (err) {
       setGenerateError(err.message || "이미지 생성에 실패했습니다.");
     } finally {
       setGenerating(false);
+    }
+  };
+
+  // 이미지 안에는 문자를 렌더링하지 않고, 실제 문구(상품명/태그라인/카드뉴스 문구 등)는
+  // preview/generatedResult.copy 상태를 화면에서 오버레이로 얹는 방식이라(PosterPreview 등 참고),
+  // 이 상태들만 번역해서 바꿔치기하면 같은 이미지 위에 번역된 문구가 그대로 얹힌다.
+  const flattenForTranslate = (p, copy) => {
+    const dict = { productName: p.productName || "", tagline: p.tagline || "" };
+    if (copy) {
+      if (copy.promoLine) dict.promoLine = copy.promoLine;
+      (copy.features || []).forEach((f, i) => {
+        dict[`feature_${i}`] = f || "";
+      });
+      (copy.captions || []).forEach((c, i) => {
+        if (c?.heading) dict[`caption_${i}_heading`] = c.heading;
+        if (c?.body) dict[`caption_${i}_body`] = c.body;
+      });
+    }
+    return dict;
+  };
+
+  const runTranslate = async (langCode) => {
+    if (langCode === "ko") {
+      if (originalPreview) setPreview(originalPreview);
+      if (originalCopy) setGeneratedResult((r) => (r ? { ...r, copy: originalCopy } : r));
+      setOriginalPreview(null);
+      setOriginalCopy(null);
+      setActiveLang(null);
+      return;
+    }
+    setTranslating(true);
+    setTranslateError(null);
+    try {
+      const basePreview = originalPreview || preview;
+      const baseCopy = originalCopy || generatedResult?.copy || null;
+      const payload = flattenForTranslate(basePreview, baseCopy);
+      const res = await fetch(`${BACKEND_URL}/translate-fields`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fields: payload, target_lang: langCode }),
+      });
+      if (!res.ok) throw new Error(await readErrorMessage(res, "번역에 실패했습니다."));
+      const { translated } = await res.json();
+
+      if (!originalPreview) setOriginalPreview(preview);
+      if (!originalCopy && baseCopy) setOriginalCopy(baseCopy);
+
+      setPreview((p) => ({ ...p, productName: translated.productName ?? p.productName, tagline: translated.tagline ?? p.tagline }));
+      if (baseCopy) {
+        setGeneratedResult((r) => {
+          if (!r) return r;
+          const nextCopy = { ...baseCopy };
+          if (translated.promoLine !== undefined) nextCopy.promoLine = translated.promoLine;
+          if (Array.isArray(baseCopy.features)) {
+            nextCopy.features = baseCopy.features.map((f, i) => translated[`feature_${i}`] ?? f);
+          }
+          if (Array.isArray(baseCopy.captions)) {
+            nextCopy.captions = baseCopy.captions.map((c, i) => ({
+              ...c,
+              heading: translated[`caption_${i}_heading`] ?? c?.heading,
+              body: translated[`caption_${i}_body`] ?? c?.body,
+            }));
+          }
+          return { ...r, copy: nextCopy };
+        });
+      }
+      setActiveLang(langCode);
+    } catch (err) {
+      setTranslateError(err.message);
+    } finally {
+      setTranslating(false);
     }
   };
 
@@ -343,12 +507,19 @@ export default function MarketingMaterialCreator() {
             <Icon name="sparkle" className="h-4 w-4" />
             {generating ? "생성 중..." : "이미지 생성하기"}
           </Button>
+          <TranslateMenu
+            activeLang={activeLang}
+            translating={translating}
+            onTranslate={runTranslate}
+            disabled={!hasMatchingResult}
+          />
           <Button className="py-2" onClick={handleSaveImage} disabled={savingImage}>
             <Icon name="download" className="h-4 w-4" />
             {savingImage ? "저장 중..." : mc.actions.saveImage}
           </Button>
         </div>
       </div>
+      {translateError && <p className="-mt-4 mb-4 text-xs font-medium text-red-500">{translateError}</p>}
 
       <div className="grid grid-cols-1 items-stretch gap-6 lg:grid-cols-[380px_1fr]">
         <div className="space-y-6">
@@ -383,10 +554,23 @@ export default function MarketingMaterialCreator() {
           </Card>
 
           <Card className="p-5">
-            <h3 className="mb-3 flex items-center gap-2 text-sm font-bold text-slate-900">
-              <Icon name="documents" className="h-4 w-4" />
-              상품 정보 입력
-            </h3>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900">
+                <Icon name="documents" className="h-4 w-4" />
+                상품 정보 입력
+              </h3>
+              <Button
+                type="button"
+                variant="outlineBrand"
+                className="px-3 py-1.5 text-xs"
+                onClick={handleAiFillInfo}
+                disabled={aiFillingInfo}
+              >
+                <Icon name="sparkle" className="h-3.5 w-3.5" />
+                {aiFillingInfo ? "채우는 중..." : "AI로 채우기"}
+              </Button>
+            </div>
+            {aiFillError && <p className="mb-3 text-xs font-medium text-red-500">{aiFillError}</p>}
             <div className="space-y-3">
               <TextField
                 label="상품명"

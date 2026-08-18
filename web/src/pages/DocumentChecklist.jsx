@@ -13,6 +13,17 @@ import { orderedSelect } from "../lib/supabaseOrder";
 const SECONDARY_BUTTON_CLASS =
   "inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50";
 
+// 진행률이 낮으면 노란색, 다 채워질수록 초록색이 되도록 두 색을 선형으로 보간한다.
+function progressColor(percent) {
+  const t = Math.max(0, Math.min(100, percent)) / 100;
+  const from = { h: 45, s: 93, l: 47 }; // amber-400ish
+  const to = { h: 152, s: 69, l: 40 }; // emerald-600ish
+  const h = from.h + (to.h - from.h) * t;
+  const s = from.s + (to.s - from.s) * t;
+  const l = from.l + (to.l - from.l) * t;
+  return `hsl(${h.toFixed(0)} ${s.toFixed(0)}% ${l.toFixed(0)}%)`;
+}
+
 // 서류 한 건의 상태들. dot 색을 서로 다르게 줘서 한눈에 구분되게 한다.
 const STATUS_META = {
   notStarted: { label: "작성전", dot: "bg-slate-300", buttonLabel: "서류작성하기" },
@@ -74,8 +85,8 @@ function GovTemplateGroup({
                     <div className="mt-1.5 flex items-center gap-2">
                       <div className="h-1.5 w-24 overflow-hidden rounded-full bg-slate-100">
                         <div
-                          className="h-1.5 rounded-full bg-brand-500 transition-all"
-                          style={{ width: `${percent}%` }}
+                          className="h-1.5 rounded-full transition-all"
+                          style={{ width: `${percent}%`, backgroundColor: progressColor(percent) }}
                         />
                       </div>
                       <span className="text-xs font-medium text-slate-400">{percent}%</span>
@@ -111,7 +122,11 @@ function GovTemplateGroup({
                   <>
                     <span
                       className={`flex items-center gap-1.5 text-xs font-medium ${
-                        statusKey === "needsRevision" ? "text-red-500" : "text-slate-500"
+                        statusKey === "needsRevision"
+                          ? "text-red-500"
+                          : statusKey === "reviewed"
+                            ? "text-emerald-600"
+                            : "text-slate-500"
                       }`}
                     >
                       <span className={`h-2.5 w-2.5 rounded-full ${meta.dot} ${statusKey === "needsRevision" ? "animate-blink" : ""}`} />
@@ -282,8 +297,10 @@ export default function DocumentChecklist() {
 
   useEffect(() => {
     refreshGovTemplates();
+    // location.key changes on every navigation (e.g. 임시저장 후 목록으로 돌아왔을 때)
+    // even when selectedBusinessId is unchanged, so 진행률이 최신 초안을 반영하도록 다시 불러온다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedBusinessId]);
+  }, [selectedBusinessId, location.key]);
 
   // 지원사업을 선택하지 않은 상태(사이드바에서 바로 진입)면, 내가 서류를
   // 하나라도 제출한 사업만 목록에 보여주고, 각 사업의 제출 현황(N/전체)을 표시한다.
@@ -416,7 +433,7 @@ export default function DocumentChecklist() {
         <div className="mb-8">
           <button
             type="button"
-            onClick={() => navigate("/gov-support")}
+            onClick={() => navigate(-1)}
             className="mb-4 flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-800"
           >
             <Icon name="arrowLeft" className="h-4 w-4" /> 지원사업 목록으로
@@ -446,17 +463,17 @@ export default function DocumentChecklist() {
               <Card className="mt-2 p-6">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <h3 className="text-lg font-bold text-slate-900">서류 준비 현황</h3>
-                    <p className="mt-1 text-sm text-slate-500">이 지원사업에 제출한 서류 진행률입니다.</p>
+                    <h3 className="text-lg font-bold text-slate-900">전체 서류 준비 현황</h3>
+                    <p className="mt-1 text-sm text-slate-500">이 지원사업에 필요한 전체 서류의 작성 진행률입니다.</p>
                   </div>
-                  <span className="text-2xl font-extrabold text-brand-700">
+                  <span className="text-2xl font-extrabold" style={{ color: progressColor(govPercent) }}>
                     {govPercent}% {dc.overallSuffix}
                   </span>
                 </div>
                 <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
                   <div
-                    className="h-2.5 rounded-full bg-brand-600 transition-all"
-                    style={{ width: `${govPercent}%` }}
+                    className="h-2.5 rounded-full transition-all"
+                    style={{ width: `${govPercent}%`, backgroundColor: progressColor(govPercent) }}
                   />
                 </div>
                 <div className="mt-1 flex justify-between text-xs text-slate-400">

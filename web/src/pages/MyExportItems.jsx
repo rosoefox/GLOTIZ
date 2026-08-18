@@ -116,6 +116,8 @@ function ProgressPanel({ businessId, userId }) {
   const [loading, setLoading] = useState(true);
   const [templates, setTemplates] = useState([]);
   const [subsByTemplate, setSubsByTemplate] = useState({});
+  const [fieldCountByTemplate, setFieldCountByTemplate] = useState({});
+  const [filledCountBySubmission, setFilledCountBySubmission] = useState({});
 
   useEffect(() => {
     let cancelled = false;
@@ -129,20 +131,41 @@ function ProgressPanel({ businessId, userId }) {
       const templateIds = (tpls || []).map((t) => t.id);
 
       let subs = {};
+      let fieldCountByTemplate = {};
+      let filledCountBySubmission = {};
       if (templateIds.length) {
-        const { data: submissions } = await supabase
-          .from("submissions")
-          .select("*")
-          .eq("user_id", userId)
-          .in("template_id", templateIds)
-          .order("created_at", { ascending: false });
+        const [{ data: submissions }, { data: allFields }] = await Promise.all([
+          supabase
+            .from("submissions")
+            .select("*")
+            .eq("user_id", userId)
+            .in("template_id", templateIds)
+            .order("created_at", { ascending: false }),
+          supabase.from("template_fields").select("id,template_id").in("template_id", templateIds),
+        ]);
         (submissions || []).forEach((s) => {
           if (!subs[s.template_id]) subs[s.template_id] = s;
         });
+        (allFields || []).forEach((f) => {
+          fieldCountByTemplate[f.template_id] = (fieldCountByTemplate[f.template_id] || 0) + 1;
+        });
+
+        const submissionIds = Object.values(subs).map((s) => s.id);
+        if (submissionIds.length) {
+          const { data: allValues } = await supabase
+            .from("submission_values")
+            .select("submission_id,value")
+            .in("submission_id", submissionIds);
+          (allValues || []).forEach((v) => {
+            if (v.value) filledCountBySubmission[v.submission_id] = (filledCountBySubmission[v.submission_id] || 0) + 1;
+          });
+        }
       }
       if (!cancelled) {
         setTemplates(tpls || []);
         setSubsByTemplate(subs);
+        setFieldCountByTemplate(fieldCountByTemplate);
+        setFilledCountBySubmission(filledCountBySubmission);
         setLoading(false);
       }
     }
@@ -152,9 +175,15 @@ function ProgressPanel({ businessId, userId }) {
     };
   }, [businessId, userId]);
 
+  // 사용자 화면(DocumentChecklist)과 동일하게 "실제로 채워진 필드 수 / 전체 필드 수"로 계산한다 —
+  // 서류를 제출만 하면 무조건 100%로 표시되던 것과 달리, 실제 작성 진행도를 반영한다.
+  const totalFields = templates.reduce((sum, t) => sum + (fieldCountByTemplate[t.id] || 0), 0);
+  const filledFields = templates.reduce((sum, t) => {
+    const sub = subsByTemplate[t.id];
+    return sum + (sub ? filledCountBySubmission[sub.id] || 0 : 0);
+  }, 0);
   const total = templates.length;
-  const submittedCount = Object.keys(subsByTemplate).length;
-  const percent = total ? Math.round((submittedCount / total) * 100) : 0;
+  const percent = totalFields ? Math.round((filledFields / totalFields) * 100) : 0;
 
   return (
     <div className="mt-3 rounded-xl border border-slate-200 bg-white p-5">

@@ -27,14 +27,10 @@ load_dotenv()
 
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_SERVICE_ROLE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
-GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
 DATA_GO_KR_TRADE_SERVICE_KEY = os.environ["DATA_GO_KR_TRADE_SERVICE_KEY"]
-# 시장 분석은 서류 자동완성/챗봇과 별도의 Gemini 프로젝트(무료 티어 할당량 분리)를 쓸 수 있도록
-# 전용 키가 있으면 그것을, 없으면 기존 GEMINI_API_KEY를 그대로 사용한다.
-MARKET_ANALYSIS_GEMINI_API_KEY = os.environ.get("MARKET_ANALYSIS_GEMINI_API_KEY") or GEMINI_API_KEY
-# AI 이미지 생성(마케팅 이미지)은 Gemini Developer API가 아니라 Vertex AI를 통해 호출한다.
+# 모든 Gemini 호출은 Developer API 키가 아니라 Vertex AI를 통해 이뤄진다.
 # GOOGLE_APPLICATION_CREDENTIALS(서비스 계정 키 경로)는 google-auth ADC가 자동으로 읽는다.
-VERTEX_AI_PROJECT_ID = os.environ.get("VERTEX_AI_PROJECT_ID")
+VERTEX_AI_PROJECT_ID = os.environ["VERTEX_AI_PROJECT_ID"]
 VERTEX_AI_LOCATION = os.environ.get("VERTEX_AI_LOCATION", "us-central1")
 IMAGE_GEN_MODEL = os.environ.get("IMAGE_GEN_MODEL", "gemini-2.5-flash-image")
 
@@ -44,22 +40,29 @@ AI_FIELD_TYPES = {"long_text", "checkbox"}
 VALID_FIELD_TYPES = {"text", "number", "date", "select", "checkbox", "textarea", "long_text"}
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-gemini_client = genai.Client(api_key=GEMINI_API_KEY)
-market_gemini_client = genai.Client(api_key=MARKET_ANALYSIS_GEMINI_API_KEY)
-vertex_image_client = (
-    genai.Client(vertexai=True, project=VERTEX_AI_PROJECT_ID, location=VERTEX_AI_LOCATION)
-    if VERTEX_AI_PROJECT_ID
-    else None
-)
+gemini_client = genai.Client(vertexai=True, project=VERTEX_AI_PROJECT_ID, location=VERTEX_AI_LOCATION)
+market_gemini_client = gemini_client
+vertex_image_client = gemini_client
+
+def friendly_ai_error(e: Exception) -> str:
+    """Gemini API 에러를 사용자에게 보여줘도 되는 한국어 메시지로 바꾼다. 특히 무료 티어
+    할당량 초과(429 RESOURCE_EXHAUSTED)는 파이썬 dict가 그대로 노출되지 않도록 따로 처리한다."""
+    text = str(e)
+    if "RESOURCE_EXHAUSTED" in text or "429" in text:
+        return "지금 AI 사용량이 많아 잠시 처리하지 못했습니다. 30초~1분 후 다시 시도해주세요."
+    return text
+
 
 app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:5173",
         "https://jbxport-frontend-639709983318.asia-northeast3.run.app",
     ],
+    # vite는 5173 포트가 이미 쓰이고 있으면 5174, 5175...로 자동으로 옮겨간다 — 매번 여기
+    # 목록을 손으로 늘리지 않도록 로컬 개발 포트는 통째로 정규식으로 허용한다.
+    allow_origin_regex=r"http://localhost:\d+",
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -96,7 +99,7 @@ def chat(req: ChatRequest):
     prompt = f"{CHATBOT_SYSTEM_PROMPT}\n\n{history_text}\n사용자: {req.message}\nAI:"
 
     response = gemini_client.models.generate_content(
-        model="gemini-flash-latest",
+        model="gemini-2.5-flash",
         contents=prompt,
     )
     return {"answer": (response.text or "").strip()}
@@ -116,7 +119,7 @@ def suggest_faq():
     골라 채운다. 실패하면 프런트에서 mockData의 고정 FAQ로 대체한다."""
     try:
         response = gemini_client.models.generate_content(
-            model="gemini-flash-latest",
+            model="gemini-2.5-flash",
             contents=FAQ_SUGGEST_PROMPT,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
@@ -135,7 +138,7 @@ def suggest_faq():
         )
         faqs = json.loads(response.text)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"FAQ 추천에 실패했습니다: {e}")
+        raise HTTPException(status_code=502, detail=f"FAQ 추천에 실패했습니다: {friendly_ai_error(e)}")
     return {"faqs": faqs}
 
 
@@ -238,7 +241,7 @@ def infer_hs_code(query, category_label, default_hs_sgn, default_hs_code):
     """검색어에 맞는 HS 6자리 코드를 Gemini로 추론한다. 실패/이상값이면 카테고리 기본 코드로 폴백한다."""
     try:
         response = market_gemini_client.models.generate_content(
-            model="gemini-flash-latest",
+            model="gemini-2.5-flash",
             contents=build_hs_code_prompt(query, category_label, default_hs_sgn),
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
@@ -290,7 +293,7 @@ def call_gemini_market_analysis(query, category_label, hs_code, country_label, q
     prompt = build_market_analysis_prompt(query, category_label, hs_code, country_label, quarter_label, chart_data, has_data)
 
     response = market_gemini_client.models.generate_content(
-        model="gemini-flash-latest",
+        model="gemini-2.5-flash",
         contents=prompt,
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
@@ -479,7 +482,9 @@ def upload_additional_document(file: UploadFile = File(...), authorization: str 
         raise HTTPException(status_code=400, detail="PDF, DOCX, HWP, JPG, PNG 파일만 업로드할 수 있습니다.")
 
     file_bytes = file.file.read()
-    object_path = f"additional-docs/{user_id}/{uuid.uuid4().hex}_{file.filename}"
+    # 원본 파일명을 그대로 스토리지 키에 넣으면 한글/대괄호/공백 때문에 Supabase Storage가
+    # "Invalid key"로 거부한다. 키는 안전한 uuid+확장자로만 만들고, 원본 이름은 별도로 반환한다.
+    object_path = f"additional-docs/{user_id}/{uuid.uuid4().hex}{ext}"
     try:
         supabase.storage.from_(TEMPLATES_BUCKET).upload(
             object_path, file_bytes, {"content-type": file.content_type or "application/octet-stream"}
@@ -524,7 +529,9 @@ def upload_user_submission(
         raise HTTPException(status_code=400, detail="PDF, DOCX, HWP, JPG, PNG 파일만 업로드할 수 있습니다.")
 
     file_bytes = file.file.read()
-    object_path = f"user-submissions/{template_id}/{user_id}/{uuid.uuid4().hex}_{file.filename}"
+    # 원본 파일명을 그대로 스토리지 키에 넣으면 한글/대괄호/공백 때문에 Supabase Storage가
+    # "Invalid key"로 거부한다. 키는 안전한 uuid+확장자로만 만든다.
+    object_path = f"user-submissions/{template_id}/{user_id}/{uuid.uuid4().hex}{ext}"
     try:
         supabase.storage.from_(TEMPLATES_BUCKET).upload(
             object_path, file_bytes, {"content-type": file.content_type or "application/octet-stream"}
@@ -532,9 +539,11 @@ def upload_user_submission(
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"파일 업로드에 실패했습니다: {e}")
 
+    # submissions.status는 'filled'/'generated'만 허용한다(체크 제약) — "uploaded"는 없는 값이라
+    # insert가 매번 500으로 죽었었다. 사용자가 올린 파일 자체가 최종 산출물이니 'generated'로 넣는다.
     row = (
         supabase.table("submissions")
-        .insert({"template_id": template_id, "user_id": user_id, "status": "uploaded", "file_path": object_path})
+        .insert({"template_id": template_id, "user_id": user_id, "status": "generated", "file_path": object_path})
         .execute()
         .data[0]
     )
@@ -679,7 +688,7 @@ def build_basic_info_prompt(business_name):
 
 def call_gemini_basic_info(business_name, file_bytes, mime_type):
     response = gemini_client.models.generate_content(
-        model="gemini-flash-latest",
+        model="gemini-2.5-flash",
         contents=[
             types.Part.from_bytes(data=file_bytes, mime_type=mime_type),
             build_basic_info_prompt(business_name),
@@ -756,7 +765,9 @@ def upload_reference_doc(
         basic_info = call_gemini_basic_info(business["name"], gemini_bytes, gemini_mime)
     except Exception as e:
         supabase.table("businesses").update({"reference_file_path": object_path}).eq("id", business_id).execute()
-        raise HTTPException(status_code=502, detail=f"파일은 업로드됐지만 AI 정보 추출에 실패했습니다: {e}")
+        raise HTTPException(
+            status_code=502, detail=f"파일은 업로드됐지만 AI 정보 추출에 실패했습니다: {friendly_ai_error(e)}"
+        )
 
     row = (
         supabase.table("businesses")
@@ -1103,7 +1114,7 @@ def call_gemini_field_suggestions(business_name, template_name, field_keys, chec
     prompt = build_field_suggestion_prompt(business_name, template_name, field_keys, checkbox_options)
 
     response = gemini_client.models.generate_content(
-        model="gemini-flash-latest",
+        model="gemini-2.5-flash",
         contents=prompt,
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
@@ -1159,7 +1170,7 @@ def call_gemini_blank_candidates(business_name, template_name, candidates):
         return []
 
     response = gemini_client.models.generate_content(
-        model="gemini-flash-latest",
+        model="gemini-2.5-flash",
         contents=build_blank_candidate_prompt(business_name, template_name, candidates),
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
@@ -1311,7 +1322,7 @@ def call_gemini(business_name, template_name, ai_fields, user_values):
     prompt = build_gemini_prompt(business_name, template_name, ai_fields, user_values)
 
     response = gemini_client.models.generate_content(
-        model="gemini-flash-latest",
+        model="gemini-2.5-flash",
         contents=prompt,
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
@@ -1331,6 +1342,141 @@ def call_gemini(business_name, template_name, ai_fields, user_values):
         ),
     )
     return json.loads(response.text)
+
+
+def build_extract_from_docs_prompt(template_name, fields):
+    fields_desc = []
+    for f in fields:
+        line = f"- field_key: {f['field_key']} | label: {f['field_label']} | type: {f['field_type']}"
+        if f.get("options"):
+            line += f" | options: {json.dumps(f['options'], ensure_ascii=False)}"
+        fields_desc.append(line)
+
+    return f"""당신은 정부지원사업 신청서 작성을 돕는 어시스턴트입니다.
+첨부된 문서는 신청자가 예전에 이 포털에 업로드했던 서류들(예: 사업자등록증, 사업계획서 등)입니다.
+지금 작성해야 할 서식명: {template_name}
+
+아래 필드들의 값을 첨부 문서 내용에서 찾아 채워주세요:
+{chr(10).join(fields_desc)}
+
+규칙:
+- 문서에서 실제로 확인되는 값만 채우세요. 추측하거나 지어내지 마세요.
+- 문서에서 찾을 수 없는 필드는 value를 빈 문자열("")로 두세요.
+- checkbox 필드는 options 중 문서 내용과 정확히 일치하는 값이 있을 때만 선택하세요.
+"""
+
+
+def call_gemini_extract_from_docs(template_name, fields, doc_parts):
+    if not fields or not doc_parts:
+        return []
+
+    prompt = build_extract_from_docs_prompt(template_name, fields)
+
+    response = gemini_client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=[*doc_parts, prompt],
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_schema={
+                "type": "ARRAY",
+                "items": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "field_key": {"type": "STRING"},
+                        "value": {"type": "STRING"},
+                    },
+                    "required": ["field_key", "value"],
+                },
+            },
+        ),
+    )
+    return json.loads(response.text)
+
+
+DOC_PART_MIME_BY_EXT = {
+    ".pdf": "application/pdf",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+}
+
+
+@app.post("/templates/{template_id}/extract-from-uploads")
+def extract_from_uploads(template_id: str, authorization: str | None = Header(None)):
+    """작성 중인 서류 화면에서 '업로드한 서류에서 불러오기'를 누르면, 이 사용자가 예전에
+    포털에 업로드했던 서류(사업자등록증 등) 파일을 AI(Gemini)가 직접 읽어서 지금 서식의
+    빈 칸에 채울 수 있는 값을 뽑아 돌려준다. ai-fill과 마찬가지로 미리보기 용도라
+    submission을 만들거나 저장하지 않는다."""
+    user_id = require_user(authorization)
+
+    template = (
+        supabase.table("templates").select("*").eq("id", template_id).maybe_single().execute().data
+    )
+    if not template:
+        raise HTTPException(status_code=404, detail="해당 서류를 찾을 수 없습니다.")
+
+    fields = (
+        supabase.table("template_fields").select("*").eq("template_id", template_id).execute().data or []
+    )
+    if not fields:
+        return {"fields": []}
+
+    all_submissions = (
+        supabase.table("submissions")
+        .select("id, template_id, file_path, created_at")
+        .eq("user_id", user_id)
+        .order("created_at", desc=True)
+        .execute()
+        .data
+        or []
+    )
+    uploaded = [s for s in all_submissions if s.get("file_path")]
+    if not uploaded:
+        return {"fields": []}
+
+    # 같은 서식을 여러 번 다시 올렸을 수 있으니 서식당 가장 최근 것만, 최대 5개 문서까지만 읽는다.
+    seen_templates = set()
+    picked = []
+    for row in uploaded:
+        if row["template_id"] in seen_templates:
+            continue
+        seen_templates.add(row["template_id"])
+        picked.append(row)
+        if len(picked) >= 5:
+            break
+
+    parts = []
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        for row in picked:
+            path = row["file_path"]
+            ext = Path(path).suffix.lower()
+            try:
+                file_bytes = supabase.storage.from_(TEMPLATES_BUCKET).download(path)
+            except Exception:
+                continue
+
+            if ext in (".docx", ".hwp"):
+                try:
+                    src_path = tmp_path / f"{row['id']}{ext}"
+                    src_path.write_bytes(file_bytes)
+                    pdf_path = convert_to_pdf(src_path, tmp_path)
+                    parts.append(types.Part.from_bytes(data=pdf_path.read_bytes(), mime_type="application/pdf"))
+                except Exception:
+                    continue
+            elif ext in DOC_PART_MIME_BY_EXT:
+                parts.append(types.Part.from_bytes(data=file_bytes, mime_type=DOC_PART_MIME_BY_EXT[ext]))
+
+    if not parts:
+        return {"fields": []}
+
+    try:
+        results = call_gemini_extract_from_docs(template["name"], fields, parts)
+    except Exception as e:
+        raise HTTPException(
+            status_code=502, detail=f"업로드한 서류에서 정보를 불러오지 못했습니다: {friendly_ai_error(e)}"
+        )
+    return {"fields": results}
 
 
 def build_gemini_review_prompt(business_name, template_name, fields, user_values):
@@ -1365,7 +1511,7 @@ def call_gemini_review(business_name, template_name, fields, user_values):
     prompt = build_gemini_review_prompt(business_name, template_name, fields, user_values)
 
     response = gemini_client.models.generate_content(
-        model="gemini-flash-latest",
+        model="gemini-2.5-flash",
         contents=prompt,
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
@@ -1511,64 +1657,8 @@ def preview_reference_doc_pdf(business_id: str):
     raise HTTPException(status_code=415, detail="이 파일 형식은 미리보기를 지원하지 않습니다. 다운로드해서 확인해주세요.")
 
 
-class MatchProgramsRequest(BaseModel):
-    region: str
-    category_label: str
-
-
-def build_gov_support_match_prompt(region, category_label, candidates):
-    lines = []
-    for b in candidates:
-        info = b.get("basic_info") or {}
-        lines.append(
-            f"- id: {b['id']} | 사업명: {b['name']} | 주관기관: {info.get('org', '')} | "
-            f"지원대상: {info.get('target', '')} | 지원내용: {info.get('support', '')}"
-        )
-    return f"""당신은 전북 지역 소상공인에게 수출지원사업 공고를 추천하는 도우미입니다.
-사용자가 선택한 시군: {region}
-사용자가 선택한 수출 품목: {category_label}
-
-아래는 현재 모집 중인 공고 목록입니다 (각 공고의 상세페이지 '기본 정보' 기준):
-{chr(10).join(lines)}
-
-이 시군·품목의 소상공인이 신청할 만한 공고의 id만 골라주세요. 판단 기준:
-- 지원대상에 특정 시군이 명시돼 있으면 선택한 시군과 일치하거나 "전북 전역"처럼 포괄적인 경우만 포함하고,
-  다른 지역으로 명확히 한정된 공고는 제외하세요.
-- 지원내용/지원대상이 선택한 품목과 관련 있어 보이는 공고를 포함하세요. 특정 품목으로 한정돼 있지 않고
-  업종 무관 지원사업이면 포함하세요.
-- 정보가 부족해 판단이 애매하면 포함하세요(과도하게 걸러내지 마세요).
-"""
-
-
-@app.post("/gov-support/match")
-def match_gov_support_programs(req: MatchProgramsRequest):
-    """지역/품목 선택 마법사 결과 화면에서, 등록된 공고 중 이 조건에 맞는 공고를
-    AI가 각 공고의 '기본 정보'(basic_info)를 보고 골라준다."""
-    businesses = supabase.table("businesses").select("id,name,basic_info").execute().data or []
-    candidates = [b for b in businesses if b.get("basic_info")]
-    if not candidates:
-        return {"matchedIds": []}
-
-    prompt = build_gov_support_match_prompt(req.region, req.category_label, candidates)
-    try:
-        response = gemini_client.models.generate_content(
-            model="gemini-flash-latest",
-            contents=[prompt],
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema={
-                    "type": "OBJECT",
-                    "properties": {"matchedIds": {"type": "ARRAY", "items": {"type": "STRING"}}},
-                    "required": ["matchedIds"],
-                },
-            ),
-        )
-        matched = set(json.loads(response.text).get("matchedIds") or [])
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"AI 추천에 실패했습니다: {e}")
-
-    candidate_ids = {b["id"] for b in candidates}
-    return {"matchedIds": [i for i in matched if i in candidate_ids]}
+# 지역/품목 선택 마법사의 매칭은 더 이상 이 백엔드가 AI로 판단하지 않는다 — 프론트엔드
+# (GovSupport.jsx)가 각 공고의 지역/품목 키워드를 즉시 대조해서 바로 계산한다.
 
 
 TRANSLATE_LANGUAGE_NAMES = {"en": "English", "th": "Thai", "vi": "Vietnamese"}
@@ -1605,7 +1695,7 @@ def translate_fields(req: TranslateFieldsRequest):
     prompt = build_translate_fields_prompt(non_empty, lang_name)
     try:
         response = gemini_client.models.generate_content(
-            model="gemini-flash-latest",
+            model="gemini-2.5-flash",
             contents=[prompt],
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
@@ -1618,7 +1708,7 @@ def translate_fields(req: TranslateFieldsRequest):
         )
         translated = json.loads(response.text)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"번역에 실패했습니다: {e}")
+        raise HTTPException(status_code=502, detail=f"번역에 실패했습니다: {friendly_ai_error(e)}")
 
     return {"translated": {k: translated.get(k, "") for k in req.fields}}
 
@@ -1674,7 +1764,7 @@ def suggest_price(req: PriceSuggestionRequest):
     prompt = build_price_suggestion_prompt(req, market)
     try:
         response = gemini_client.models.generate_content(
-            model="gemini-flash-latest",
+            model="gemini-2.5-flash",
             contents=[prompt],
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
@@ -1691,9 +1781,59 @@ def suggest_price(req: PriceSuggestionRequest):
         )
         data = json.loads(response.text)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"가격 추천에 실패했습니다: {e}")
+        raise HTTPException(status_code=502, detail=f"가격 추천에 실패했습니다: {friendly_ai_error(e)}")
 
     return data
+
+
+@app.post("/marketing/ai-fill")
+def marketing_ai_fill(authorization: str | None = Header(None)):
+    """AI 이미지 생성 페이지의 '상품 정보 입력'에서 'AI로 채우기'를 누르면, 내 기본 정보
+    (회사명/업종/수출 희망 국가)를 바탕으로 그럴듯한 상품 정보 예시를 만들어 채워준다."""
+    user_id = require_user(authorization)
+    profile = (
+        supabase.table("profiles").select("*").eq("id", user_id).maybe_single().execute().data
+    ) or {}
+
+    prompt = f"""당신은 소상공인의 해외 수출 마케팅 자료 작성을 돕는 어시스턴트입니다.
+아래는 이 사용자의 기본 정보입니다:
+- 회사명: {profile.get("company") or "정보 없음"}
+- 주요 수출 희망 국가: {profile.get("country") or "정보 없음"}
+
+이 정보를 바탕으로, 이 회사가 판매할 법한 대표 상품 하나를 가정해서 마케팅 이미지 제작에 쓸
+상품 정보를 채워주세요. 실제 정보가 부족하면 회사명 등에서 유추한 업종에 맞는 그럴듯한 예시로
+자연스럽게 채우세요. 지어낸 정보라도 사용자가 바로 수정해서 쓸 수 있도록 구체적으로 쓰세요.
+
+다음 항목을 채워주세요:
+- product_name: 상품명 (간결하게)
+- tagline: 한 줄 홍보 문구
+- description: 상품 설명 (2~3문장)
+- price: 가격 (예: "29,000원" 형식)
+- must_have_photo: 이미지에 꼭 들어갔으면 하는 장면 묘사 (한 문장)
+"""
+
+    try:
+        response = gemini_client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema={
+                    "type": "OBJECT",
+                    "properties": {
+                        "product_name": {"type": "STRING"},
+                        "tagline": {"type": "STRING"},
+                        "description": {"type": "STRING"},
+                        "price": {"type": "STRING"},
+                        "must_have_photo": {"type": "STRING"},
+                    },
+                    "required": ["product_name", "tagline", "description", "price", "must_have_photo"],
+                },
+            ),
+        )
+        return json.loads(response.text)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"AI 채우기에 실패했습니다: {friendly_ai_error(e)}")
 
 
 class AiFillRequest(BaseModel):
@@ -1725,7 +1865,7 @@ def ai_fill_template(template_id: str, req: AiFillRequest, authorization: str | 
     try:
         results = call_gemini(business_name, template["name"], ai_fields, req.values)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"AI 채우기에 실패했습니다: {e}")
+        raise HTTPException(status_code=502, detail=f"AI 채우기에 실패했습니다: {friendly_ai_error(e)}")
     return {"fields": results}
 
 
@@ -1764,11 +1904,20 @@ def generate(req: GenerateRequest):
         if v.get("needs_review"):
             review_fields.add(field["field_key"])
 
-    already_ai_filled = {v["field_id"] for v in existing_values if v["source"] == "ai_generated"}
-    ai_fields = [f for f in fields if f["field_type"] in AI_FIELD_TYPES and f["id"] not in already_ai_filled]
+    # 이미 값이 있는 필드(source와 무관하게)는 다시 생성하지 않는다 — 그렇지 않으면 사용자가 직접
+    # 입력/검토해서 제출한 값을 AI가 재생성으로 덮어써버리고, 새로 생긴 needs_review 플래그 때문에
+    # 실제 제출본과 다른 형광펜 표시가 최종 문서에 남는다.
+    ai_fields = [
+        f
+        for f in fields
+        if f["field_type"] in AI_FIELD_TYPES and not (user_values.get(f["field_key"]) or "").strip()
+    ]
     ai_field_by_key = {f["field_key"]: f for f in ai_fields}
 
-    ai_results = call_gemini(business["name"], template["name"], ai_fields, user_values)
+    try:
+        ai_results = call_gemini(business["name"], template["name"], ai_fields, user_values)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"완성된 서류를 만드는 데 실패했습니다: {friendly_ai_error(e)}")
 
     new_rows = []
     for item in ai_results:
@@ -1913,9 +2062,8 @@ def review(req: ReviewRequest):
 
 
 # --- AI 이미지 생성 (마케팅 이미지: 포스터 / 카드뉴스 / 상세설명) ---
-# 이미지 생성 자체는 Vertex AI(vertex_image_client)를 쓰고, 문구(카피) 생성은 기존 Developer API
-# gemini_client를 그대로 재사용한다. 이미지 안에는 어떤 문자도 렌더링하지 않고, 실제 문구는 프론트엔드가
-# 이미지 위에 CSS로 오버레이한다 (NO_TEXT_INSTRUCTION 참고).
+# 이미지 생성과 문구(카피) 생성 모두 Vertex AI(gemini_client)를 사용한다. 이미지 안에는 어떤 문자도
+# 렌더링하지 않고, 실제 문구는 프론트엔드가 이미지 위에 CSS로 오버레이한다 (NO_TEXT_INSTRUCTION 참고).
 
 ALLOWED_PRODUCT_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
 
@@ -1945,9 +2093,9 @@ def _generate_image(prompt: str, reference_bytes: bytes, reference_mime: str, as
 
 
 def _generate_copy_json(prompt: str, schema: dict) -> dict:
-    """문구(JSON) 생성 — 기존 Developer API gemini_client를 그대로 재사용한다."""
+    """문구(JSON) 생성 — Vertex AI gemini_client를 재사용한다."""
     response = gemini_client.models.generate_content(
-        model="gemini-flash-latest",
+        model="gemini-2.5-flash",
         contents=[prompt],
         config=types.GenerateContentConfig(response_mime_type="application/json", response_schema=schema),
     )
@@ -2146,8 +2294,6 @@ def generate_marketing_images(
 
     if layout not in {"poster", "card-news", "detail"}:
         raise HTTPException(status_code=400, detail="layout 값이 올바르지 않습니다.")
-    if not vertex_image_client:
-        raise HTTPException(status_code=503, detail="이미지 생성 기능이 아직 설정되지 않았습니다.")
     if (product_image.content_type or "") not in ALLOWED_PRODUCT_IMAGE_TYPES:
         raise HTTPException(status_code=400, detail="JPG, PNG, WEBP 이미지만 업로드할 수 있습니다.")
     if not product_name.strip():
@@ -2171,6 +2317,6 @@ def generate_marketing_images(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"이미지 생성에 실패했습니다: {e}")
+        raise HTTPException(status_code=502, detail=f"이미지 생성에 실패했습니다: {friendly_ai_error(e)}")
 
     return {"layout": layout, **result}

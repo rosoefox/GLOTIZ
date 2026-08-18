@@ -1,4 +1,4 @@
-const logoUrl = new URL("../../로고.png", import.meta.url).href;
+const logoUrl = new URL("../../로고1.png", import.meta.url).href;
 const profileGreenLiving = new URL("../../profile/그린리빙.png", import.meta.url).href;
 const profileMisoFood = new URL("../../profile/미소식품.png", import.meta.url).href;
 const profileOurHangwa = new URL("../../profile/우리한과.png", import.meta.url).href;
@@ -172,7 +172,7 @@ export const dashboard = {
   ],
   cardNewsLabel: "지원사업 카드뉴스",
 
-  statsHeadline: "전북 수출기업이 가장 많이 찾는 파트너, JB-XPORT",
+  statsHeadline: "전북 수출기업이 가장 많이 찾는 파트너, GLOBIZ",
   stats: [
     { label: "총 진행건수", value: 1842, suffix: "건" },
     { label: "매칭기업수", value: 356, suffix: "개사" },
@@ -183,9 +183,7 @@ export const dashboard = {
   ongoingProgramsTitle: "진행 중인 지원사업",
   ongoingProgramsMoreLabel: "진행중인 지원사업 더보기",
 
-  featuresTitle: "JB-XPORT로 서류 작성/디자인 고민을 해결해보세요!",
-  featuresDescription:
-    "소상공인의 해외 수출을 돕는 AI 에이전트입니다. 신청 가능한 수출지원사업을 찾는 것부터, 마케팅에 바로 쓸 AI 이미지 생성, 해외 판매 플랫폼 입점까지 한 곳에서 진행할 수 있어요.",
+  featuresTitle: "GLOBIZ로 서류 작성/디자인 고민을 해결해보세요!",
   features: [
     {
       icon: "projects",
@@ -885,16 +883,54 @@ export const govConsultation = {
 
 export const shopeeListing = {
   title: "해외 수출 플랫폼 입점 가이드",
-  subtitle: "해외 판매 등록에 꼭 필요한 항목만 모았어요. 작성 후 번역하거나 그대로 복사해서 붙여넣으세요.",
-  introTitle: "쇼피 입점, 이렇게 진행하세요",
-  introSteps: [
-    { title: "쇼피 파트너센터 가입", description: "사업자 정보로 셀러 계정을 만들고 입점 심사를 신청하세요." },
-    { title: "상품 등록 정보 준비", description: "아래 항목을 작성하거나 AI 자동완성/이전 정보 불러오기로 채우세요." },
-    { title: "번역 후 붙여넣기", description: "원하는 언어로 번역한 뒤 복사해서 쇼피 상품 등록 화면에 붙여넣으세요." },
-    { title: "검수 후 판매 시작", description: "쇼피 심사가 완료되면 등록한 상품이 바로 노출됩니다." },
-  ],
-  guideVideoLabel: "쇼피 입점 가이드 영상 보러가기",
-  guideVideoUrl: "",
+  titleBadge: "Shopee",
+  subtitle: "Shopee 입점부터 상품 등록까지, 해외 판매에 필요한 과정을 단계별로 확인해 보세요.",
+
+  officialGuide: {
+    badge: "SHOPEE OFFICIAL GUIDE",
+    title: "Shopee 공식 입점 가이드",
+    description: "판매자 계정 개설부터 입점 준비까지 Shopee에서 제공하는 공식 가이드 영상을 확인해 보세요.",
+    note: "Shopee 공식 입점 교육 페이지로 이동합니다.",
+    thumbnailKicker: "신규 셀러 입점 교육",
+    thumbnailDescription: "입점부터 상품 등록까지 한 번에 알아보세요!",
+    thumbnailDuration: "06:23",
+  },
+
+  supportSteps: {
+    badge: "GLOBIZ SUPPORT",
+    title: "GLOBIZ로 Shopee 상품 등록 정보를 준비해 보세요.",
+    subtitle: "상품 정보를 입력하면 AI가 Shopee 상품 등록에 필요한 정보 작성과 번역을 도와드려요.",
+    note: "GLOBIZ는 상품 등록에 필요한 정보 작성과 번역을 지원합니다. 최종 등록 및 검수는 Shopee Seller Centre에서 진행됩니다.",
+    steps: [
+      {
+        icon: "pencil",
+        title: "상품 정보 입력·AI 작성",
+        description: "상품명, 카테고리, 브랜드 등 기본 정보를 입력하고 AI를 활용해 필요한 상품 정보를 작성해요.",
+      },
+      {
+        icon: "globe",
+        title: "AI 번역·최적화",
+        description: "작성한 상품 정보를 판매 국가에 맞게 번역하고 최적화해요.",
+      },
+      {
+        icon: "documents",
+        title: "등록 정보 복사",
+        description: "완성된 정보를 복사하여 Shopee 상품 등록에 활용해요.",
+      },
+      {
+        icon: "checkCircle",
+        title: "상품 등록 완료",
+        description: "Shopee Seller Centre에 상품 정보를 입력하고 등록을 완료해요.",
+      },
+    ],
+  },
+
+  formTitle: "Shopee 상품 정보 작성",
+  formSubtitle: "상품 정보를 입력해 주세요. AI가 해외 판매에 필요한 상품 등록 정보 작성을 도와드려요.",
+  formNote: "입력한 정보는 AI 번역 및 최적화, Shopee 상품 등록 정보 생성에 활용됩니다.",
+
+  guideVideoLabel: "Shopee 입점 가이드 영상 보기",
+  guideVideoUrl: "https://shopee.kr/onboarding_video/",
   guideVideoPendingNote: "영상 링크는 준비 중이에요. 링크가 등록되면 버튼이 바로 연결됩니다.",
   loadPreviousLabel: "이전 정보 불러오기",
   loadPreviousEmpty: "이전에 작성한 정보가 없어요.",

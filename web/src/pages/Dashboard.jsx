@@ -136,15 +136,15 @@ function useCountUp(target, { duration = 1500, decimals = 0 } = {}) {
   return decimals ? value.toFixed(decimals) : Math.round(value).toLocaleString();
 }
 
-function StatItem({ stat, compact = false }) {
+function StatItem({ stat }) {
   const display = useCountUp(stat.value, { decimals: stat.decimals });
   return (
     <div className="flex flex-col">
-      <span className={`font-extrabold text-brand-700 ${compact ? "text-xl sm:text-2xl" : "text-3xl sm:text-4xl"}`}>
+      <span className="text-3xl font-extrabold text-white sm:text-4xl">
         {display}
-        <span className={`ml-0.5 font-bold text-brand-500 ${compact ? "text-sm" : "text-lg"}`}>{stat.suffix}</span>
+        <span className="ml-0.5 text-lg font-bold text-white/80">{stat.suffix}</span>
       </span>
-      <span className={`mt-1 text-slate-500 ${compact ? "text-xs" : "text-sm"}`}>{stat.label}</span>
+      <span className="mt-1 text-sm text-white/60">{stat.label}</span>
     </div>
   );
 }
@@ -369,7 +369,7 @@ export default function Dashboard() {
   };
 
   const goToProgram = (id) => {
-    navigate("/gov-support", { state: { highlightId: id } });
+    navigate(`/gov-support/${id}`);
   };
 
   return (
@@ -379,12 +379,12 @@ export default function Dashboard() {
       <div
         ref={scrollContainerRef}
         onScroll={handleScroll}
-        className="h-full snap-y snap-mandatory overflow-y-auto scroll-smooth pb-24"
+        className="h-full snap-y snap-mandatory overflow-y-auto scroll-smooth scroll-pt-16 pb-24"
       >
-        {/* 1: 히어로 — 배/파도/낙하산 3-레이어 배경(HeroOceanScene) */}
+        {/* 1: 히어로 — 배/낙하산 2-레이어 배경(HeroOceanScene) */}
         <section
           ref={heroRef}
-          className="relative flex h-[calc(100dvh-4rem)] w-full snap-start flex-col items-center justify-center overflow-hidden bg-black px-6 py-6 sm:py-8 lg:py-10"
+          className="relative isolate flex h-[100dvh] w-full snap-start flex-col items-center justify-center overflow-hidden bg-black px-6 pb-6 pt-20 sm:pb-8 sm:pt-24 lg:pb-10 lg:pt-28"
         >
           <HeroOceanScene />
 
@@ -408,23 +408,40 @@ export default function Dashboard() {
               {dashboard.heroLines.join(" ")}
             </p>
 
-            <div
-              ref={statsRef}
-              className={`mx-auto mt-6 max-w-3xl rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-xl sm:mt-8 sm:px-6 sm:py-5 ${revealCls(heroInView)}`}
+            <Link
+              to="/gov-support"
+              className={`mt-6 inline-flex items-center gap-2 rounded-lg bg-white px-8 py-4 text-base font-semibold text-slate-900 transition-colors hover:bg-slate-100 ${revealCls(heroInView)}`}
               style={revealStyle(3)}
             >
-              <p className="mb-4 text-xs font-bold text-slate-500">
+              수출 시작하기
+              <Icon name="arrowRight" className="h-4 w-4" />
+            </Link>
+
+            <div
+              ref={statsRef}
+              className={`mx-auto mt-6 max-w-3xl rounded-2xl border border-white/10 bg-black/40 px-4 py-4 shadow-xl backdrop-blur-md sm:mt-8 sm:px-6 sm:py-5 ${revealCls(heroInView)}`}
+              style={revealStyle(4)}
+            >
+              <p className="mb-4 text-sm font-bold text-white/80 sm:text-base">
                 {dashboard.statsHeadline}
-                <span className="ml-2 font-normal text-slate-400">({formatTodayKorean()} 기준)</span>
+                <span className="ml-2 font-normal text-white/50">({formatTodayKorean()} 기준)</span>
               </p>
-              <div key={statsReplayKey} className="grid grid-cols-2 gap-y-4 divide-slate-100 sm:grid-cols-4 sm:gap-y-0 sm:divide-x">
+              <div key={statsReplayKey} className="grid grid-cols-2 gap-y-4 divide-white/10 sm:grid-cols-4 sm:gap-y-0 sm:divide-x">
                 {dashboard.stats.map((s) => (
                   <div key={s.label} className="px-1 sm:px-4">
-                    <StatItem stat={s} compact />
+                    <StatItem stat={s} />
                   </div>
                 ))}
               </div>
             </div>
+          </div>
+
+          <div
+            className={`absolute bottom-5 left-1/2 z-10 flex -translate-x-1/2 flex-col items-center gap-1 text-[11px] font-medium text-white/80 drop-shadow-[0_1px_4px_rgba(0,0,0,0.7)] ${revealCls(heroInView)}`}
+            style={revealStyle(5)}
+          >
+            스크롤해서 더 보기
+            <Icon name="chevronDown" className="h-3.5 w-3.5 animate-bounce" />
           </div>
         </section>
 
@@ -452,13 +469,18 @@ export default function Dashboard() {
                     }`}
                   >
                     {dashboard.myApplicationStats.map((s) => (
-                      <div key={s.key} className="rounded-lg bg-slate-50 px-2 py-3 text-center">
+                      <button
+                        type="button"
+                        key={s.key}
+                        onClick={() => navigate("/my-applications")}
+                        className="rounded-lg bg-slate-50 px-2 py-3 text-center transition-colors hover:bg-brand-50"
+                      >
                         <p className="text-lg font-extrabold text-brand-700">
                           {myAppStats[s.key] || 0}
                           <span className="ml-0.5 text-[10px] font-normal text-slate-500">건</span>
                         </p>
                         <p className="mt-0.5 text-[11px] font-medium text-slate-500">{s.label}</p>
-                      </div>
+                      </button>
                     ))}
                   </div>
                   {!isLoggedIn && (
@@ -560,12 +582,6 @@ export default function Dashboard() {
             <h2 className={`text-xl font-bold text-slate-900 sm:text-2xl ${revealCls(featuresInView)}`} style={revealStyle(0)}>
               {dashboard.featuresTitle}
             </h2>
-            <p
-              className={`mx-auto mt-2 max-w-2xl text-xs leading-relaxed text-slate-600 sm:text-sm ${revealCls(featuresInView)}`}
-              style={revealStyle(1)}
-            >
-              {dashboard.featuresDescription}
-            </p>
 
             <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4 lg:gap-5">
               {dashboard.features.map((f, i) => (
@@ -573,7 +589,7 @@ export default function Dashboard() {
                   key={f.title}
                   to={f.to}
                   className={`flex flex-col items-center rounded-2xl border border-slate-200 bg-white p-4 text-center hover:shadow-md sm:p-5 ${revealCls(featuresInView)}`}
-                  style={revealStyle(i + 2)}
+                  style={revealStyle(i + 1)}
                 >
                   <div className={`mb-3 flex h-12 w-12 items-center justify-center rounded-2xl ${FEATURE_TONES[f.tone]}`}>
                     <Icon name={f.icon} className="h-6 w-6" />
@@ -693,11 +709,13 @@ export default function Dashboard() {
                     </div>
                     <p className="mb-2.5 text-xs leading-relaxed text-slate-600 sm:mb-3 sm:text-sm">&ldquo;{r.text}&rdquo;</p>
                     <div className="flex items-center gap-2.5">
-                      <img
-                        src={r.avatar}
-                        alt={r.company}
-                        className="h-8 w-8 shrink-0 rounded-full object-cover ring-1 ring-slate-200"
-                      />
+                      <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-white ring-1 ring-slate-200">
+                        <img
+                          src={r.avatar}
+                          alt={r.company}
+                          className="h-full w-full origin-top scale-[1.8] object-cover"
+                        />
+                      </div>
                       <div>
                         <p className="text-[11px] font-bold text-slate-900 sm:text-xs">{r.name}</p>
                         <p className="text-[10px] text-slate-400 sm:text-[11px]">{r.company}</p>
@@ -768,7 +786,7 @@ export default function Dashboard() {
           </div>
         </section>
 
-        <footer className="w-full border-t border-slate-100 bg-white px-6 py-8">
+        <footer className="w-full snap-end border-t border-slate-100 bg-white px-6 py-8">
           <div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-4 sm:flex-row">
             <div className="flex items-center gap-3">
               <img src={brand.logo} alt={brand.name} className="h-7 w-7 rounded-lg object-contain" />

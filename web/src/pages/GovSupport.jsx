@@ -6,10 +6,8 @@ import { govSupport as gs, dashboard, govAnnouncementDetails, login } from "../d
 import { periodEndDate } from "../lib/period";
 import { supabase } from "../lib/supabase";
 import { orderedSelect } from "../lib/supabaseOrder";
-import { readErrorMessage } from "../lib/apiError";
 import { useAuth } from "../context/AuthContext";
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
 const PAGE_SIZE = 6;
 
 function orgNameFor(business) {
@@ -22,22 +20,33 @@ function periodLabel(business) {
   return detail?.period || null;
 }
 
+// AI 호출 없이, 공고 제목/설명/기본정보(지원대상·지원내용)만 보고 즉시 판단한다.
+function matchHaystack(business) {
+  const info = business.basic_info || {};
+  return `${business.name} ${business.description || ""} ${info.target || ""} ${info.support || ""}`;
+}
+
+// 지원대상에 특정 시군 이름이 하나라도 나오면 그 시군에만 해당하는 공고로 보고,
+// 아무 시군 이름도 안 나오면(="전북 도내" 처럼 포괄적인 경우) 어떤 시군을 골라도 해당하는
+// 것으로 본다 — 실제로 대부분의 공고가 특정 시군을 안 가리는 전북 전역 대상이기 때문이다.
 function matchesRegion(business, region) {
-  const haystack = `${business.name} ${business.description || ""}`;
-  return haystack.includes(region);
+  const haystack = matchHaystack(business);
+  if (haystack.includes(region)) return true;
+  return !gs.filters.regions.some((r) => haystack.includes(r));
 }
 
 function wizardStorageKey(userId) {
   return `jbxport:gov-support:wizard:${userId || "guest"}`;
 }
 
-// 5개 품목 카테고리 중 키워드가 실제로 매치되는 것을 찾고, 하나도 안 걸리면 "기타"로 취급한다.
-function matchedCategoryIds(business) {
-  const haystack = `${business.name} ${business.description || ""}`;
-  const matched = dashboard.itemCategories
-    .filter((c) => c.keywords.length > 0 && c.keywords.some((k) => haystack.includes(k)))
-    .map((c) => c.id);
-  return matched.length ? matched : ["etc"];
+// 등록된 지원사업 공고는 대부분 특정 품목을 가리지 않는 범용 수출지원사업이라, 품목은
+// 걸러내지 않고 모든 공고가 모든 품목에 해당하는 것으로 취급한다 — 지역만 실제로 대조한다.
+function matchesCategory() {
+  return true;
+}
+
+function matchedCategoryIds() {
+  return dashboard.itemCategories.map((c) => c.id);
 }
 
 function AnnouncementCard({ business, highlighted, bookmarked, onClick, onToggleBookmark }) {
@@ -104,28 +113,33 @@ function CheckboxRow({ label, checked, onChange }) {
   );
 }
 
-function FilterSection({ label, count, isOpen, onToggle, children }) {
+// 참고 이미지처럼 필터를 한 줄에 나란히 놓기 위한 드롭다운 버튼. 선택된 개수를 배지로
+// 보여주고, 누르면 체크박스 목록이 든 팝오버가 뜬다 (SortDropdown과 같은 열기/닫기 방식).
+function FilterDropdown({ label, count, isOpen, onToggle, children }) {
   return (
-    <div className={isOpen ? "" : "border-b border-slate-100 last:border-b-0"}>
+    <div className="relative">
       <button
         type="button"
         onClick={onToggle}
-        className="flex w-full items-center justify-between py-3 text-left"
+        className={`flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-colors ${
+          count > 0
+            ? "border-brand-300 bg-brand-50 text-brand-700"
+            : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+        }`}
       >
-        <span className="text-sm font-bold text-slate-700">
-          {label}
-          {count > 0 && (
-            <span className="ml-2 rounded-full bg-brand-50 px-2 py-0.5 text-xs font-semibold text-brand-700">
-              {count}
-            </span>
-          )}
-        </span>
-        <Icon
-          name="chevronDown"
-          className={`h-4 w-4 text-slate-400 transition-transform ${isOpen ? "rotate-180" : ""}`}
-        />
+        {label}
+        {count > 0 && (
+          <span className="rounded-full bg-brand-600 px-1.5 py-0.5 text-[11px] font-bold leading-none text-white">
+            {count}
+          </span>
+        )}
+        <Icon name="chevronDown" className={`h-3.5 w-3.5 transition-transform ${isOpen ? "rotate-180" : ""}`} />
       </button>
-      {isOpen && <div className="flex flex-wrap gap-x-6 gap-y-2 pb-4">{children}</div>}
+      {isOpen && (
+        <div className="absolute left-0 top-full z-10 mt-2 w-56 rounded-xl border border-slate-200 bg-white p-4 shadow-lg">
+          <div className="flex flex-col gap-2.5">{children}</div>
+        </div>
+      )}
     </div>
   );
 }
@@ -183,12 +197,12 @@ function getPageNumbers(current, total) {
 function Pagination({ page, totalPages, onChange }) {
   if (totalPages <= 1) return null;
   return (
-    <div className="mt-8 flex items-center justify-center gap-1.5">
+    <div className="mt-8 flex flex-wrap items-center justify-center gap-1.5">
       <button
         type="button"
         onClick={() => onChange(Math.max(1, page - 1))}
         disabled={page === 1}
-        className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40"
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40"
         aria-label="이전 페이지"
       >
         <Icon name="arrowLeft" className="h-3.5 w-3.5" />
@@ -203,7 +217,7 @@ function Pagination({ page, totalPages, onChange }) {
             key={p}
             type="button"
             onClick={() => onChange(p)}
-            className={`flex h-9 w-9 items-center justify-center rounded-lg text-sm font-semibold ${
+            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-sm font-semibold ${
               p === page ? "bg-brand-600 text-white" : "text-slate-600 hover:bg-slate-100"
             }`}
           >
@@ -215,7 +229,7 @@ function Pagination({ page, totalPages, onChange }) {
         type="button"
         onClick={() => onChange(Math.min(totalPages, page + 1))}
         disabled={page === totalPages}
-        className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40"
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40"
         aria-label="다음 페이지"
       >
         <Icon name="arrowRight" className="h-3.5 w-3.5" />
@@ -233,8 +247,8 @@ const STEP_BOX_IDLE = "border-slate-200 bg-white text-slate-700 hover:border-bra
 // 왼쪽엔 진행 단계/제목/설명, 오른쪽엔 선택 박스가 오는 레이아웃(참고 이미지 스타일).
 function WizardShell({ step, totalSteps, title, subtitle, onBack, backLabel, onSkipAll, children, footer }) {
   return (
-    <div className="mx-auto max-w-5xl px-8 py-12">
-      <div className="mb-8 flex items-center justify-between">
+    <div className="mx-auto max-w-5xl px-4 py-8 sm:px-8 sm:py-12">
+      <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-xs font-bold tracking-wide text-slate-400">{`0${step}/0${totalSteps}`}</p>
           <div className="mt-2 h-1 w-32 overflow-hidden rounded-full bg-slate-100">
@@ -273,23 +287,25 @@ function WizardShell({ step, totalSteps, title, subtitle, onBack, backLabel, onS
 
 export default function GovSupport() {
   const navigate = useNavigate();
-  const { user, session } = useAuth();
+  const { user } = useAuth();
 
   const [announcements, setAnnouncements] = useState([]);
   const [loadingAnnouncements, setLoadingAnnouncements] = useState(true);
 
-  // "AI 맞춤 추천" 마법사: 지역 선택 → 품목 선택 → 결과. wizard를 안 타고 바로 전체 목록을 볼 수도 있다.
-  // 결과는 별도 화면이 아니라 browse-all(수출지원사업 목록) 화면에 강조 표시로 합쳐서 보여준다.
+  // "맞춤 추천" 마법사: 지역 선택 → 품목 선택 → 결과. 홈 화면 "수출 시작하기"나 상단 네비게이션
+  // "수출지원사업"을 눌렀을 때는 항상 이 마법사부터 시작한다. 다만 사용자가 예전에 이미 마법사를
+  // 완료했으면(아래 useEffect가 localStorage를 읽어 감지) 매번 다시 태우지 않고 바로 전체 목록
+  // (browse-all)으로 건너뛴다. 매칭은 AI 호출 없이 각 공고의 지역/품목 키워드를 즉시 대조해서
+  // 계산하고, 결과는 별도 화면이 아니라 browse-all 화면에 강조 표시로 합쳐서 보여준다.
   const [mode, setMode] = useState("wizard-region"); // wizard-region | wizard-category | browse-all
   const [wizardRegions, setWizardRegions] = useState([]);
   const [wizardCategories, setWizardCategories] = useState([]);
-  const [matching, setMatching] = useState(false);
-  const [matchError, setMatchError] = useState(null);
   const [matchedIds, setMatchedIds] = useState(null);
 
   const [selectedRegions, setSelectedRegions] = useState([]);
   const [selectedCategories, setSelectedCategories] = useState([]);
   const [sortFilter, setSortFilter] = useState("ongoing"); // ongoing | deadline | closed
+  const [showAllStatus, setShowAllStatus] = useState(false); // true면 진행중/마감 구분 없이 전체를 보여준다
   const [openFilter, setOpenFilter] = useState(null); // null | "region" | "category"
   const [page, setPage] = useState(1);
 
@@ -351,7 +367,7 @@ export default function GovSupport() {
 
   useEffect(() => {
     setPage(1);
-  }, [selectedRegions, selectedCategories, sortFilter, matchedIds]);
+  }, [selectedRegions, selectedCategories, sortFilter, showAllStatus, matchedIds]);
 
   const toggleRegion = (region) => {
     setSelectedRegions((prev) => (prev.includes(region) ? prev.filter((r) => r !== region) : [...prev, region]));
@@ -401,6 +417,9 @@ export default function GovSupport() {
 
   const visibleAnnouncements = useMemo(() => {
     let list = announcements.filter((b) => {
+      // AI 맞춤 추천(공고문을 실제로 읽고 판단한 결과)이 있으면 그 결과만 보여준다 —
+      // 지역/품목 체크박스는 그 안에서 추가로 좁히는 보조 필터로만 쓴다.
+      if (matchedIds && !matchedIds.has(b.id)) return false;
       if (selectedRegions.length > 0 && !selectedRegions.some((r) => matchesRegion(b, r))) return false;
       if (selectedCategories.length > 0) {
         const categoryIds = matchedCategoryIds(b);
@@ -411,7 +430,19 @@ export default function GovSupport() {
 
     const withEnd = list.map((b) => ({ b, end: periodEndDate(b, govAnnouncementDetails) }));
     const now = new Date();
-    if (sortFilter === "closed") {
+    if (showAllStatus) {
+      // "전체" 체크 시 진행중/마감 구분 없이 다 보여준다 — 정렬만 마감일 빠른순을 고를 수 있다.
+      list =
+        sortFilter === "deadline"
+          ? [...withEnd]
+              .sort((a, b) => {
+                if (!a.end) return 1;
+                if (!b.end) return -1;
+                return a.end - b.end;
+              })
+              .map((x) => x.b)
+          : withEnd.map((x) => x.b);
+    } else if (sortFilter === "closed") {
       list = withEnd.filter(({ end }) => end && end < now).map((x) => x.b);
     } else if (sortFilter === "deadline") {
       list = withEnd
@@ -426,16 +457,8 @@ export default function GovSupport() {
       list = withEnd.filter(({ end }) => !end || end >= now).map((x) => x.b);
     }
 
-    if (matchedIds) {
-      list = [...list].sort((a, b) => {
-        const aMatch = matchedIds.has(a.id) ? 0 : 1;
-        const bMatch = matchedIds.has(b.id) ? 0 : 1;
-        return aMatch - bMatch;
-      });
-    }
-
     return list;
-  }, [announcements, selectedRegions, selectedCategories, sortFilter, matchedIds]);
+  }, [announcements, selectedRegions, selectedCategories, sortFilter, showAllStatus, matchedIds]);
 
   const totalPages = Math.max(1, Math.ceil(visibleAnnouncements.length / PAGE_SIZE));
   const pagedAnnouncements = visibleAnnouncements.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -444,39 +467,28 @@ export default function GovSupport() {
 
   const selectedCategoryObjs = dashboard.itemCategories.filter((c) => wizardCategories.includes(c.id));
 
-  const handleCheckPrograms = async () => {
+  // AI 호출 없이, 선택한 지역/품목 키워드가 각 공고의 제목·설명·기본정보에 실제로
+  // 들어있는지만 보고 즉시 판단한다 — 네트워크 대기 없이 바로 결과가 나온다.
+  const handleCheckPrograms = () => {
     if (wizardRegions.length === 0 || selectedCategoryObjs.length === 0) return;
-    setMatching(true);
-    setMatchError(null);
-    try {
-      const res = await fetch(`${BACKEND_URL}/gov-support/match`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
-        },
-        body: JSON.stringify({
-          region: wizardRegions.join(", "),
-          category_label: selectedCategoryObjs.map((c) => c.label).join(", "),
-        }),
-      });
-      if (!res.ok) throw new Error(await readErrorMessage(res, "추천 공고를 불러오지 못했습니다."));
-      const data = await res.json();
-      setMatchedIds(new Set(data.matchedIds || []));
-      // 결과는 별도 화면이 아니라 수출지원사업 목록 화면에 강조 표시로 보여준다.
-      setMode("browse-all");
-    } catch (err) {
-      setMatchError(err.message);
-    } finally {
-      setMatching(false);
-    }
+    const ids = new Set(
+      announcements
+        .filter(
+          (b) =>
+            wizardRegions.some((r) => matchesRegion(b, r)) &&
+            wizardCategories.some((c) => matchesCategory(b, c))
+        )
+        .map((b) => b.id)
+    );
+    setMatchedIds(ids);
+    // 결과는 별도 화면이 아니라 수출지원사업 목록 화면에 강조 표시로 보여준다.
+    setMode("browse-all");
   };
 
   const restartWizard = () => {
     setWizardRegions([]);
     setWizardCategories([]);
     setMatchedIds(null);
-    setMatchError(null);
     setMode("wizard-region");
   };
 
@@ -529,8 +541,8 @@ export default function GovSupport() {
         onBack={() => setMode("wizard-region")}
         onSkipAll={() => setMode("browse-all")}
         footer={
-          <Button onClick={handleCheckPrograms} disabled={wizardCategories.length === 0 || matching}>
-            {matching ? "확인하는 중..." : wizardCategories.length > 0 ? "공고 확인하기" : "다음"}
+          <Button onClick={handleCheckPrograms} disabled={wizardCategories.length === 0}>
+            {wizardCategories.length > 0 ? "공고 확인하기" : "다음"}
           </Button>
         }
       >
@@ -547,24 +559,33 @@ export default function GovSupport() {
             </button>
           ))}
         </div>
-        {matchError && <p className="mt-4 text-xs font-medium text-red-500">{matchError}</p>}
       </WizardShell>
     );
   }
 
   // mode === "browse-all"
-  const matchedCount = matchedIds ? visibleAnnouncements.filter((b) => matchedIds.has(b.id)).length : 0;
 
   return (
-    <div className="mx-auto flex max-w-6xl flex-col px-8 py-8">
+    <div className="mx-auto flex max-w-6xl flex-col px-4 py-6 sm:px-8 sm:py-8">
       <div className="overflow-hidden rounded-3xl border border-brand-100 bg-gradient-to-br from-brand-50 via-white to-brand-50">
-        <div className="flex flex-wrap items-center justify-between gap-6 px-8 py-10 sm:px-10">
+        <div className="flex flex-wrap items-center justify-between gap-6 px-5 py-8 sm:px-10 sm:py-10">
           <div>
-            <h1 className="text-4xl font-extrabold text-slate-900">{gs.allProgramsHeading}</h1>
+            <h1 className="text-2xl font-extrabold text-slate-900 sm:text-4xl">
+              {matchedIds ? "맞춤 공고" : gs.allProgramsHeading}
+            </h1>
             <p className="mt-2 text-sm text-slate-500">{gs.subtitle}</p>
             <div className="mt-6 inline-flex items-center gap-2 rounded-xl border border-brand-100 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm">
               <Icon name="home" className="h-4 w-4 text-brand-600" />
-              총 <span className="font-bold text-brand-700">{announcements.length}</span>개의 지원사업이 등록되어 있습니다.
+              {matchedIds ? (
+                <>
+                  선택하신 조건에 맞는{" "}
+                  <span className="font-bold text-brand-700">{visibleAnnouncements.length}</span>개의 맞춤 공고가 있습니다.
+                </>
+              ) : (
+                <>
+                  총 <span className="font-bold text-brand-700">{announcements.length}</span>개의 지원사업이 등록되어 있습니다.
+                </>
+              )}
             </div>
             <button
               type="button"
@@ -591,15 +612,15 @@ export default function GovSupport() {
         </div>
       </div>
 
-      <Card className="mt-6 p-5">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex-1">
-            <FilterSection
-              label={gs.filters.regionLabel}
-              count={selectedRegions.length}
-              isOpen={openFilter === "region"}
-              onToggle={() => setOpenFilter((prev) => (prev === "region" ? null : "region"))}
-            >
+      <Card className="mt-6 flex flex-wrap items-center justify-between gap-3 p-4">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <FilterDropdown
+            label={gs.filters.regionLabel}
+            count={selectedRegions.length}
+            isOpen={openFilter === "region"}
+            onToggle={() => setOpenFilter((prev) => (prev === "region" ? null : "region"))}
+          >
+            <div className="grid grid-cols-2 gap-x-3 gap-y-2.5">
               {gs.filters.regions.map((region) => (
                 <CheckboxRow
                   key={region}
@@ -608,29 +629,37 @@ export default function GovSupport() {
                   onChange={() => toggleRegion(region)}
                 />
               ))}
-            </FilterSection>
+            </div>
+          </FilterDropdown>
 
-            <FilterSection
-              label={gs.filters.categoryLabel}
-              count={selectedCategories.length}
-              isOpen={openFilter === "category"}
-              onToggle={() => setOpenFilter((prev) => (prev === "category" ? null : "category"))}
-            >
-              {dashboard.itemCategories.map((c) => (
-                <CheckboxRow
-                  key={c.id}
-                  label={c.label}
-                  checked={selectedCategories.includes(c.id)}
-                  onChange={() => toggleCategory(c.id)}
-                />
-              ))}
-            </FilterSection>
-          </div>
+          <FilterDropdown
+            label={gs.filters.categoryLabel}
+            count={selectedCategories.length}
+            isOpen={openFilter === "category"}
+            onToggle={() => setOpenFilter((prev) => (prev === "category" ? null : "category"))}
+          >
+            {dashboard.itemCategories.map((c) => (
+              <CheckboxRow
+                key={c.id}
+                label={c.label}
+                checked={selectedCategories.includes(c.id)}
+                onChange={() => toggleCategory(c.id)}
+              />
+            ))}
+          </FilterDropdown>
+        </div>
 
-          <div className="flex shrink-0 items-center gap-3 sm:pt-3">
-            <span className="text-sm font-bold text-slate-700">{gs.filters.statusLabel}</span>
-            <SortDropdown value={sortFilter} options={gs.filters.statusOptions} onChange={setSortFilter} />
-          </div>
+        <div className="flex shrink-0 flex-wrap items-center gap-3">
+          <span className="text-sm font-bold text-slate-700">{gs.filters.statusLabel}</span>
+          <CheckboxRow label="전체" checked={showAllStatus} onChange={() => setShowAllStatus((v) => !v)} />
+          <SortDropdown
+            value={sortFilter}
+            options={gs.filters.statusOptions}
+            onChange={(value) => {
+              setSortFilter(value);
+              setShowAllStatus(false);
+            }}
+          />
         </div>
       </Card>
 
@@ -638,11 +667,11 @@ export default function GovSupport() {
         <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-700">
           <span className="flex items-center gap-1.5 font-medium">
             <Icon name="sparkle" className="h-4 w-4" />
-            {wizardRegions.join(", ")} · {selectedCategoryObjs.map((c) => c.label).join(", ")} 조건에 맞는 공고{" "}
-            {matchedCount}건을 강조 표시했어요.
+            {wizardRegions.join(", ")} · {selectedCategoryObjs.map((c) => c.label).join(", ")} 조건에 맞는 맞춤 공고{" "}
+            {visibleAnnouncements.length}건을 보여드리고 있어요.
           </span>
           <button type="button" onClick={() => setMatchedIds(null)} className="font-semibold hover:underline">
-            강조 해제
+            전체 공고 보기
           </button>
         </div>
       )}
@@ -654,7 +683,7 @@ export default function GovSupport() {
           <p className="text-sm text-slate-400">조건에 맞는 지원사업이 없습니다.</p>
         ) : (
           <>
-            <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {pagedAnnouncements.map((b) => (
                 <AnnouncementCard
                   key={b.id}

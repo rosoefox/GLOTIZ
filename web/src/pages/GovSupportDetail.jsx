@@ -48,7 +48,7 @@ export default function GovSupportDetail() {
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-3xl px-8 py-8">
+      <div className="mx-auto max-w-3xl px-4 py-8 sm:px-8">
         <p className="text-sm text-slate-400">불러오는 중...</p>
       </div>
     );
@@ -56,9 +56,9 @@ export default function GovSupportDetail() {
 
   if (!business) {
     return (
-      <div className="mx-auto max-w-3xl px-8 py-8">
+      <div className="mx-auto max-w-3xl px-4 py-8 sm:px-8">
         <p className="text-sm text-slate-400">해당 공고를 찾을 수 없습니다.</p>
-        <Button variant="secondary" className="mt-4" onClick={() => navigate("/gov-support")}>
+        <Button variant="secondary" className="mt-4" onClick={() => navigate(-1)}>
           <Icon name="arrowLeft" className="h-4 w-4" /> 목록으로
         </Button>
       </div>
@@ -66,10 +66,10 @@ export default function GovSupportDetail() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-8 py-8">
+    <div className="mx-auto max-w-6xl px-4 py-6 sm:px-8 sm:py-8">
       <button
         type="button"
-        onClick={() => navigate("/gov-support")}
+        onClick={() => navigate(-1)}
         className="mb-4 flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-800"
       >
         <Icon name="arrowLeft" className="h-4 w-4" /> 목록으로
@@ -106,7 +106,7 @@ export default function GovSupportDetail() {
           <iframe
             title="기본서류 미리보기"
             src={`${BACKEND_URL}/businesses/${business.id}/reference-doc/preview-pdf`}
-            className="h-[900px] w-full rounded-xl border border-slate-200"
+            className="h-[420px] w-full rounded-xl border border-slate-200 sm:h-[600px] lg:h-[900px]"
           />
         ) : (
           <p className="text-sm text-slate-400">{gs.previewUnavailable}</p>

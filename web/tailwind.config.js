@@ -44,6 +44,11 @@ export default {
           "0%, 100%": { transform: "translateY(0)" },
           "50%": { transform: "translateY(-7px)" },
         },
+        "ship-cruise": {
+          "0%": { transform: "translateY(14px)" },
+          "35%": { transform: "translateY(-12px)" },
+          "100%": { transform: "translateY(14px)" },
+        },
         "wake-flow": {
           "0%": { backgroundPosition: "0 0" },
           "100%": { backgroundPosition: "0 28px" },
@@ -54,6 +59,7 @@ export default {
         "marquee-reverse": "marquee-reverse 28s linear infinite",
         "hero-drift": "hero-drift 26s ease-in-out infinite alternate",
         "ship-bob": "ship-bob 4.5s ease-in-out infinite",
+        "ship-cruise": "ship-cruise 4.5s cubic-bezier(0.34,0,0.2,1) infinite",
         "wake-flow": "wake-flow 1.1s linear infinite",
       },
     },

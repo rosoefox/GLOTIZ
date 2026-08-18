@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import Icon from "../components/Icon";
 import { Badge, Card, Button, TextField } from "../components/ui";
@@ -65,7 +65,7 @@ function SubmissionRow({
         {!isHistory && item.submission && item.statusKey !== "needs_revision" && (
           <button
             type="button"
-            onClick={() => onSetReviewStatus(item, "needs_revision")}
+            onClick={() => onSetReviewStatus(applicant, item, "needs_revision")}
             className="flex items-center gap-1 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700"
           >
             <Icon name="x" className="h-3.5 w-3.5" />
@@ -75,7 +75,7 @@ function SubmissionRow({
         {!isHistory && item.submission && item.statusKey !== "approved" && (
           <button
             type="button"
-            onClick={() => onSetReviewStatus(item, "approved")}
+            onClick={() => onSetReviewStatus(applicant, item, "approved")}
             className="flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
           >
             <Icon name="check" className="h-3.5 w-3.5" />
@@ -980,9 +980,6 @@ export default function AdminPage() {
   const [activeTab, setActiveTab] = useState("submissions");
   const [loading, setLoading] = useState(true);
   const [applicants, setApplicants] = useState([]);
-  const [supportRequests, setSupportRequests] = useState([]);
-  const [supportLoading, setSupportLoading] = useState(true);
-  const [replyDrafts, setReplyDrafts] = useState({});
   const [expandedProgramId, setExpandedProgramId] = useState(null);
   const [expandedApplicantKey, setExpandedApplicantKey] = useState(null);
   const [notifying, setNotifying] = useState({});
@@ -993,12 +990,13 @@ export default function AdminPage() {
   async function load() {
     setLoading(true);
 
-    const [{ data: businesses }, templatesRes, { data: submissions }, { data: generatedDocs }] =
+    const [{ data: businesses }, templatesRes, { data: submissions }, { data: generatedDocs }, { data: allFields }] =
       await Promise.all([
         supabase.from("businesses").select("id,name"),
         supabase.from("templates").select("id,name,business_id,sort_order"),
         supabase.from("submissions").select("*").order("created_at", { ascending: false }),
         supabase.from("generated_documents").select("submission_id,file_path"),
+        supabase.from("template_fields").select("id,template_id"),
       ]);
     // sort_order 컬럼이 아직 마이그레이션되지 않았으면 위 select가 에러를 반환하므로,
     // 그 컬럼 없이 다시 조회해 화면 자체는 계속 정상 동작하게 한다.
@@ -1015,6 +1013,21 @@ export default function AdminPage() {
     const generatedPathBySubmission = Object.fromEntries(
       (generatedDocs || []).map((g) => [g.submission_id, g.file_path])
     );
+
+    // 퍼센티지는 "서류를 제출했는지"가 아니라 사용자 화면(DocumentChecklist)과 동일하게
+    // "실제로 채워진 필드 수 / 전체 필드 수"로 계산한다 — 그래야 두 화면의 숫자가 일치한다.
+    const fieldCountByTemplate = {};
+    (allFields || []).forEach((f) => {
+      fieldCountByTemplate[f.template_id] = (fieldCountByTemplate[f.template_id] || 0) + 1;
+    });
+    const submissionIds = (submissions || []).map((s) => s.id);
+    const { data: allValues } = submissionIds.length
+      ? await supabase.from("submission_values").select("submission_id,value").in("submission_id", submissionIds)
+      : { data: [] };
+    const filledCountBySubmission = {};
+    (allValues || []).forEach((v) => {
+      if (v.value) filledCountBySubmission[v.submission_id] = (filledCountBySubmission[v.submission_id] || 0) + 1;
+    });
 
     let companyNameBySubmission = {};
     const companyFieldRes = await supabase
@@ -1110,25 +1123,30 @@ export default function AdminPage() {
         program.items.sort(
           (a, b) => (templateById[a.templateId]?.sort_order ?? 0) - (templateById[b.templateId]?.sort_order ?? 0)
         );
+        const totalFields = allTemplates.reduce((sum, t) => sum + (fieldCountByTemplate[t.id] || 0), 0);
+        const filledFields = program.items.reduce(
+          (sum, item) => sum + (item.submission ? filledCountBySubmission[item.submission.id] || 0 : 0),
+          0
+        );
         program.totalTemplates = allTemplates.length;
         program.submittedCount = submittedTemplateIds.size;
-        program.percent = allTemplates.length
-          ? Math.round((submittedTemplateIds.size / allTemplates.length) * 100)
-          : 0;
+        program.totalFields = totalFields;
+        program.filledFields = filledFields;
+        program.percent = totalFields ? Math.round((filledFields / totalFields) * 100) : 0;
       }
     }
 
     const list = Object.values(byUser)
       .map((bucket) => {
         const programs = Object.values(bucket.byBusiness);
-        const totalTemplates = programs.reduce((s, p) => s + p.totalTemplates, 0);
-        const totalSubmitted = programs.reduce((s, p) => s + p.submittedCount, 0);
+        const totalFields = programs.reduce((s, p) => s + p.totalFields, 0);
+        const filledFields = programs.reduce((s, p) => s + p.filledFields, 0);
         return {
           userId: bucket.userId,
           name: bucket.name || `${ap.applicantFallbackName} (${bucket.userId.slice(0, 8)})`,
           submissions: bucket.submissions,
           programs,
-          percent: totalTemplates ? Math.round((totalSubmitted / totalTemplates) * 100) : 0,
+          percent: totalFields ? Math.round((filledFields / totalFields) * 100) : 0,
           lastUpdated: new Date(bucket.lastUpdated).toLocaleDateString("ko-KR"),
         };
       })
@@ -1138,27 +1156,9 @@ export default function AdminPage() {
     setLoading(false);
   }
 
-  const loadSupportRequests = useCallback(async () => {
-    setSupportLoading(true);
-    try {
-      const res = await fetch(`${BACKEND_URL}/admin/support-requests`, {
-        headers: { Authorization: `Bearer ${session?.access_token}` },
-      });
-      if (!res.ok) throw new Error(await readErrorMessage(res, "추천 요청을 불러오지 못했습니다."));
-      const data = await res.json();
-      setSupportRequests(data.requests || []);
-    } catch (err) {
-      setReviewStatusError(err.message);
-      setSupportRequests([]);
-    } finally {
-      setSupportLoading(false);
-    }
-  }, [session.access_token]);
-
   useEffect(() => {
     load();
-    if (session?.access_token) loadSupportRequests();
-  }, [loadSupportRequests, session?.access_token]);
+  }, []);
 
   useEffect(() => {
     const channel = supabase
@@ -1174,11 +1174,7 @@ export default function AdminPage() {
 
   const summary = useMemo(() => {
     const programCount = applicants.reduce((sum, a) => sum + a.programs.length, 0);
-    const completedCount = applicants.reduce(
-      (sum, a) => sum + a.submissions.filter((s) => s.status === "generated").length,
-      0
-    );
-    return { applicants: applicants.length, programs: programCount, completed: completedCount };
+    return { applicants: applicants.length, programs: programCount };
   }, [applicants]);
 
   // 신청자 기준으로 모아둔 applicants를 지원사업(공고) 기준으로 다시 묶는다 —
@@ -1268,42 +1264,41 @@ export default function AdminPage() {
     if (!error) setNotified((prev) => ({ ...prev, [key]: true }));
   };
 
-  const handleSetReviewStatus = async (item, reviewStatus) => {
+  const handleSetReviewStatus = async (applicant, item, reviewStatus) => {
     if (!item.submission) return;
     setReviewStatusError(null);
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("submissions")
       .update({ review_status: reviewStatus, reviewed_at: new Date().toISOString() })
-      .eq("id", item.submission.id);
+      .eq("id", item.submission.id)
+      .select();
     if (error) {
       setReviewStatusError(error.message);
       return;
     }
-    await load();
-  };
+    // RLS 정책이 막으면 PostgREST는 에러 없이 빈 배열을 반환한다 — 이 경우를 명시적으로 감지해서
+    // 버튼을 눌러도 조용히 아무 일도 안 일어나는 것처럼 보이지 않게 한다.
+    if (!data || data.length === 0) {
+      setReviewStatusError("권한이 없어 상태를 변경하지 못했습니다. (submissions 테이블의 관리자 UPDATE 정책을 확인하세요)");
+      return;
+    }
 
-  const handleSendSupportReply = async (request) => {
-    const reply = (replyDrafts[request.id] || "").trim();
-    if (!reply) return;
-    const { error } = await supabase.from("notifications").insert({
-      user_id: request.user_id,
-      type: "support_reply",
-      message: JSON.stringify(
-        {
-          replyTo: request.id,
-          text: reply,
-          created_at: new Date().toISOString(),
-        },
-        null,
-        0
-      ),
-    });
-    if (error) {
-      setReviewStatusError(error.message);
-      return;
+    // 반려(서류 보완 필요)일 때는 사용자에게 실시간 알림이 뜨도록 notifications에도 남긴다.
+    if (reviewStatus === "needs_revision") {
+      try {
+        await supabase.from("notifications").insert({
+          user_id: applicant.userId,
+          submission_id: item.submission.id,
+          template_id: item.templateId,
+          type: "needs_revision",
+          message: `[${item.templateName}] 제출하신 서류에 보완이 필요합니다. 확인 후 다시 제출해주세요.`,
+        });
+      } catch {
+        // 알림 생성에 실패해도 심사 상태 변경 자체는 이미 반영됐다.
+      }
     }
-    setReplyDrafts((prev) => ({ ...prev, [request.id]: "" }));
-    await loadSupportRequests();
+
+    await load();
   };
 
   const handleLogout = () => {
@@ -1356,87 +1351,14 @@ export default function AdminPage() {
           <BusinessManager session={session} />
         ) : (
           <>
-            <Card className="mb-6 p-5">
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-base font-bold text-slate-900">맞춤 추천 요청</h2>
-                  <p className="mt-1 text-sm text-slate-500">사용자가 다시 받은 추천 요청과 관리자 답변을 함께 확인합니다.</p>
-                </div>
-                <Badge tone="brand">{supportRequests.length}건</Badge>
-              </div>
-              {supportLoading ? (
-                <p className="text-sm text-slate-400">불러오는 중...</p>
-              ) : supportRequests.length === 0 ? (
-                <p className="text-sm text-slate-400">아직 들어온 추천 요청이 없습니다.</p>
-              ) : (
-                <div className="space-y-4">
-                  {supportRequests.map((request) => (
-                    <div key={request.id} className="rounded-xl border border-slate-200 p-4">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-bold text-slate-900">
-                            {request.company || request.user_name || ap.applicantFallbackName}
-                          </p>
-                          <p className="mt-1 text-xs text-slate-500">{request.email || request.user_id}</p>
-                        </div>
-                        <p className="text-xs text-slate-400">{new Date(request.created_at).toLocaleString("ko-KR")}</p>
-                      </div>
-                      <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                        <Badge tone="neutral">지역 {request.region || "전체"}</Badge>
-                        <Badge tone="brand">품목 {request.category_label || "전체"}</Badge>
-                        <Badge tone="success">추천 {request.matched_ids?.length || 0}건</Badge>
-                      </div>
-                      <div className="mt-3 space-y-2">
-                        <textarea
-                          rows={3}
-                          value={replyDrafts[request.id] || ""}
-                          onChange={(e) =>
-                            setReplyDrafts((prev) => ({ ...prev, [request.id]: e.target.value }))
-                          }
-                          placeholder="관리자 답변을 입력하세요."
-                          className="w-full rounded-xl border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
-                        />
-                        <div className="flex items-center justify-between gap-3">
-                          <p className="text-xs text-slate-400">
-                            {request.replies?.length || 0}개의 답변이 저장되어 있습니다.
-                          </p>
-                          <Button
-                            type="button"
-                            className="px-4 py-2 text-xs"
-                            onClick={() => handleSendSupportReply(request)}
-                            disabled={!(replyDrafts[request.id] || "").trim()}
-                          >
-                            답변 저장
-                          </Button>
-                        </div>
-                        {request.replies?.length > 0 && (
-                          <div className="space-y-2 rounded-xl bg-slate-50 p-3">
-                            {request.replies.map((reply) => (
-                              <div key={reply.id} className="rounded-lg bg-white px-3 py-2 text-sm text-slate-700">
-                                {reply.message}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </Card>
-
-            <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <Card className="p-5">
-                <p className="text-sm text-slate-500">{ap.summaryLabels.applicants}</p>
-                <p className="mt-1 text-2xl font-extrabold text-brand-700">{summary.applicants}</p>
+            <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Card className="p-6">
+                <p className="text-base text-slate-500">{ap.summaryLabels.applicants}</p>
+                <p className="mt-1 text-4xl font-extrabold text-brand-700">{summary.applicants}</p>
               </Card>
-              <Card className="p-5">
-                <p className="text-sm text-slate-500">{ap.summaryLabels.programs}</p>
-                <p className="mt-1 text-2xl font-extrabold text-brand-700">{summary.programs}</p>
-              </Card>
-              <Card className="p-5">
-                <p className="text-sm text-slate-500">{ap.summaryLabels.completed}</p>
-                <p className="mt-1 text-2xl font-extrabold text-brand-700">{summary.completed}</p>
+              <Card className="p-6">
+                <p className="text-base text-slate-500">{ap.summaryLabels.programs}</p>
+                <p className="mt-1 text-4xl font-extrabold text-brand-700">{summary.programs}</p>
               </Card>
             </div>
 

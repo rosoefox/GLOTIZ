@@ -6,6 +6,7 @@ import { ExportItemsProvider } from "./context/ExportItemsContext";
 import RequireAuth from "./components/RequireAuth";
 import RequireAdmin from "./components/RequireAdmin";
 import Layout from "./components/Layout";
+import NotificationAlert from "./components/NotificationAlert";
 import Dashboard from "./pages/Dashboard";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
@@ -30,6 +31,7 @@ export default function App() {
         <MarketingImagesProvider>
           <ExportItemsProvider>
             <ChatbotProvider>
+              <NotificationAlert />
               <Routes>
                 <Route path="/login" element={<Login />} />
                 <Route path="/signup" element={<Signup />} />
