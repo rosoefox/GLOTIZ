@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import Icon from "../components/Icon";
 import { Button } from "../components/ui";
 import { brand, login } from "../data/mockData";
@@ -15,7 +15,6 @@ export default function Login() {
   const [submitting, setSubmitting] = useState(false);
   const { login: signIn, logout } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation();
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -28,7 +27,7 @@ export default function Login() {
         setError("관리자 권한이 없습니다.");
         return;
       }
-      navigate(location.state?.from || (actualAccountType === "admin" ? "/admin" : "/gov-support"));
+      navigate(actualAccountType === "admin" ? "/admin" : "/", { replace: true });
     } catch (err) {
       setError(err.message);
     } finally {

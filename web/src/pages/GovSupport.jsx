@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Card, Button } from "../components/ui";
 import Icon from "../components/Icon";
 import { govSupport as gs, dashboard, govAnnouncementDetails, login } from "../data/mockData";
-import { periodEndDate } from "../lib/period";
+import { displayPeriod, isDemoOngoingBusiness, periodEndDate } from "../lib/period";
 import { supabase } from "../lib/supabase";
 import { orderedSelect } from "../lib/supabaseOrder";
 import { useAuth } from "../context/AuthContext";
@@ -16,8 +16,7 @@ function orgNameFor(business) {
 }
 
 function periodLabel(business) {
-  const detail = business.basic_info || govAnnouncementDetails[business.id];
-  return detail?.period || null;
+  return displayPeriod(business, govAnnouncementDetails);
 }
 
 // AI 호출 없이, 공고 제목/설명/기본정보(지원대상·지원내용)만 보고 즉시 판단한다.
@@ -49,15 +48,24 @@ function matchedCategoryIds() {
   return dashboard.itemCategories.map((c) => c.id);
 }
 
-function AnnouncementCard({ business, highlighted, bookmarked, onClick, onToggleBookmark }) {
+function AnnouncementCard({ business, highlighted, bookmarked, closed, onClick, onToggleBookmark }) {
   const period = periodLabel(business);
   return (
     <Card
-      onClick={onClick}
-      className={`flex h-full cursor-pointer flex-col overflow-hidden p-6 transition-shadow hover:shadow-md ${
-        highlighted ? "border-brand-400 ring-2 ring-brand-300" : ""
+      onClick={closed ? undefined : onClick}
+      aria-disabled={closed || undefined}
+      className={`relative flex h-full flex-col overflow-hidden p-6 transition-shadow ${
+        closed ? "cursor-not-allowed border-slate-200 grayscale" : "cursor-pointer hover:shadow-md"
+      } ${
+        highlighted && !closed ? "border-brand-400 ring-2 ring-brand-300" : ""
       }`}
     >
+      {closed && (
+        <div
+          className="absolute inset-0 z-10 rounded-2xl bg-slate-200/50"
+          aria-hidden="true"
+        />
+      )}
       <div className="mb-3 flex items-start justify-between gap-2">
         <span className="inline-block w-fit rounded-full bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-700">
           {orgNameFor(business)}
@@ -66,10 +74,17 @@ function AnnouncementCard({ business, highlighted, bookmarked, onClick, onToggle
           type="button"
           onClick={(e) => {
             e.stopPropagation();
-            onToggleBookmark(business);
+            if (!closed) onToggleBookmark(business);
           }}
+          disabled={closed}
           aria-label={bookmarked ? "북마크 해제" : "북마크"}
-          className={`shrink-0 transition-colors ${bookmarked ? "text-brand-600" : "text-slate-300 hover:text-brand-400"}`}
+          className={`shrink-0 transition-colors ${
+            closed
+              ? "cursor-not-allowed text-slate-300"
+              : bookmarked
+                ? "text-brand-600"
+                : "text-slate-300 hover:text-brand-400"
+          }`}
         >
           <Icon name="bookmark" filled={bookmarked} className="h-5 w-5" />
         </button>
@@ -429,7 +444,6 @@ export default function GovSupport() {
     });
 
     const withEnd = list.map((b) => ({ b, end: periodEndDate(b, govAnnouncementDetails) }));
-    const now = new Date();
     if (showAllStatus) {
       // "전체" 체크 시 진행중/마감 구분 없이 다 보여준다 — 정렬만 마감일 빠른순을 고를 수 있다.
       list =
@@ -443,10 +457,10 @@ export default function GovSupport() {
               .map((x) => x.b)
           : withEnd.map((x) => x.b);
     } else if (sortFilter === "closed") {
-      list = withEnd.filter(({ end }) => end && end < now).map((x) => x.b);
+      list = withEnd.filter(({ b }) => !isDemoOngoingBusiness(b)).map((x) => x.b);
     } else if (sortFilter === "deadline") {
       list = withEnd
-        .filter(({ end }) => !end || end >= now)
+        .filter(({ b }) => isDemoOngoingBusiness(b))
         .sort((a, b) => {
           if (!a.end) return 1;
           if (!b.end) return -1;
@@ -454,7 +468,7 @@ export default function GovSupport() {
         })
         .map((x) => x.b);
     } else {
-      list = withEnd.filter(({ end }) => !end || end >= now).map((x) => x.b);
+      list = withEnd.filter(({ b }) => isDemoOngoingBusiness(b)).map((x) => x.b);
     }
 
     return list;
@@ -690,6 +704,7 @@ export default function GovSupport() {
                   business={b}
                   highlighted={hasActiveFilter || (matchedIds ? matchedIds.has(b.id) : false)}
                   bookmarked={bookmarkedIds.has(b.id)}
+                  closed={!isDemoOngoingBusiness(b)}
                   onClick={() => handleAnnouncementClick(b)}
                   onToggleBookmark={toggleBookmark}
                 />

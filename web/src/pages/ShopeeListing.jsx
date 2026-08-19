@@ -3,9 +3,6 @@ import Icon from "../components/Icon";
 import { Card, Button } from "../components/ui";
 import { shopeeListing as sl } from "../data/mockData";
 import { useMarketingImages } from "../context/MarketingImagesContext";
-import { useExportItems } from "../context/ExportItemsContext";
-import { useAuth } from "../context/AuthContext";
-import { supabase } from "../lib/supabase";
 import { readErrorMessage } from "../lib/apiError";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
@@ -15,18 +12,46 @@ const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
 // 바로 원래(회색 테두리) 모습으로 돌아온다.
 const HIGHLIGHT_WHEN_EMPTY = new Set(["shelfLife", "stock", "weight", "daysToShip"]);
 
-// 서류(template_fields)의 field_key는 사업별로 제각각이라, 흔히 쓰이는 패턴으로
-// 쇼피 입력 항목과 매칭한다. 여러 서류에 걸쳐 값이 있으면 가장 최근 값을 쓴다.
-const FIELD_KEY_PATTERNS = {
-  productName: /product.?name|item.?name|상품명|제품명/i,
-  category: /categor|품목|업종/i,
-  description: /description|상품.?설명|제품.?설명|사업.?내용/i,
-  brand: /brand|브랜드|상호|company.?name|business.?name/i,
-  shelfLife: /shelf.?life|유통기한/i,
-  price: /unit.?price|sale.?price|판매가|단가|가격/i,
-  stock: /stock|재고/i,
-  weight: /weight|무게|중량/i,
-  daysToShip: /days.?to.?ship|배송.?준비|리드타임/i,
+// 데모용: "이전 정보 불러오기"는 실제 이전 제출 이력 대신 고정된 예시 상품 정보를 채운다.
+const PREVIOUS_INFO_MOCK = {
+  productName: "해피 비타 카밍 선크림 SPF50+ PA++++",
+  category: "자외선 차단 화장품",
+  description:
+    "민감한 피부도 편안하게 사용할 수 있는 데일리 자외선 차단제입니다. 비타민 캡슐과 진정·수분 성분으로 산뜻한 사용감과 백탁 부담 완화, 메이크업 전 사용 편의성을 핵심으로 설계했습니다. 20~40대 K-Beauty 관심 소비자를 타깃으로 베트남, 싱가포르 온라인 마켓플레이스 및 현지 유통 파트너를 통해 판매됩니다.",
+  brand: "해피코스메틱",
+  shelfLife: "24 Months",
+  price: "15000",
+  stock: "100",
+  weight: "0.05",
+  daysToShip: "2",
+};
+
+// 데모용: "전체 내용 번역"은 실제 번역 API를 호출하지 않고 언어별 고정 번역문으로 바꿔친다.
+const TRANSLATIONS_MOCK = {
+  en: {
+    productName: "Happy Vita Calming Sun Cream SPF50+ PA++++",
+    category: "Sunscreen Cosmetics",
+    description:
+      "A daily sunscreen designed to feel comfortable even on sensitive skin. Formulated with vitamin capsules and soothing, hydrating ingredients for a light, non-sticky finish with minimal white cast, and easy to use before makeup. Targets K-beauty fans in their 20s-40s, sold through online marketplaces and local distribution partners in Vietnam and Singapore.",
+    brand: "Happy Cosmetics",
+    shelfLife: "24 Months",
+  },
+  th: {
+    productName: "แฮปปี้ ไวต้า คาล์มมิ่ง ซันครีม SPF50+ PA++++",
+    category: "เครื่องสำอางกันแดด",
+    description:
+      "ครีมกันแดดสำหรับใช้ทุกวัน อ่อนโยนแม้ผิวบอบบาง ผสมวิตามินแคปซูลและส่วนผสมที่ช่วยปลอบประโลมและให้ความชุ่มชื้น เนื้อบางเบาไม่เหนียวเหนอะหนะ ลดคราบขาว ใช้งานง่ายก่อนแต่งหน้า เจาะกลุ่มผู้สนใจ K-Beauty วัย 20-40 ปี จำหน่ายผ่านมาร์เก็ตเพลสออนไลน์และพาร์ทเนอร์จัดจำหน่ายในเวียดนามและสิงคโปร์",
+    brand: "แฮปปี้ คอสเมติกส์",
+    shelfLife: "24 เดือน",
+  },
+  vi: {
+    productName: "Kem Chống Nắng Happy Vita Calming SPF50+ PA++++",
+    category: "Mỹ phẩm chống nắng",
+    description:
+      "Kem chống nắng dùng hàng ngày, dịu nhẹ cho cả da nhạy cảm. Chứa viên nang vitamin cùng thành phần làm dịu, cấp ẩm, kết cấu mỏng nhẹ không nhờn rít, giảm vệt trắng, dễ dùng trước khi trang điểm. Hướng đến người tiêu dùng yêu thích K-Beauty độ tuổi 20-40, phân phối qua các sàn thương mại điện tử và đối tác phân phối tại Việt Nam và Singapore.",
+    brand: "Happy Cosmetics",
+    shelfLife: "24 tháng",
+  },
 };
 
 function mockAiDescription(productName, category) {
@@ -263,17 +288,11 @@ function TranslatePanel({ values, activeLang, translating, onTranslate }) {
 }
 
 export default function ShopeeListing() {
-  const { user: authUser, profile } = useAuth();
-  const { items: exportItems } = useExportItems();
-
   const [values, setValues] = useState(() => Object.fromEntries(sl.fields.map((f) => [f.key, ""])));
   const [images, setImages] = useState([]);
   const [copiedKey, setCopiedKey] = useState(null);
-  const [loadingPrevious, setLoadingPrevious] = useState(false);
-  const [loadError, setLoadError] = useState(null);
 
   const [translating, setTranslating] = useState(false);
-  const [translateError, setTranslateError] = useState(null);
   const [originalValues, setOriginalValues] = useState(null); // 번역 전 한글 원본 백업 (되돌리기용)
   const [activeLang, setActiveLang] = useState(null); // null이면 한국어 원본 상태
 
@@ -292,63 +311,21 @@ export default function ShopeeListing() {
   const addImage = (url, name) => setImages((prev) => [...prev, { url, name }]);
   const removeImage = (idx) => setImages((prev) => prev.filter((_, i) => i !== idx));
 
-  // 최근 등록한 수출 품목 + 예전에 제출했던 서류의 값을 끌어와 빈 칸을 채운다.
-  const loadPreviousInfo = async () => {
-    setLoadingPrevious(true);
-    setLoadError(null);
-    try {
-      const next = { ...values };
-
-      const latestItem = exportItems?.[0];
-      if (latestItem) {
-        if (!next.productName) next.productName = latestItem.name || "";
-        if (!next.category && latestItem.category && latestItem.category !== "기타") next.category = latestItem.category;
-      }
-      if (!next.brand && profile?.company) next.brand = profile.company;
-
-      if (authUser?.id) {
-        const { data: subs } = await supabase
-          .from("submissions")
-          .select("id, created_at")
-          .eq("user_id", authUser.id)
-          .order("created_at", { ascending: false });
-        const submissionIds = (subs || []).map((s) => s.id);
-
-        if (submissionIds.length) {
-          const orderRank = Object.fromEntries(submissionIds.map((id, idx) => [id, idx]));
-          const { data: valueRows } = await supabase
-            .from("submission_values")
-            .select("submission_id, field_id, value")
-            .in("submission_id", submissionIds);
-          const fieldIds = [...new Set((valueRows || []).map((v) => v.field_id))];
-          const { data: fieldRows } = fieldIds.length
-            ? await supabase.from("template_fields").select("id, field_key").in("id", fieldIds)
-            : { data: [] };
-          const keyByFieldId = Object.fromEntries((fieldRows || []).map((f) => [f.id, f.field_key]));
-
-          const sortedValues = (valueRows || [])
-            .filter((v) => (v.value || "").trim())
-            .sort((a, b) => (orderRank[a.submission_id] ?? 0) - (orderRank[b.submission_id] ?? 0));
-
-          Object.entries(FIELD_KEY_PATTERNS).forEach(([shopeeKey, pattern]) => {
-            if (next[shopeeKey]) return;
-            const match = sortedValues.find((v) => pattern.test(keyByFieldId[v.field_id] || ""));
-            if (match) next[shopeeKey] = match.value;
-          });
-        }
-      }
-
-      setValues(next);
-    } catch (err) {
-      setLoadError(err.message);
-    } finally {
-      setLoadingPrevious(false);
-    }
+  // 데모용: 실제 이전 제출 이력을 조회하는 대신 고정된 예시 상품 정보로 빈 칸을 채운다.
+  const loadPreviousInfo = () => {
+    setValues((prev) => {
+      const next = { ...prev };
+      Object.entries(PREVIOUS_INFO_MOCK).forEach(([key, value]) => {
+        if (!next[key]) next[key] = value;
+      });
+      return next;
+    });
   };
 
-  // "전체 번역하기"는 별도 패널에 번역문을 따로 보여주는 대신, 입력칸 자체를 번역문으로
-  // 바꿔치기한다 — 그래야 각 항목 옆 복사 버튼을 눌렀을 때 바로 번역된 문구가 복사된다.
+  // 데모용: "전체 번역하기"는 백엔드 번역 API 대신 고정 번역문(TRANSLATIONS_MOCK)으로 바꿔친다.
+  // 입력칸 자체를 번역문으로 바꿔치기해야 각 항목 옆 복사 버튼으로 바로 번역된 문구를 복사할 수 있다.
   // 원본 한글은 처음 번역할 때 한 번만 백업해 뒀다가, "한국어(원본)"을 다시 고르면 복원한다.
+  // 실제 번역이 일어나는 것처럼 보이도록 1초 버퍼링을 준다.
   const runTranslate = async (langCode) => {
     if (langCode === "ko") {
       if (originalValues) setValues(originalValues);
@@ -356,26 +333,14 @@ export default function ShopeeListing() {
       setActiveLang(null);
       return;
     }
+    const translated = TRANSLATIONS_MOCK[langCode];
+    if (!translated) return;
     setTranslating(true);
-    setTranslateError(null);
-    try {
-      const koreanValues = originalValues || values;
-      const payload = Object.fromEntries(sl.fields.map((f) => [f.key, koreanValues[f.key] || ""]));
-      const res = await fetch(`${BACKEND_URL}/translate-fields`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fields: payload, target_lang: langCode }),
-      });
-      if (!res.ok) throw new Error(await readErrorMessage(res, "번역에 실패했습니다."));
-      const data = await res.json();
-      if (!originalValues) setOriginalValues(values);
-      setValues((prev) => ({ ...prev, ...data.translated }));
-      setActiveLang(langCode);
-    } catch (err) {
-      setTranslateError(err.message);
-    } finally {
-      setTranslating(false);
-    }
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    if (!originalValues) setOriginalValues(values);
+    setValues((prev) => ({ ...prev, ...translated }));
+    setActiveLang(langCode);
+    setTranslating(false);
   };
 
   const aiFill = (key) => {
@@ -429,16 +394,16 @@ export default function ShopeeListing() {
             href={sl.guideVideoUrl || undefined}
             target="_blank"
             rel="noreferrer"
-            className={`group relative block aspect-video w-full overflow-hidden rounded-2xl bg-gradient-to-br from-orange-500 to-orange-600 p-6 text-white shadow-lg ${
+            aria-label={sl.guideVideoLabel}
+            className={`group relative block aspect-video w-full overflow-hidden rounded-2xl bg-orange-600 text-white shadow-lg ${
               sl.guideVideoUrl ? "" : "pointer-events-none opacity-70"
             }`}
           >
-            <div className="flex items-center gap-1.5 text-lg font-extrabold">
-              <Icon name="box" className="h-5 w-5" />
-              Shopee
-            </div>
-            <p className="mt-4 text-xl font-extrabold leading-snug">{sl.officialGuide.thumbnailKicker}</p>
-            <p className="mt-2 max-w-[70%] text-xs leading-relaxed text-white/90">{sl.officialGuide.thumbnailDescription}</p>
+            <img
+              src="/shopee-onboarding-part1.png"
+              alt="Shopee 신규 셀러 입점 교육 Part 1 썸네일"
+              className="absolute inset-0 h-full w-full object-cover"
+            />
             <span className="absolute right-4 top-1/2 flex h-14 w-14 -translate-y-1/2 items-center justify-center rounded-full bg-black/30 transition-transform group-hover:scale-110">
               <Icon name="play" className="h-6 w-6 text-white" />
             </span>
@@ -484,9 +449,6 @@ export default function ShopeeListing() {
         </p>
       </Card>
 
-      {loadError && <p className="mb-3 text-xs font-medium text-red-500">{loadError}</p>}
-      {translateError && <p className="mb-3 text-xs font-medium text-red-500">{translateError}</p>}
-
       {/* 실제 입력 폼 (기능 동일) */}
       <Card className="p-6">
         <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
@@ -495,9 +457,9 @@ export default function ShopeeListing() {
             <p className="mt-1 text-sm text-slate-500">{sl.formSubtitle}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Button type="button" variant="secondary" className="px-3 py-2 text-xs" onClick={loadPreviousInfo} disabled={loadingPrevious}>
+            <Button type="button" variant="secondary" className="px-3 py-2 text-xs" onClick={loadPreviousInfo}>
               <Icon name="history" className="h-3.5 w-3.5" />
-              {loadingPrevious ? "불러오는 중..." : sl.loadPreviousLabel}
+              {sl.loadPreviousLabel}
             </Button>
             <TranslatePanel values={values} activeLang={activeLang} translating={translating} onTranslate={runTranslate} />
           </div>

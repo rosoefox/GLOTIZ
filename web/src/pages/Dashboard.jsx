@@ -19,7 +19,13 @@ import FloatingChatbot from "../components/FloatingChatbot";
 import { brand, dashboard, govAnnouncementDetails } from "../data/mockData";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
-import { periodEndDate as sharedPeriodEndDate, formatTodayKorean } from "../lib/period";
+import {
+  periodEndDate as sharedPeriodEndDate,
+  formatTodayKorean,
+  isDemoOngoingBusiness,
+} from "../lib/period";
+
+const footerLogoUrl = new URL("../../로고1-icon.png", import.meta.url).href;
 
 // 홈 화면 전용으로 단순하고 깔끔한 라인 아이콘(lucide)을 쓰고, 다른 페이지가 함께 쓰는
 // components/Icon.jsx는 건드리지 않도록 이 페이지 안에서만 이름을 덮어써서 렌더링한다.
@@ -52,7 +58,7 @@ const CASE_TONES = {
   sunrise: "from-amber-300 to-orange-400",
   forest: "from-emerald-300 to-teal-400",
   ocean: "from-sky-300 to-blue-400",
-  grape: "from-violet-300 to-purple-400",
+  grape: "from-blue-300 to-indigo-500",
 };
 
 function orgNameFor(business) {
@@ -140,11 +146,11 @@ function StatItem({ stat }) {
   const display = useCountUp(stat.value, { decimals: stat.decimals });
   return (
     <div className="flex flex-col">
-      <span className="text-3xl font-extrabold text-white sm:text-4xl">
+      <span className="text-2xl font-extrabold text-white sm:text-3xl">
         {display}
-        <span className="ml-0.5 text-lg font-bold text-white/80">{stat.suffix}</span>
+        <span className="ml-0.5 text-base font-bold text-white/80">{stat.suffix}</span>
       </span>
-      <span className="mt-1 text-sm text-white/60">{stat.label}</span>
+      <span className="mt-1 text-xs text-white/60">{stat.label}</span>
     </div>
   );
 }
@@ -191,10 +197,14 @@ export default function Dashboard() {
   // 홈 화면 히어로 전용: 스크롤하면 상단 네비게이션이 투명→불투명으로 바뀐다.
   const scrollContainerRef = useRef(null);
   const [headerSolid, setHeaderSolid] = useState(false);
+  // 히어로 섹션을 벗어난 뒤부터(= 다른 섹션에서만) 맨 위로 가기 버튼을 노출한다.
+  const [showScrollTop, setShowScrollTop] = useState(false);
 
   const handleScroll = () => {
     const el = scrollContainerRef.current;
-    if (el) setHeaderSolid(el.scrollTop > 8);
+    if (!el) return;
+    setHeaderSolid(el.scrollTop > 8);
+    setShowScrollTop(el.scrollTop > el.clientHeight * 0.5);
   };
 
   // 섹션별 스크롤 트리거 스태거 애니메이션용 ref/inView (섹션마다 독립적으로 재진입 감지)
@@ -222,7 +232,10 @@ export default function Dashboard() {
     loadOngoing();
   }, []);
 
-  const ongoingPrograms = useMemo(() => businesses.slice(0, 5), [businesses]);
+  const ongoingPrograms = useMemo(
+    () => businesses.filter(isDemoOngoingBusiness).slice(0, 5),
+    [businesses]
+  );
 
   const [programCounts, setProgramCounts] = useState({ latest: 0, deadlineSoon: 0, popular: 0 });
 
@@ -402,7 +415,7 @@ export default function Dashboard() {
               {brand.tagline}
             </p>
             <p
-              className={`mx-auto mt-4 max-w-2xl text-xs font-medium leading-relaxed text-white/80 sm:whitespace-nowrap sm:text-sm ${revealCls(heroInView)}`}
+              className={`mx-auto mt-4 max-w-2xl text-xs font-medium leading-relaxed text-white/80 sm:text-sm lg:whitespace-nowrap ${revealCls(heroInView)}`}
               style={revealStyle(2)}
             >
               {dashboard.heroLines.join(" ")}
@@ -422,8 +435,9 @@ export default function Dashboard() {
               className={`mx-auto mt-6 max-w-3xl rounded-2xl border border-white/10 bg-black/40 px-4 py-4 shadow-xl backdrop-blur-md sm:mt-8 sm:px-6 sm:py-5 ${revealCls(heroInView)}`}
               style={revealStyle(4)}
             >
-              <p className="mb-4 text-sm font-bold text-white/80 sm:text-base">
-                {dashboard.statsHeadline}
+              <p className="mb-4 text-[13px] font-bold text-white/80 sm:text-sm">
+                {dashboard.statsHeadline.replace("GLOBIZ", "")}
+                <span className="text-[#ff5a3d]">GLOBIZ</span>
                 <span className="ml-2 font-normal text-white/50">({formatTodayKorean()} 기준)</span>
               </p>
               <div key={statsReplayKey} className="grid grid-cols-2 gap-y-4 divide-white/10 sm:grid-cols-4 sm:gap-y-0 sm:divide-x">
@@ -788,14 +802,23 @@ export default function Dashboard() {
 
         <footer className="w-full snap-end border-t border-slate-100 bg-white px-6 py-8">
           <div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-4 sm:flex-row">
-            <div className="flex items-center gap-3">
-              <img src={brand.logo} alt={brand.name} className="h-7 w-7 rounded-lg object-contain" />
-              <span className="text-sm font-bold text-slate-900">{brand.name}</span>
-            </div>
+            <img src={footerLogoUrl} alt={brand.name} className="h-8 w-auto object-contain" />
             <p className="text-xs text-slate-400">© {new Date().getFullYear()} {brand.name}. All rights reserved.</p>
           </div>
         </footer>
       </div>
+
+      {/* 히어로를 벗어난 다른 섹션에서는 계속 보이는 맨 위로 가기 버튼 */}
+      <button
+        type="button"
+        onClick={() => scrollContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" })}
+        aria-label="맨 위로"
+        className={`fixed bottom-6 left-6 z-40 flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-md transition-opacity duration-200 hover:bg-slate-50 ${
+          showScrollTop ? "opacity-100" : "pointer-events-none opacity-0"
+        }`}
+      >
+        <Icon name="chevronDown" className="h-4 w-4 rotate-180" />
+      </button>
 
       <FloatingChatbot />
     </div>

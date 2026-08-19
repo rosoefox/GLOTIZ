@@ -10,6 +10,65 @@ import { draftKey, readDraft } from "../lib/draft";
 import { documentPreview } from "../data/mockData";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
+const aiReviewDraftKey = (userId, templateId) => `${draftKey(userId, templateId)}:ai-review`;
+const VIETNAM_EXPO_BUSINESS_ID = "5090843f-cf8e-4945-a51d-69e1aa8e61e6";
+const VIETNAM_APPLICATION_DEMO_VALUES = {
+  company_name_kr: "글로비즈",
+  ceo_name: "김글로",
+  company_type: "법인",
+  company_phone: "+82 - 63 - 000 - 0000",
+  signature_company_name: "해피 코스메틱",
+  signature_ceo_name: "김행복",
+  company_intro_kr:
+    "해피 코스메틱은 전북특별자치도에 소재한 가상의 화장품 제조·수출기업으로, 자연 유래 성분과 사용 편의성을 강조한 데일리 스킨케어 제품을 기획하는 MVP 테스트 기업입니다.",
+  contact_name_kr: "김글로",
+  contact_department: "해외사업팀",
+  contact_email: "globiz@gmail.com",
+  contact_mobile: "+82 - 63 - 000 - 0000",
+  business_reg_number: "418-81-00000",
+  main_product: "해피 비타 카밍 선크림 SPF50+ PA++++",
+  product_category: "소비재",
+  headquarters_address: "전북특별자치도 전주시 덕진구 혁신로 123 (가상주소)",
+  participation_field: "K-뷰티",
+  main_export_product: "선크림·기초화장품",
+  hs_code: "3304.99",
+  primary_business_code: "20421",
+  primary_ksic_code: "C20421",
+  secondary_business_code: "46441",
+  secondary_ksic_code: "G46441",
+};
+const VIETNAM_APPLICATION_AI_VALUES = {
+  company_intro_kr: {
+    value:
+      "해피 코스메틱은 전북특별자치도에 소재한 가상의 화장품 제조·수출기업으로, 자연 유래 성분과 사용 편의성을 강조한 데일리 스킨케어 제품을 기획하는 MVP 테스트 기업입니다. 대표 제품인 ‘해피 비타 카밍 선크림 SPF50+ PA++++’은 민감한 피부도 편안하게 사용할 수 있는 산뜻한 사용감과 백탁 부담 완화를 핵심 가치로 제안합니다. 베트남을 중심으로 한 동남아 시장의 K-뷰티 수요를 공략하고, 온라인 마켓플레이스와 현지 유통 파트너를 통해 판매 채널을 확대하고자 합니다. 이번 전시회 참가를 통해 현지 바이어를 발굴하고 제품 반응을 검증하여 장기적인 수출 기반을 구축할 계획입니다.",
+    note: "신청서 작성에 필요한 분량을 보완하기 위해 AI가 내용을 추가했습니다. 실제 사업 내용과 일치하는지 확인해주세요.",
+  },
+  company_name_en: {
+    value: "GLOBIZ",
+    note: "국문 기업명을 바탕으로 영문 표기를 추정했습니다.",
+  },
+  founded_date: {
+    value: "2021-03-15",
+    note: "정확한 설립일은 사업자등록증 등 증빙서류로 확인해야 합니다.",
+  },
+  website: {
+    value: "https://www.globiz.kr",
+    note: "공식 홈페이지 주소인지 확인해야 합니다.",
+  },
+  contact_name_en: {
+    value: "Geullo Kim",
+    note: "국문 담당자 성명을 바탕으로 영문 표기를 추정했습니다.",
+  },
+  contact_position: {
+    value: "팀장",
+    note: "담당자의 실제 직위를 확인해야 합니다.",
+  },
+  company_intro_en: {
+    value:
+      "Happy Cosmetic is a virtual cosmetics manufacturer and exporter based in Jeonbuk Special Self-Governing Province, developing daily skincare products that emphasize naturally derived ingredients and ease of use as an MVP test company. Its flagship product, Happy Vita Calming Sunscreen SPF50+ PA++++, offers a lightweight feel suitable for sensitive skin while helping reduce concerns about white cast. The company aims to capture growing K-beauty demand in Vietnam and other Southeast Asian markets by expanding sales through online marketplaces and local distribution partners. Through participation in this exhibition, it plans to identify local buyers, validate market response, and establish a sustainable foundation for long-term exports.",
+    note: "AI가 보완한 국문 기업 소개를 기준으로 번역했습니다. 표현과 사실관계를 확인해주세요.",
+  },
+};
 
 // 필드를 화면에서 한눈에 보기 좋게 카테고리별로 묶는다. 서식마다 field_key가 달라 정확한
 // 분류는 불가능하니, 흔한 패턴으로 "기본 정보/연락처 정보"를 먼저 추리고 나머지는
@@ -45,9 +104,12 @@ function isMultilineField(field) {
   return field.field_type === "textarea" || field.field_type === "long_text";
 }
 
-function FieldInput({ field, value, onChange }) {
-  const inputClass =
-    "w-full rounded-lg border border-slate-300 bg-slate-50 px-4 py-3 text-base text-slate-900 placeholder:text-slate-400 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100";
+function FieldInput({ field, value, onChange, needsReview = false }) {
+  const inputClass = `w-full rounded-lg border px-4 py-3 text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 ${
+    needsReview
+      ? "border-red-200 bg-red-50 focus:border-red-300 focus:bg-red-50 focus:ring-red-100"
+      : "border-slate-300 bg-slate-50 focus:border-brand-500 focus:bg-white focus:ring-brand-100"
+  }`;
 
   if (isMultilineField(field)) {
     return (
@@ -98,11 +160,14 @@ export default function DocumentFill() {
   const [fields, setFields] = useState([]);
   const [loading, setLoading] = useState(true);
   const [values, setValues] = useState({});
+  const [aiReviewByField, setAiReviewByField] = useState({});
   const [isEditing, setIsEditing] = useState(false);
+  const [isVietnamDemoApplication, setIsVietnamDemoApplication] = useState(false);
 
   const [transferring, setTransferring] = useState(false);
   const [extractingUploads, setExtractingUploads] = useState(false);
   const [aiFilling, setAiFilling] = useState(false);
+  const [oneTouchFilling, setOneTouchFilling] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const [showComplete, setShowComplete] = useState(false);
@@ -117,12 +182,15 @@ export default function DocumentFill() {
     let cancelled = false;
     async function load() {
       setLoading(true);
-      const { data: fieldRows } = await supabase
-        .from("template_fields")
-        .select("*")
-        .eq("template_id", templateId);
+      const [{ data: fieldRows }, { data: templateRow }] = await Promise.all([
+        supabase.from("template_fields").select("*").eq("template_id", templateId),
+        supabase.from("templates").select("business_id,name").eq("id", templateId).maybeSingle(),
+      ]);
       if (cancelled) return;
       setFields(fieldRows || []);
+      const isVietnamApplication =
+        templateRow?.business_id === VIETNAM_EXPO_BUSINESS_ID && templateRow?.name?.trim() === "참가 신청서";
+      setIsVietnamDemoApplication(isVietnamApplication);
 
       const { data: subs } = await supabase
         .from("submissions")
@@ -141,13 +209,27 @@ export default function DocumentFill() {
       const draft = readDraft(authUser.id, templateId);
       if (draft) {
         setValues(draft);
+        try {
+          setAiReviewByField(JSON.parse(localStorage.getItem(aiReviewDraftKey(authUser.id, templateId))) || {});
+        } catch {
+          setAiReviewByField({});
+        }
       } else if (latest) {
         const { data: valueRows } = await supabase
           .from("submission_values")
-          .select("field_id, value")
+          .select("field_id, value, needs_review, confidence_note")
           .eq("submission_id", latest.id);
         if (cancelled) return;
         setValues(Object.fromEntries((valueRows || []).map((v) => [v.field_id, v.value])));
+        setAiReviewByField(
+          Object.fromEntries(
+            (valueRows || [])
+              .filter((v) => v.needs_review)
+              .map((v) => [v.field_id, v.confidence_note || "AI가 추정한 값입니다. 정확한 내용을 확인해주세요."])
+          )
+        );
+      } else {
+        setValues({});
       }
       setLoading(false);
     }
@@ -166,7 +248,15 @@ export default function DocumentFill() {
     return CATEGORY_ORDER.filter((c) => groups[c]?.length).map((c) => ({ name: c, fields: groups[c] }));
   }, [fields]);
 
-  const updateValue = (fieldId, value) => setValues((prev) => ({ ...prev, [fieldId]: value }));
+  const updateValue = (fieldId, value) => {
+    setValues((prev) => ({ ...prev, [fieldId]: value }));
+    setAiReviewByField((prev) => {
+      if (!prev[fieldId]) return prev;
+      const next = { ...prev };
+      delete next[fieldId];
+      return next;
+    });
+  };
 
   // 마이페이지 정보 + 예전에 제출했던 다른 서류들의 같은 field_key 값을 끌어와 빈 칸을 채운다.
   const handleTransferInfo = async () => {
@@ -231,6 +321,26 @@ export default function DocumentFill() {
     setExtractingUploads(true);
     setError(null);
     try {
+      if (isVietnamDemoApplication) {
+        await new Promise((resolve) => window.setTimeout(resolve, 1500));
+        const today = new Date();
+        const currentDate = [
+          today.getFullYear(),
+          String(today.getMonth() + 1).padStart(2, "0"),
+          String(today.getDate()).padStart(2, "0"),
+        ].join("-");
+        const demoValues = { ...VIETNAM_APPLICATION_DEMO_VALUES, application_date: currentDate };
+        const demoValuesById = Object.fromEntries(
+          fields
+            .filter((field) => demoValues[field.field_key] !== undefined)
+            .map((field) => [field.id, demoValues[field.field_key]])
+        );
+        setValues((prev) => ({ ...prev, ...demoValuesById }));
+        setAiReviewByField((prev) =>
+          Object.fromEntries(Object.entries(prev).filter(([fieldId]) => !(fieldId in demoValuesById)))
+        );
+        return;
+      }
       const res = await fetch(`${BACKEND_URL}/templates/${templateId}/extract-from-uploads`, {
         method: "POST",
         headers: { Authorization: `Bearer ${session.access_token}` },
@@ -258,6 +368,21 @@ export default function DocumentFill() {
     setAiFilling(true);
     setError(null);
     try {
+      if (isVietnamDemoApplication) {
+        await new Promise((resolve) => window.setTimeout(resolve, 1500));
+        const nextValues = {};
+        const nextReviewByField = {};
+        fields.forEach((field) => {
+          const demo = VIETNAM_APPLICATION_AI_VALUES[field.field_key];
+          const isIntroField = field.field_key === "company_intro_kr" || field.field_key === "company_intro_en";
+          if (!demo || (values[field.id] && !isIntroField)) return;
+          nextValues[field.id] = demo.value;
+          nextReviewByField[field.id] = demo.note;
+        });
+        setValues((prev) => ({ ...prev, ...nextValues }));
+        setAiReviewByField((prev) => ({ ...prev, ...nextReviewByField }));
+        return;
+      }
       const currentValues = {};
       fields.forEach((f) => {
         if (values[f.id]) currentValues[f.field_key] = values[f.id];
@@ -270,14 +395,17 @@ export default function DocumentFill() {
       if (!res.ok) throw new Error(await readErrorMessage(res, "AI 채우기에 실패했습니다."));
       const data = await res.json();
       const fieldIdByKey = Object.fromEntries(fields.map((f) => [f.field_key, f.id]));
-      setValues((prev) => {
-        const next = { ...prev };
-        (data.fields || []).forEach((item) => {
-          const fieldId = fieldIdByKey[item.field_key];
-          if (fieldId) next[fieldId] = item.value;
-        });
-        return next;
+      const nextValues = {};
+      const nextReviewByField = {};
+      (data.fields || []).forEach((item) => {
+        const fieldId = fieldIdByKey[item.field_key];
+        if (!fieldId || values[fieldId] || !item.value) return;
+        nextValues[fieldId] = item.value;
+        nextReviewByField[fieldId] =
+          item.confidence_note || "AI가 채운 값입니다. 실제 정보와 일치하는지 확인해주세요.";
       });
+      setValues((prev) => ({ ...prev, ...nextValues }));
+      setAiReviewByField((prev) => ({ ...prev, ...nextReviewByField }));
     } catch (err) {
       setError(err.message);
     } finally {
@@ -285,9 +413,53 @@ export default function DocumentFill() {
     }
   };
 
+  // 데모용: "정보 이전"과 "AI 채우기"가 각각 채우던 값을 한 번에 채운다.
+  // AI 추정값(빨간 테두리)은 그대로 needs-review 상태로 남긴다.
+  const handleOneTouchFill = async () => {
+    setOneTouchFilling(true);
+    setError(null);
+    try {
+      await new Promise((resolve) => window.setTimeout(resolve, 4000));
+      const today = new Date();
+      const currentDate = [
+        today.getFullYear(),
+        String(today.getMonth() + 1).padStart(2, "0"),
+        String(today.getDate()).padStart(2, "0"),
+      ].join("-");
+      const demoValues = { ...VIETNAM_APPLICATION_DEMO_VALUES, application_date: currentDate };
+      const demoValuesById = Object.fromEntries(
+        fields
+          .filter((field) => demoValues[field.field_key] !== undefined)
+          .map((field) => [field.id, demoValues[field.field_key]])
+      );
+
+      const nextValues = { ...demoValuesById };
+      const nextReviewByField = {};
+      fields.forEach((field) => {
+        const aiDemo = VIETNAM_APPLICATION_AI_VALUES[field.field_key];
+        if (!aiDemo) return;
+        const isIntroField = field.field_key === "company_intro_kr" || field.field_key === "company_intro_en";
+        if (nextValues[field.id] && !isIntroField) return;
+        nextValues[field.id] = aiDemo.value;
+        nextReviewByField[field.id] = aiDemo.note;
+      });
+
+      setValues((prev) => ({ ...prev, ...nextValues }));
+      setAiReviewByField((prev) => {
+        const cleared = Object.fromEntries(
+          Object.entries(prev).filter(([fieldId]) => !(fieldId in demoValuesById))
+        );
+        return { ...cleared, ...nextReviewByField };
+      });
+    } finally {
+      setOneTouchFilling(false);
+    }
+  };
+
   const handleTempSave = () => {
     if (!authUser?.id) return;
     localStorage.setItem(draftKey(authUser.id, templateId), JSON.stringify(values));
+    localStorage.setItem(aiReviewDraftKey(authUser.id, templateId), JSON.stringify(aiReviewByField));
     navigate("/docs", { state: { businessId, businessName } });
   };
 
@@ -314,12 +486,15 @@ export default function DocumentFill() {
         submission_id: submission.id,
         field_id: f.id,
         value: values[f.id] ?? "",
-        source: "user_input",
+        source: aiReviewByField[f.id] ? "ai_generated" : "user_input",
+        needs_review: Boolean(aiReviewByField[f.id]),
+        confidence_note: aiReviewByField[f.id] || null,
       }));
       const { error: valuesErr } = await supabase.from("submission_values").insert(rows);
       if (valuesErr) throw valuesErr;
 
       localStorage.removeItem(draftKey(authUser.id, templateId));
+      localStorage.removeItem(aiReviewDraftKey(authUser.id, templateId));
 
       try {
         await fetch(`${BACKEND_URL}/review`, {
@@ -395,12 +570,18 @@ export default function DocumentFill() {
           disabled={extractingUploads}
         >
           <Icon name="upload" className="h-4 w-4" />
-          {extractingUploads ? "서류 읽는 중..." : "업로드한 서류에서 불러오기"}
+          {extractingUploads ? "추출 중입니다..." : "업로드한 서류에서 불러오기"}
         </Button>
         <Button type="button" variant="outlineBrand" className="px-4 py-2.5 text-sm" onClick={handleAiFill} disabled={aiFilling}>
           <Icon name="sparkle" className="h-4 w-4" />
           {aiFilling ? "AI가 채우는 중..." : "AI 채우기"}
         </Button>
+        {isVietnamDemoApplication && (
+          <Button type="button" className="px-4 py-2.5 text-sm" onClick={handleOneTouchFill} disabled={oneTouchFilling}>
+            <Icon name="sparkle" className="h-4 w-4" />
+            {oneTouchFilling ? "전체 입력 중..." : "전체 한 번에 채우기"}
+          </Button>
+        )}
       </div>
 
       {error && (
@@ -425,7 +606,17 @@ export default function DocumentFill() {
                 {group.fields.map((field) => (
                   <label key={field.id} className={`block ${isMultilineField(field) ? "sm:col-span-2" : ""}`}>
                     <span className="mb-2 block text-base font-semibold text-slate-800">{field.field_label}</span>
-                    <FieldInput field={field} value={values[field.id]} onChange={updateValue} />
+                    <FieldInput
+                      field={field}
+                      value={values[field.id]}
+                      onChange={updateValue}
+                      needsReview={Boolean(aiReviewByField[field.id])}
+                    />
+                    {aiReviewByField[field.id] && (
+                      <span className="mt-1.5 block text-sm font-medium text-red-500">
+                        AI 추정값 · {aiReviewByField[field.id]}
+                      </span>
+                    )}
                   </label>
                 ))}
               </div>

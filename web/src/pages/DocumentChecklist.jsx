@@ -98,10 +98,10 @@ function GovTemplateGroup({
               <div className="flex flex-wrap items-center gap-2">
                 {t.user_upload_required ? (
                   <>
-                    <a href="#" target="_blank" rel="noopener noreferrer" className={SECONDARY_BUTTON_CLASS}>
+                    <button type="button" className={SECONDARY_BUTTON_CLASS}>
                       <Icon name="externalLink" className="h-3.5 w-3.5" />
                       {dc.issueLinkLabel}
-                    </a>
+                    </button>
                     <label className={`cursor-pointer ${SECONDARY_BUTTON_CLASS} ${isUploading ? "opacity-50" : ""}`}>
                       <Icon name="upload" className="h-3.5 w-3.5" />
                       {isUploading ? dc.uploadingLabel : dc.uploadButtonLabel}

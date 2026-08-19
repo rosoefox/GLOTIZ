@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import Icon from "../components/Icon";
 import { Card, Button, TextField } from "../components/ui";
 import { myPage as mp } from "../data/mockData";
@@ -26,18 +26,6 @@ export default function MyPage() {
     phone,
     company,
   });
-  const [needsRevisionCount, setNeedsRevisionCount] = useState(0);
-
-  useEffect(() => {
-    if (!authUser) return;
-    supabase
-      .from("submissions")
-      .select("id", { count: "exact", head: true })
-      .eq("user_id", authUser.id)
-      .eq("review_status", "needs_revision")
-      .then(({ count }) => setNeedsRevisionCount(count || 0));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authUser?.id]);
 
   const startEditing = () => {
     setForm((f) => ({ ...f, loginId, name, phone, company }));
@@ -76,16 +64,6 @@ export default function MyPage() {
     <div className="mx-auto max-w-2xl px-8 py-8">
       <h1 className="text-2xl font-bold text-slate-900">{mp.title}</h1>
       <p className="mt-1 mb-6 text-sm text-slate-500">{mp.subtitle}</p>
-
-      {needsRevisionCount > 0 && (
-        <Link
-          to="/my-applications"
-          className="mb-6 flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600 hover:bg-red-100"
-        >
-          <Icon name="bell" className="h-4 w-4 shrink-0" />
-          {mp.needsRevisionAlert.replace("{count}", needsRevisionCount)}
-        </Link>
-      )}
 
       <Card className="p-6">
         <div className="mb-5 flex items-center justify-between">
