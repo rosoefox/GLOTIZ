@@ -10,6 +10,10 @@ import { useAuth } from "../context/AuthContext";
 
 const PAGE_SIZE = 6;
 
+// 히어로의 "인기 지원분야" 퀵 태그 — 클릭하면 검색어로 그대로 들어가 지원내용에 해당
+// 키워드가 포함된 공고만 즉시 걸러진다.
+const POPULAR_TOPICS = ["물류비", "전시회", "바우처"];
+
 function orgNameFor(business) {
   const detail = govAnnouncementDetails[business.id];
   return detail?.recruiter || detail?.org || "전북 지원사업 포털";
@@ -18,6 +22,45 @@ function orgNameFor(business) {
 function periodLabel(business) {
   const detail = business.basic_info || govAnnouncementDetails[business.id];
   return detail?.period || null;
+}
+
+function detailFor(business) {
+  return business.basic_info || govAnnouncementDetails[business.id] || null;
+}
+
+// D-day 뱃지: 마감일이 없으면(상시 접수) "상시", 지났으면 "마감", 아니면 "D-N".
+function dDayLabel(end) {
+  if (!end) return { label: "상시", tone: "neutral" };
+  const daysLeft = Math.ceil((end - new Date()) / 86400000);
+  if (daysLeft < 0) return { label: "마감", tone: "closed" };
+  if (daysLeft === 0) return { label: "D-Day", tone: "urgent" };
+  if (daysLeft <= 7) return { label: `D-${daysLeft}`, tone: "urgent" };
+  return { label: `D-${daysLeft}`, tone: "neutral" };
+}
+
+// 지원대상 문구에서 흔히 쓰이는 키워드만 뽑아 "#중소기업" 같은 대상 기업 태그로 보여준다 —
+// 실제 값이 없는 새 항목을 지어내는 대신, AI가 이미 추출해둔 target 문구를 그대로 활용한다.
+const TARGET_TAG_KEYWORDS = [
+  "중소기업",
+  "소상공인",
+  "스타트업",
+  "제조업",
+  "수출초보",
+  "수출 유망",
+  "수출기업",
+  "자유무역지역",
+  "청년기업",
+  "여성기업",
+  "사회적기업",
+  "농업법인",
+  "참여기업",
+];
+// 알려진 키워드가 하나도 안 걸리면(원문 문구가 다양해서 흔할 수 있음), 통짜 문장을
+// 가짜 태그로 보여주는 대신 그냥 태그 없이 넘어간다 — 칩 하나가 문장만큼 길어지면
+// 오히려 지저분해 보이기 때문이다.
+function targetTags(target) {
+  if (!target) return [];
+  return TARGET_TAG_KEYWORDS.filter((k) => target.includes(k)).slice(0, 3);
 }
 
 // AI 호출 없이, 공고 제목/설명/기본정보(지원대상·지원내용)만 보고 즉시 판단한다.
@@ -49,40 +92,67 @@ function matchedCategoryIds() {
   return dashboard.itemCategories.map((c) => c.id);
 }
 
+const D_DAY_TONE_CLASS = {
+  urgent: "bg-red-50 text-red-600",
+  neutral: "bg-slate-100 text-slate-600",
+  closed: "bg-slate-100 text-slate-400",
+};
+
 function AnnouncementCard({ business, highlighted, bookmarked, onClick, onToggleBookmark }) {
   const period = periodLabel(business);
+  const detail = detailFor(business);
+  const dDay = dDayLabel(periodEndDate(business, govAnnouncementDetails));
+  const tags = targetTags(detail?.target);
+
   return (
     <Card
+      interactive
       onClick={onClick}
-      className={`flex h-full cursor-pointer flex-col overflow-hidden p-6 transition-shadow hover:shadow-md ${
-        highlighted ? "border-brand-400 ring-2 ring-brand-300" : ""
+      className={`group flex h-full flex-col overflow-hidden p-6 transition-transform duration-200 hover:-translate-y-0.5 ${
+        highlighted ? "border-brand-400 ring-2 ring-brand-100" : ""
       }`}
     >
       <div className="mb-3 flex items-start justify-between gap-2">
         <span className="inline-block w-fit rounded-full bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-700">
           {orgNameFor(business)}
         </span>
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleBookmark(business);
-          }}
-          aria-label={bookmarked ? "북마크 해제" : "북마크"}
-          className={`shrink-0 transition-colors ${bookmarked ? "text-brand-600" : "text-slate-300 hover:text-brand-400"}`}
-        >
-          <Icon name="bookmark" filled={bookmarked} className="h-5 w-5" />
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <span className={`rounded-full px-2 py-1 text-[11px] font-bold ${D_DAY_TONE_CLASS[dDay.tone]}`}>
+            {dDay.label}
+          </span>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleBookmark(business);
+            }}
+            aria-label={bookmarked ? "북마크 해제" : "북마크"}
+            className={`transition-colors ${bookmarked ? "text-brand-600" : "text-slate-300 hover:text-brand-400"}`}
+          >
+            <Icon name="bookmark" filled={bookmarked} className="w-5 h-5" />
+          </button>
+        </div>
       </div>
 
       <h3 className="mb-2 line-clamp-2 text-base font-bold leading-snug text-slate-900">{business.name}</h3>
+
       {business.description && (
-        <p className="mb-4 line-clamp-2 text-sm leading-relaxed text-slate-500">{business.description}</p>
+        <p className="mb-3 line-clamp-2 text-sm leading-relaxed text-slate-500">{business.description}</p>
+      )}
+
+      {tags.length > 0 && (
+        <div className="mb-3 flex flex-wrap gap-1.5">
+          {tags.map((tag) => (
+            <span key={tag} className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500">
+              #{tag}
+            </span>
+          ))}
+        </div>
       )}
 
       <div className="mt-auto flex items-center justify-between gap-2 border-t border-slate-100 pt-3">
         <span className="flex items-center gap-1.5 text-xs text-slate-500">
-          <Icon name="calendar" className="h-3.5 w-3.5 shrink-0" />
+          <Icon name="calendar" className="w-5 h-5 shrink-0" />
           {period ? (
             <span>
               <span className="font-medium text-slate-600">접수기간</span> {period}
@@ -91,9 +161,10 @@ function AnnouncementCard({ business, highlighted, bookmarked, onClick, onToggle
             <span className="text-slate-400">접수기간 확인 중</span>
           )}
         </span>
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-brand-200 text-brand-600">
-          <Icon name="arrowRight" className="h-3.5 w-3.5" />
-        </span>
+        <Icon
+          name="arrowRight"
+          className="w-5 h-5 shrink-0 text-slate-500 transition-transform duration-200 group-hover:translate-x-1"
+        />
       </div>
     </Card>
   );
@@ -133,7 +204,7 @@ function FilterDropdown({ label, count, isOpen, onToggle, children }) {
             {count}
           </span>
         )}
-        <Icon name="chevronDown" className={`h-3.5 w-3.5 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+        <Icon name="chevronDown" className={`w-5 h-5 transition-transform ${isOpen ? "rotate-180" : ""}`} />
       </button>
       {isOpen && (
         <div className="absolute left-0 top-full z-10 mt-2 w-56 rounded-xl border border-slate-200 bg-white p-4 shadow-lg">
@@ -156,7 +227,7 @@ function SortDropdown({ value, options, onChange }) {
         className="flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
       >
         {current.label}
-        <Icon name="chevronDown" className={`h-3.5 w-3.5 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
+        <Icon name="chevronDown" className={`w-5 h-5 text-slate-500 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
         <div className="absolute right-0 top-full z-10 mt-2 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white py-1.5 shadow-lg">
@@ -173,7 +244,7 @@ function SortDropdown({ value, options, onChange }) {
               }`}
             >
               {o.label}
-              {o.id === value && <Icon name="check" className="h-3.5 w-3.5" />}
+              {o.id === value && <Icon name="check" className="w-5 h-5" />}
             </button>
           ))}
         </div>
@@ -205,7 +276,7 @@ function Pagination({ page, totalPages, onChange }) {
         className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40"
         aria-label="이전 페이지"
       >
-        <Icon name="arrowLeft" className="h-3.5 w-3.5" />
+        <Icon name="arrowLeft" className="w-5 h-5" />
       </button>
       {getPageNumbers(page, totalPages).map((p, idx) =>
         p === "..." ? (
@@ -232,7 +303,7 @@ function Pagination({ page, totalPages, onChange }) {
         className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40"
         aria-label="다음 페이지"
       >
-        <Icon name="arrowRight" className="h-3.5 w-3.5" />
+        <Icon name="arrowRight" className="w-5 h-5" />
       </button>
     </div>
   );
@@ -245,19 +316,10 @@ const STEP_BOX_IDLE = "border-slate-200 bg-white text-slate-700 hover:border-bra
 
 // 지역 선택 → 품목 선택, 2단계 마법사 화면의 공통 틀.
 // 왼쪽엔 진행 단계/제목/설명, 오른쪽엔 선택 박스가 오는 레이아웃(참고 이미지 스타일).
-function WizardShell({ step, totalSteps, title, subtitle, onBack, backLabel, onSkipAll, children, footer }) {
+function WizardShell({ title, subtitle, onBack, backLabel, onSkipAll, children, footer }) {
   return (
     <div className="mx-auto max-w-5xl px-4 py-8 sm:px-8 sm:py-12">
-      <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-xs font-bold tracking-wide text-slate-400">{`0${step}/0${totalSteps}`}</p>
-          <div className="mt-2 h-1 w-32 overflow-hidden rounded-full bg-slate-100">
-            <div
-              className="h-1 rounded-full bg-brand-600 transition-all"
-              style={{ width: `${(step / totalSteps) * 100}%` }}
-            />
-          </div>
-        </div>
+      <div className="mb-8 flex justify-end">
         <button type="button" onClick={onSkipAll} className="text-xs font-semibold text-slate-400 hover:text-brand-600">
           {gs.allProgramsHeading} 전체 공고 보기
         </button>
@@ -308,6 +370,7 @@ export default function GovSupport() {
   const [showAllStatus, setShowAllStatus] = useState(false); // true면 진행중/마감 구분 없이 전체를 보여준다
   const [openFilter, setOpenFilter] = useState(null); // null | "region" | "category"
   const [page, setPage] = useState(1);
+  const [search, setSearch] = useState("");
 
   const [bookmarkedIds, setBookmarkedIds] = useState(new Set());
 
@@ -367,7 +430,7 @@ export default function GovSupport() {
 
   useEffect(() => {
     setPage(1);
-  }, [selectedRegions, selectedCategories, sortFilter, showAllStatus, matchedIds]);
+  }, [selectedRegions, selectedCategories, sortFilter, showAllStatus, matchedIds, search]);
 
   const toggleRegion = (region) => {
     setSelectedRegions((prev) => (prev.includes(region) ? prev.filter((r) => r !== region) : [...prev, region]));
@@ -413,9 +476,18 @@ export default function GovSupport() {
     }
   };
 
-  const hasActiveFilter = selectedRegions.length > 0 || selectedCategories.length > 0;
+  const hasActiveFilter = selectedRegions.length > 0 || selectedCategories.length > 0 || search.trim().length > 0;
+
+  const resetFilters = () => {
+    setSearch("");
+    setSelectedRegions([]);
+    setSelectedCategories([]);
+    setSortFilter("ongoing");
+    setShowAllStatus(false);
+  };
 
   const visibleAnnouncements = useMemo(() => {
+    const query = search.trim().toLowerCase();
     let list = announcements.filter((b) => {
       // AI 맞춤 추천(공고문을 실제로 읽고 판단한 결과)이 있으면 그 결과만 보여준다 —
       // 지역/품목 체크박스는 그 안에서 추가로 좁히는 보조 필터로만 쓴다.
@@ -425,6 +497,7 @@ export default function GovSupport() {
         const categoryIds = matchedCategoryIds(b);
         if (!selectedCategories.some((c) => categoryIds.includes(c))) return false;
       }
+      if (query && !matchHaystack(b).toLowerCase().includes(query)) return false;
       return true;
     });
 
@@ -458,7 +531,7 @@ export default function GovSupport() {
     }
 
     return list;
-  }, [announcements, selectedRegions, selectedCategories, sortFilter, showAllStatus, matchedIds]);
+  }, [announcements, selectedRegions, selectedCategories, sortFilter, showAllStatus, matchedIds, search]);
 
   const totalPages = Math.max(1, Math.ceil(visibleAnnouncements.length / PAGE_SIZE));
   const pagedAnnouncements = visibleAnnouncements.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -554,7 +627,7 @@ export default function GovSupport() {
               onClick={() => toggleWizardCategory(c.id)}
               className={`${STEP_BOX_BASE} ${wizardCategories.includes(c.id) ? STEP_BOX_SELECTED : STEP_BOX_IDLE}`}
             >
-              <Icon name={c.icon} className="h-6 w-6" />
+              <Icon name={c.icon} className="w-5 h-5" />
               {c.label}
             </button>
           ))}
@@ -575,7 +648,7 @@ export default function GovSupport() {
             </h1>
             <p className="mt-2 text-sm text-slate-500">{gs.subtitle}</p>
             <div className="mt-6 inline-flex items-center gap-2 rounded-xl border border-brand-100 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm">
-              <Icon name="home" className="h-4 w-4 text-brand-600" />
+              <Icon name="home" className="w-5 h-5 text-slate-500" />
               {matchedIds ? (
                 <>
                   선택하신 조건에 맞는{" "}
@@ -592,27 +665,35 @@ export default function GovSupport() {
               onClick={restartWizard}
               className="mt-4 flex items-center gap-1.5 text-sm font-semibold text-brand-600 hover:underline"
             >
-              <Icon name="sparkle" className="h-3.5 w-3.5" />
+              <Icon name="sparkle" className="w-5 h-5" />
               맞춤 추천 다시 받기
             </button>
           </div>
 
-          <div className="relative hidden h-40 w-56 shrink-0 sm:block">
-            <div className="absolute inset-0 rounded-full bg-brand-200/40 blur-2xl" />
-            <div className="absolute left-2 top-4 flex h-24 w-24 items-center justify-center rounded-3xl bg-brand-600 text-white shadow-lg">
-              <Icon name="globe" className="h-12 w-12" strokeWidth={1.3} />
-            </div>
-            <div className="absolute bottom-2 right-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-white text-brand-600 shadow-md">
-              <Icon name="box" className="h-8 w-8" strokeWidth={1.5} />
-            </div>
-            <div className="absolute bottom-8 left-16 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-100 text-brand-700 shadow-md">
-              <Icon name="documents" className="h-7 w-7" strokeWidth={1.5} />
+          <div className="w-full shrink-0 sm:w-auto">
+            <p className="mb-2 text-xs font-semibold text-slate-500">인기 지원분야</p>
+            <div className="flex flex-wrap gap-2">
+              {POPULAR_TOPICS.map((topic) => (
+                <button
+                  key={topic}
+                  type="button"
+                  onClick={() => setSearch((prev) => (prev === topic ? "" : topic))}
+                  className={`rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors ${
+                    search === topic
+                      ? "border-brand-500 bg-brand-600 text-white"
+                      : "border-brand-100 bg-white text-brand-700 hover:bg-brand-50"
+                  }`}
+                >
+                  #{topic}
+                </button>
+              ))}
             </div>
           </div>
         </div>
       </div>
 
-      <Card className="mt-6 flex flex-wrap items-center justify-between gap-3 p-4">
+      <Card className="mt-6 flex flex-col gap-3 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2.5">
           <FilterDropdown
             label={gs.filters.regionLabel}
@@ -660,13 +741,24 @@ export default function GovSupport() {
               setShowAllStatus(false);
             }}
           />
+          {hasActiveFilter && (
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="flex items-center gap-1 text-sm font-semibold text-slate-400 hover:text-slate-600"
+            >
+              <Icon name="x" className="w-3.5 h-3.5" />
+              초기화
+            </button>
+          )}
+        </div>
         </div>
       </Card>
 
       {matchedIds && (
         <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-700">
           <span className="flex items-center gap-1.5 font-medium">
-            <Icon name="sparkle" className="h-4 w-4" />
+            <Icon name="sparkle" className="w-5 h-5" />
             {wizardRegions.join(", ")} · {selectedCategoryObjs.map((c) => c.label).join(", ")} 조건에 맞는 맞춤 공고{" "}
             {visibleAnnouncements.length}건을 보여드리고 있어요.
           </span>

@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
+import pymupdf
 from docx import Document
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
@@ -1623,12 +1624,61 @@ def download_reference_doc(business_id: str):
     )
 
 
+BASIC_INFO_HIGHLIGHT_COLOR = (1, 0.92, 0.23)  # 형광펜 노랑
+
+
+def highlight_basic_info_in_pdf(pdf_bytes: bytes, basic_info: dict | None) -> bytes:
+    """공고 상세페이지 '기본 정보'(주관기관/접수기간/지원대상/지원내용/문의처) 값과 일치하는
+    부분을 PDF 안에서 찾아 노란 형광펜 하이라이트를 그린다.
+    org/period/contact는 원문에 그대로 나오는 값이라 문장 전체가 대부분 그대로 잡히지만,
+    target/support는 AI가 요약한 문장이라 원문 그대로는 거의 안 잡힌다 — 이 경우 값 안의
+    의미 있는 단어 단위로 쪼개서 찾은 부분만 하이라이트한다(완벽히 일치하지는 않을 수 있음).
+    무엇이든 실패하면(암호화된 PDF 등) 하이라이트 없이 원본 PDF를 그대로 돌려준다."""
+    if not basic_info:
+        return pdf_bytes
+
+    try:
+        doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
+    except Exception:
+        return pdf_bytes
+
+    try:
+        for raw_value in basic_info.values():
+            value = (raw_value or "").strip()
+            if not value:
+                continue
+            for page in doc:
+                rects = page.search_for(value)
+                if not rects:
+                    tokens = sorted(
+                        {t for t in re.split(r"[\s,./()~\-–·]+", value) if len(t) >= 2},
+                        key=len,
+                        reverse=True,
+                    )[:8]
+                    rects = [r for t in tokens for r in page.search_for(t)]
+                for rect in rects:
+                    annot = page.add_highlight_annot(rect)
+                    annot.set_colors(stroke=BASIC_INFO_HIGHLIGHT_COLOR)
+                    annot.update()
+        return doc.tobytes(garbage=3, deflate=True)
+    except Exception:
+        return pdf_bytes
+    finally:
+        doc.close()
+
+
 @app.get("/businesses/{business_id}/reference-doc/preview-pdf")
 def preview_reference_doc_pdf(business_id: str):
     """공고 상세페이지에서 기본서류를 PDF로 바로 미리보기 위한 공개 엔드포인트.
-    이미지(jpg/png)는 그대로 반환하고, docx는 PDF로 변환한다. hwp는 변환을 지원하지 않는다."""
+    이미지(jpg/png)는 그대로 반환하고, docx는 PDF로 변환한다. hwp는 변환을 지원하지 않는다.
+    PDF/DOCX는 '기본 정보' 카드에 나온 내용을 원문에서 찾아 노란 형광펜으로 표시해서 돌려준다."""
     business = (
-        supabase.table("businesses").select("reference_file_path,name").eq("id", business_id).maybe_single().execute().data
+        supabase.table("businesses")
+        .select("reference_file_path,name,basic_info")
+        .eq("id", business_id)
+        .maybe_single()
+        .execute()
+        .data
     )
     if not business or not business.get("reference_file_path"):
         raise HTTPException(status_code=404, detail="등록된 기본서류가 없습니다.")
@@ -1636,9 +1686,10 @@ def preview_reference_doc_pdf(business_id: str):
     object_path = business["reference_file_path"]
     ext = Path(object_path).suffix.lower()
     file_bytes = supabase.storage.from_(TEMPLATES_BUCKET).download(object_path)
+    basic_info = business.get("basic_info")
 
     if ext == ".pdf":
-        return Response(content=file_bytes, media_type="application/pdf")
+        return Response(content=highlight_basic_info_in_pdf(file_bytes, basic_info), media_type="application/pdf")
 
     if ext in (".jpg", ".jpeg", ".png"):
         return Response(content=file_bytes, media_type=REFERENCE_DOC_MIME_TYPES[ext])
@@ -1652,7 +1703,8 @@ def preview_reference_doc_pdf(business_id: str):
                 pdf_path = convert_to_pdf(docx_path, tmp_path)
             except Exception as e:
                 raise HTTPException(status_code=502, detail=f"PDF 미리보기 생성에 실패했습니다: {e}")
-            return Response(content=pdf_path.read_bytes(), media_type="application/pdf")
+            pdf_bytes = highlight_basic_info_in_pdf(pdf_path.read_bytes(), basic_info)
+            return Response(content=pdf_bytes, media_type="application/pdf")
 
     raise HTTPException(status_code=415, detail="이 파일 형식은 미리보기를 지원하지 않습니다. 다운로드해서 확인해주세요.")
 

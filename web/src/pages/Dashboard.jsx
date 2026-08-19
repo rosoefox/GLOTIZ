@@ -1,18 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import {
-  Sparkles,
-  Package,
-  Briefcase,
-  ArrowRight,
-  Search,
-  FileText,
-  FlaskConical,
-  Cpu,
-  UtensilsCrossed,
-  Grid2x2,
-} from "lucide-react";
-import BaseIcon from "../components/Icon";
+import Icon from "../components/Icon";
 import Header from "../components/Header";
 import HeroOceanScene from "../components/HeroOceanScene";
 import FloatingChatbot from "../components/FloatingChatbot";
@@ -20,40 +8,6 @@ import { brand, dashboard, govAnnouncementDetails } from "../data/mockData";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
 import { periodEndDate as sharedPeriodEndDate, formatTodayKorean } from "../lib/period";
-
-// 홈 화면 전용으로 단순하고 깔끔한 라인 아이콘(lucide)을 쓰고, 다른 페이지가 함께 쓰는
-// components/Icon.jsx는 건드리지 않도록 이 페이지 안에서만 이름을 덮어써서 렌더링한다.
-const HOME_ICONS = {
-  sparkle: Sparkles,
-  box: Package,
-  projects: Briefcase,
-  arrowRight: ArrowRight,
-  search: Search,
-  documents: FileText,
-  formulation: FlaskConical,
-  electronics: Cpu,
-  food: UtensilsCrossed,
-  grid: Grid2x2,
-};
-
-function Icon({ name, className = "w-5 h-5", strokeWidth = 1.8 }) {
-  const Cmp = HOME_ICONS[name];
-  if (Cmp) return <Cmp className={className} strokeWidth={strokeWidth} />;
-  return <BaseIcon name={name} className={className} strokeWidth={strokeWidth} />;
-}
-
-const FEATURE_TONES = {
-  cream: "bg-amber-50 text-amber-600",
-  blue: "bg-blue-50 text-blue-600",
-  mint: "bg-emerald-50 text-emerald-600",
-};
-
-const CASE_TONES = {
-  sunrise: "from-amber-300 to-orange-400",
-  forest: "from-emerald-300 to-teal-400",
-  ocean: "from-sky-300 to-blue-400",
-  grape: "from-violet-300 to-purple-400",
-};
 
 function orgNameFor(business) {
   const detail = govAnnouncementDetails[business.id];
@@ -384,23 +338,17 @@ export default function Dashboard() {
         {/* 1: 히어로 — 배/낙하산 2-레이어 배경(HeroOceanScene) */}
         <section
           ref={heroRef}
-          className="relative isolate flex h-[100dvh] w-full snap-start flex-col items-center justify-center overflow-hidden bg-black px-6 pb-6 pt-20 sm:pb-8 sm:pt-24 lg:pb-10 lg:pt-28"
+          className="relative isolate flex h-[100dvh] w-full snap-start flex-col items-center justify-center overflow-hidden bg-slate-900 px-6 pb-6 pt-20 sm:pb-8 sm:pt-24 lg:pb-10 lg:pt-28"
         >
           <HeroOceanScene />
 
           <div className="relative z-10 w-full max-w-4xl text-center">
-            <h1
-              className={`text-4xl font-extrabold uppercase tracking-tight text-white sm:text-6xl lg:text-7xl ${revealCls(heroInView)}`}
+            <img
+              src={brand.logo}
+              alt={brand.name}
+              className={`mx-auto h-16 w-auto object-contain brightness-0 invert sm:h-24 lg:h-28 ${revealCls(heroInView)}`}
               style={revealStyle(0)}
-            >
-              {brand.name}
-            </h1>
-            <p
-              className={`mt-2 text-base font-bold uppercase tracking-[0.15em] text-white/90 sm:text-xl ${revealCls(heroInView)}`}
-              style={revealStyle(1)}
-            >
-              {brand.tagline}
-            </p>
+            />
             <p
               className={`mx-auto mt-4 max-w-2xl text-xs font-medium leading-relaxed text-white/80 sm:whitespace-nowrap sm:text-sm ${revealCls(heroInView)}`}
               style={revealStyle(2)}
@@ -414,7 +362,7 @@ export default function Dashboard() {
               style={revealStyle(3)}
             >
               수출 시작하기
-              <Icon name="arrowRight" className="h-4 w-4" />
+              <Icon name="arrowRight" className="w-5 h-5" />
             </Link>
 
             <div
@@ -441,7 +389,7 @@ export default function Dashboard() {
             style={revealStyle(5)}
           >
             스크롤해서 더 보기
-            <Icon name="chevronDown" className="h-3.5 w-3.5 animate-bounce" />
+            <Icon name="chevronDown" className="w-5 h-5 animate-bounce" />
           </div>
         </section>
 
@@ -536,9 +484,10 @@ export default function Dashboard() {
                         className="group -mx-2 flex w-full items-center justify-between gap-4 rounded-xl px-2 py-3.5 text-left transition-colors hover:bg-brand-50"
                       >
                         <div className="flex min-w-0 items-start gap-3">
-                          <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-100 text-brand-600 transition-colors group-hover:bg-brand-600 group-hover:text-white">
-                            <Icon name="projects" className="h-4 w-4" />
-                          </div>
+                          <Icon
+                            name="projects"
+                            className="mt-0.5 w-5 h-5 shrink-0 text-slate-500 transition-colors group-hover:text-brand-600"
+                          />
                           <div className="min-w-0">
                             <div className="mb-1 flex items-center gap-2 text-xs font-medium text-slate-400">
                               <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-500 transition-colors group-hover:bg-white group-hover:text-brand-600">
@@ -553,7 +502,7 @@ export default function Dashboard() {
                         </div>
                         <Icon
                           name="arrowRight"
-                          className="h-4 w-4 shrink-0 text-slate-300 transition-colors group-hover:text-brand-600"
+                          className="w-5 h-5 shrink-0 text-slate-300 transition-colors group-hover:text-brand-600"
                         />
                       </button>
                     ))}
@@ -566,7 +515,7 @@ export default function Dashboard() {
                   style={revealStyle(2)}
                 >
                   {dashboard.ongoingProgramsMoreLabel}
-                  <Icon name="arrowRight" className="h-3.5 w-3.5" />
+                  <Icon name="arrowRight" className="w-5 h-5" />
                 </button>
               </div>
             </div>
@@ -591,14 +540,12 @@ export default function Dashboard() {
                   className={`flex flex-col items-center rounded-2xl border border-slate-200 bg-white p-4 text-center hover:shadow-md sm:p-5 ${revealCls(featuresInView)}`}
                   style={revealStyle(i + 1)}
                 >
-                  <div className={`mb-3 flex h-12 w-12 items-center justify-center rounded-2xl ${FEATURE_TONES[f.tone]}`}>
-                    <Icon name={f.icon} className="h-6 w-6" />
-                  </div>
+                  <Icon name={f.icon} className="mb-3 w-5 h-5 text-slate-500" />
                   <p className="mb-1 text-sm font-bold text-slate-900 sm:text-base">{f.title}</p>
                   <p className="mb-3 text-xs leading-relaxed text-slate-500 sm:text-sm">{f.description}</p>
                   <span className="mt-auto inline-flex items-center gap-1 text-xs font-semibold text-brand-600 sm:text-sm">
                     {f.linkLabel}
-                    <Icon name="arrowRight" className="h-3.5 w-3.5" />
+                    <Icon name="arrowRight" className="w-5 h-5" />
                   </span>
                 </Link>
               ))}
@@ -609,7 +556,7 @@ export default function Dashboard() {
         {/* 4: AI · 디자인 진행 사례 */}
         <section
           ref={caseStudiesRef}
-          className="flex h-[calc(100dvh-4rem)] w-full snap-start flex-col items-center justify-center overflow-hidden bg-black px-6 py-6 sm:py-8 lg:py-10"
+          className="flex h-[calc(100dvh-4rem)] w-full snap-start flex-col items-center justify-center overflow-hidden bg-slate-900 px-6 py-6 sm:py-8 lg:py-10"
         >
           <div className="mx-auto max-w-5xl">
             <div className="mb-3 text-center sm:mb-4">
@@ -649,10 +596,8 @@ export default function Dashboard() {
                           className="h-32 w-full rounded-2xl object-cover shadow-lg sm:h-36"
                         />
                       ) : (
-                        <div
-                          className={`flex h-32 w-full items-center justify-center rounded-2xl bg-gradient-to-br shadow-lg sm:h-36 ${CASE_TONES[c.tone]}`}
-                        >
-                          <Icon name={c.icon} className="h-10 w-10 text-white" strokeWidth={1.3} />
+                        <div className="flex h-32 w-full items-center justify-center rounded-2xl bg-slate-100 sm:h-36">
+                          <Icon name={c.icon} className="w-5 h-5 text-slate-500" />
                         </div>
                       )}
                       <p className="mt-2 text-[11px] font-bold text-brand-100">{c.tag}</p>
@@ -755,7 +700,7 @@ export default function Dashboard() {
                   }`}
                   style={revealStyle(i + 1)}
                 >
-                  <Icon name={c.icon} className="h-4 w-4" />
+                  <Icon name={c.icon} className="w-5 h-5" />
                   {c.label}
                 </button>
               ))}
@@ -789,8 +734,7 @@ export default function Dashboard() {
         <footer className="w-full snap-end border-t border-slate-100 bg-white px-6 py-8">
           <div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-4 sm:flex-row">
             <div className="flex items-center gap-3">
-              <img src={brand.logo} alt={brand.name} className="h-7 w-7 rounded-lg object-contain" />
-              <span className="text-sm font-bold text-slate-900">{brand.name}</span>
+              <img src={brand.logo} alt={brand.name} className="h-6 w-auto object-contain" />
             </div>
             <p className="text-xs text-slate-400">© {new Date().getFullYear()} {brand.name}. All rights reserved.</p>
           </div>

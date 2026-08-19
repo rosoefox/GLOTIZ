@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import Icon from "../components/Icon";
-import { Badge, Card, Button, TextField } from "../components/ui";
+import { Badge, Card, Button, TextField, CONTROL_CLASS } from "../components/ui";
 import Modal from "../components/Modal";
 import { brand, adminPanel as ap } from "../data/mockData";
 import { useAuth } from "../context/AuthContext";
@@ -58,7 +58,7 @@ function SubmissionRow({
             disabled={isDownloading}
             onClick={() => onViewSubmission(item)}
           >
-            <Icon name={isDownloading ? "download" : "eye"} className="h-3.5 w-3.5" />
+            <Icon name={isDownloading ? "download" : "eye"} className="w-5 h-5" />
             {isDownloading ? ap.generatingLabel : ap.viewDocumentLabel}
           </Button>
         )}
@@ -68,7 +68,7 @@ function SubmissionRow({
             onClick={() => onSetReviewStatus(applicant, item, "needs_revision")}
             className="flex items-center gap-1 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700"
           >
-            <Icon name="x" className="h-3.5 w-3.5" />
+            <Icon name="x" className="w-5 h-5" />
             {ap.markNeedsRevisionLabel}
           </button>
         )}
@@ -78,7 +78,7 @@ function SubmissionRow({
             onClick={() => onSetReviewStatus(applicant, item, "approved")}
             className="flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
           >
-            <Icon name="check" className="h-3.5 w-3.5" />
+            <Icon name="check" className="w-5 h-5" />
             {ap.markApprovedLabel}
           </button>
         )}
@@ -89,7 +89,7 @@ function SubmissionRow({
             disabled={notifying[key] || notified[key]}
             onClick={() => onNotify(applicant, item)}
           >
-            <Icon name="send" className="h-3.5 w-3.5" />
+            <Icon name="send" className="w-5 h-5" />
             {notified[key] ? ap.notifiedLabel : ap.notifyLabel}
           </Button>
         )}
@@ -120,7 +120,7 @@ function SubmissionItem({ item, applicant, onViewSubmission, onNotify, onSetRevi
             onClick={() => setShowHistory((v) => !v)}
             className="flex w-full items-center gap-1.5 border-t border-slate-100 px-4 py-2 text-left text-xs font-medium text-brand-600 hover:bg-slate-50"
           >
-            <Icon name="chevronDown" className={`h-3.5 w-3.5 transition-transform ${showHistory ? "rotate-180" : ""}`} />
+            <Icon name="chevronDown" className={`w-5 h-5 transition-transform ${showHistory ? "rotate-180" : ""}`} />
             이전 제출 {item.history.length}건 {showHistory ? "숨기기" : "보기"}
           </button>
           {showHistory &&
@@ -534,7 +534,7 @@ function NewFieldsModal({ session, template, onClose, onSaved }) {
     <Modal title={`${ff.title} · ${template.name}`} onClose={onClose} width="max-w-2xl">
         {loadingSuggestions && (
           <p className="mb-3 flex items-center gap-1.5 text-xs font-medium text-brand-600">
-            <Icon name="sparkle" className="h-3.5 w-3.5" />
+            <Icon name="sparkle" className="w-5 h-5" />
             AI가 서식을 분석해서 필드를 제안하는 중...
           </p>
         )}
@@ -589,7 +589,7 @@ function NewFieldsModal({ session, template, onClose, onSaved }) {
           </div>
 
           <Button type="button" variant="secondary" className="mt-3 px-3 py-2 text-xs" onClick={addRow}>
-            <Icon name="plus" className="h-3.5 w-3.5" />
+            <Icon name="plus" className="w-5 h-5" />
             {ff.addRowLabel}
           </Button>
 
@@ -619,6 +619,14 @@ function BusinessManager({ session }) {
   const [editingName, setEditingName] = useState("");
   const [savingName, setSavingName] = useState(false);
   const [nameError, setNameError] = useState(null);
+  const [expandedBusinessId, setExpandedBusinessId] = useState(null);
+  const [bmSearch, setBmSearch] = useState("");
+
+  const filteredBusinesses = useMemo(() => {
+    const query = bmSearch.trim().toLowerCase();
+    if (!query) return businesses;
+    return businesses.filter((biz) => biz.name?.toLowerCase().includes(query));
+  }, [businesses, bmSearch]);
 
   const startEditBusinessName = (biz) => {
     setNameError(null);
@@ -757,19 +765,35 @@ function BusinessManager({ session }) {
       <div className="mb-4 flex items-center justify-between gap-4">
         {actionError ? <p className="text-xs font-medium text-red-500">{actionError}</p> : <span />}
         <Button onClick={() => setShowBusinessModal(true)}>
-          <Icon name="plus" className="h-4 w-4" />
+          <Icon name="plus" className="w-5 h-5" />
           {bm.newBusinessButtonLabel}
         </Button>
+      </div>
+
+      <div className="relative mb-4">
+        <Icon
+          name="search"
+          className="pointer-events-none absolute left-3 top-1/2 w-5 h-5 -translate-y-1/2 text-slate-400"
+        />
+        <input
+          value={bmSearch}
+          onChange={(e) => setBmSearch(e.target.value)}
+          placeholder="사업 이름으로 검색"
+          className={`${CONTROL_CLASS} h-10 pl-10`}
+        />
       </div>
 
       {loadingBM ? (
         <p className="text-sm text-slate-400">불러오는 중...</p>
       ) : businesses.length === 0 ? (
         <p className="text-sm text-slate-400">{bm.businessListEmptyMessage}</p>
+      ) : filteredBusinesses.length === 0 ? (
+        <p className="text-sm text-slate-400">검색 결과가 없습니다.</p>
       ) : (
         <div className="space-y-3">
-          {businesses.map((biz, bizIndex) => {
+          {filteredBusinesses.map((biz) => {
             const templates = templatesByBusiness[biz.id] || [];
+            const bizIndex = businesses.findIndex((b) => b.id === biz.id);
             return (
               <Card key={biz.id} className="p-5">
                 <div className="mb-3 flex items-start justify-between gap-4">
@@ -794,7 +818,7 @@ function BusinessManager({ session }) {
                           aria-label="저장"
                           className="flex h-7 w-7 items-center justify-center rounded-full text-brand-600 hover:bg-brand-50"
                         >
-                          <Icon name="check" className="h-4 w-4" />
+                          <Icon name="check" className="w-5 h-5" />
                         </button>
                         <button
                           type="button"
@@ -803,19 +827,31 @@ function BusinessManager({ session }) {
                           aria-label="취소"
                           className="flex h-7 w-7 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100"
                         >
-                          <Icon name="x" className="h-4 w-4" />
+                          <Icon name="x" className="w-5 h-5" />
                         </button>
                       </div>
                     ) : (
                       <div className="flex items-center gap-1.5">
-                        <p className="font-bold text-slate-900">{biz.name}</p>
+                        <button
+                          type="button"
+                          onClick={() => setExpandedBusinessId((id) => (id === biz.id ? null : biz.id))}
+                          className="flex items-center gap-1.5"
+                        >
+                          <Icon
+                            name="chevronDown"
+                            className={`w-4 h-4 shrink-0 text-slate-400 transition-transform duration-300 ${
+                              expandedBusinessId === biz.id ? "rotate-180" : ""
+                            }`}
+                          />
+                          <p className="font-bold text-slate-900">{biz.name}</p>
+                        </button>
                         <button
                           type="button"
                           onClick={() => startEditBusinessName(biz)}
                           aria-label="사업명 수정"
                           className="flex h-6 w-6 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600"
                         >
-                          <Icon name="pencil" className="h-3.5 w-3.5" />
+                          <Icon name="pencil" className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     )}
@@ -825,7 +861,7 @@ function BusinessManager({ session }) {
                     {biz.description && <p className="mt-1 text-sm text-slate-500">{biz.description}</p>}
                     {biz.basic_info && (
                       <Badge tone="success" className="mt-2">
-                        <Icon name="checkCircle" className="h-3 w-3" /> 기본 정보 완료
+                        <Icon name="checkCircle" className="w-3.5 h-3.5" /> 기본 정보 완료
                       </Badge>
                     )}
                   </div>
@@ -838,7 +874,7 @@ function BusinessManager({ session }) {
                         onClick={() => moveBusiness(bizIndex, -1)}
                         className="flex h-5 w-5 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30"
                       >
-                        <Icon name="chevronDown" className="h-3.5 w-3.5 rotate-180" />
+                        <Icon name="chevronDown" className="w-3.5 h-3.5 rotate-180" />
                       </button>
                       <button
                         type="button"
@@ -847,7 +883,7 @@ function BusinessManager({ session }) {
                         onClick={() => moveBusiness(bizIndex, 1)}
                         className="flex h-5 w-5 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30"
                       >
-                        <Icon name="chevronDown" className="h-3.5 w-3.5" />
+                        <Icon name="chevronDown" className="w-3.5 h-3.5" />
                       </button>
                     </div>
                     <Button
@@ -855,7 +891,7 @@ function BusinessManager({ session }) {
                       className="px-3 py-1.5 text-xs"
                       onClick={() => setTemplateModalBusiness(biz)}
                     >
-                      <Icon name="upload" className="h-3.5 w-3.5" />
+                      <Icon name="upload" className="w-5 h-5" />
                       {bm.uploadTemplateButtonLabel}
                     </Button>
                     <Button
@@ -864,17 +900,23 @@ function BusinessManager({ session }) {
                       disabled={deletingBusinessId === biz.id}
                       onClick={() => handleDeleteBusiness(biz)}
                     >
-                      <Icon name="trash" className="h-3.5 w-3.5" />
+                      <Icon name="trash" className="w-5 h-5" />
                       {deletingBusinessId === biz.id ? "삭제 중..." : "사업 삭제"}
                     </Button>
                   </div>
                 </div>
 
-                {templates.length === 0 ? (
-                  <p className="text-xs text-slate-400">{bm.templateListEmptyMessage}</p>
-                ) : (
-                  <div className="divide-y divide-slate-100 rounded-xl border border-slate-200">
-                    {templates.map((t, tIndex) => (
+                <div
+                  className={`grid transition-all duration-300 ease-in-out ${
+                    expandedBusinessId === biz.id ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+                  }`}
+                >
+                  <div className="overflow-hidden">
+                    {templates.length === 0 ? (
+                      <p className="text-xs text-slate-400">{bm.templateListEmptyMessage}</p>
+                    ) : (
+                      <div className="divide-y divide-slate-100 rounded-xl border border-slate-200">
+                        {templates.map((t, tIndex) => (
                       <div key={t.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
                         <div>
                           <p className="text-sm font-semibold text-slate-900">{t.name}</p>
@@ -895,7 +937,7 @@ function BusinessManager({ session }) {
                               onClick={() => moveTemplate(templates, tIndex, -1)}
                               className="flex h-5 w-5 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30"
                             >
-                              <Icon name="chevronDown" className="h-3.5 w-3.5 rotate-180" />
+                              <Icon name="chevronDown" className="w-3.5 h-3.5 rotate-180" />
                             </button>
                             <button
                               type="button"
@@ -904,7 +946,7 @@ function BusinessManager({ session }) {
                               onClick={() => moveTemplate(templates, tIndex, 1)}
                               className="flex h-5 w-5 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30"
                             >
-                              <Icon name="chevronDown" className="h-3.5 w-3.5" />
+                              <Icon name="chevronDown" className="w-3.5 h-3.5" />
                             </button>
                           </div>
                           <Button
@@ -929,7 +971,7 @@ function BusinessManager({ session }) {
                             disabled={deletingTemplateId === t.id}
                             onClick={() => handleDeleteTemplate(t)}
                           >
-                            <Icon name="trash" className="h-3.5 w-3.5" />
+                            <Icon name="trash" className="w-5 h-5" />
                             {deletingTemplateId === t.id ? "삭제 중..." : bm.deleteTemplateButtonLabel}
                           </Button>
                         </div>
@@ -937,6 +979,8 @@ function BusinessManager({ session }) {
                     ))}
                   </div>
                 )}
+                  </div>
+                </div>
               </Card>
             );
           })}
@@ -986,6 +1030,7 @@ export default function AdminPage() {
   const [notified, setNotified] = useState({});
   const [reviewStatusError, setReviewStatusError] = useState(null);
   const [downloadingId, setDownloadingId] = useState(null);
+  const [search, setSearch] = useState("");
 
   async function load() {
     setLoading(true);
@@ -1174,7 +1219,11 @@ export default function AdminPage() {
 
   const summary = useMemo(() => {
     const programCount = applicants.reduce((sum, a) => sum + a.programs.length, 0);
-    return { applicants: applicants.length, programs: programCount };
+    const needsApprovalCount = applicants.reduce(
+      (sum, a) => sum + a.programs.reduce((s, p) => s + p.items.filter((i) => i.statusKey === "reviewing").length, 0),
+      0
+    );
+    return { applicants: applicants.length, programs: programCount, needsApproval: needsApprovalCount };
   }, [applicants]);
 
   // 신청자 기준으로 모아둔 applicants를 지원사업(공고) 기준으로 다시 묶는다 —
@@ -1203,6 +1252,18 @@ export default function AdminPage() {
     }
     return Object.values(byBusiness).sort((a, b) => b.applicants.length - a.applicants.length);
   }, [applicants]);
+
+  // 사업명 또는 그 사업에 신청한 기업(회사)명으로 찾는다 — 둘 중 하나만 맞아도 그 사업
+  // 전체(신청 기업 목록 포함)를 보여준다.
+  const filteredProgramGroups = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return programGroups;
+    return programGroups.filter(
+      (program) =>
+        program.businessName.toLowerCase().includes(query) ||
+        program.applicants.some((a) => a.name.toLowerCase().includes(query))
+    );
+  }, [programGroups, search]);
 
   const handleDownload = async (filePath, bucket = "generated") => {
     const { data, error } = await supabase.storage.from(bucket).createSignedUrl(filePath, 3600);
@@ -1310,8 +1371,8 @@ export default function AdminPage() {
     <div className="min-h-screen bg-slate-50">
       <header className="flex h-16 items-center justify-between border-b border-slate-200 bg-white px-6">
         <Link to="/admin" className="flex items-center gap-3">
-          <img src={brand.logo} alt={brand.name} className="h-8 w-8 rounded-lg object-contain" />
-          <span className="text-sm font-bold text-slate-900">{brand.name} · 관리자</span>
+          <img src={brand.logo} alt={brand.name} className="h-6 w-auto object-contain" />
+          <span className="text-sm font-bold text-slate-900">관리자</span>
         </Link>
         <button
           type="button"
@@ -1325,6 +1386,21 @@ export default function AdminPage() {
       <div className="mx-auto max-w-5xl px-8 py-8">
         <h1 className="text-2xl font-bold text-slate-900">{ap.title}</h1>
         <p className="mt-1 mb-6 text-sm text-slate-500">{ap.subtitle}</p>
+
+        <div className="mb-6 grid grid-cols-3 divide-x divide-slate-100 rounded-md border border-slate-200 bg-white shadow-sm">
+          <div className="px-6 py-4">
+            <p className="text-sm text-slate-500">{ap.summaryLabels.applicants}</p>
+            <p className="mt-1 text-2xl font-bold text-brand-700">{summary.applicants}</p>
+          </div>
+          <div className="px-6 py-4">
+            <p className="text-sm text-slate-500">{ap.summaryLabels.programs}</p>
+            <p className="mt-1 text-2xl font-bold text-brand-700">{summary.programs}</p>
+          </div>
+          <div className="px-6 py-4">
+            <p className="text-sm text-slate-500">{ap.summaryLabels.needsApproval}</p>
+            <p className="mt-1 text-2xl font-bold text-brand-700">{summary.needsApproval}</p>
+          </div>
+        </div>
 
         <div className="mb-6 inline-flex gap-2 rounded-lg bg-slate-100 p-1">
           <button
@@ -1351,15 +1427,17 @@ export default function AdminPage() {
           <BusinessManager session={session} />
         ) : (
           <>
-            <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Card className="p-6">
-                <p className="text-base text-slate-500">{ap.summaryLabels.applicants}</p>
-                <p className="mt-1 text-4xl font-extrabold text-brand-700">{summary.applicants}</p>
-              </Card>
-              <Card className="p-6">
-                <p className="text-base text-slate-500">{ap.summaryLabels.programs}</p>
-                <p className="mt-1 text-4xl font-extrabold text-brand-700">{summary.programs}</p>
-              </Card>
+            <div className="relative mb-6">
+              <Icon
+                name="search"
+                className="pointer-events-none absolute left-3 top-1/2 w-5 h-5 -translate-y-1/2 text-slate-400"
+              />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={ap.searchPlaceholder}
+                className={`${CONTROL_CLASS} h-10 pl-10`}
+              />
             </div>
 
             {reviewStatusError && (
@@ -1368,11 +1446,11 @@ export default function AdminPage() {
 
             {loading ? (
               <p className="text-sm text-slate-400">불러오는 중...</p>
-            ) : programGroups.length === 0 ? (
-              <p className="text-sm text-slate-400">{ap.emptyMessage}</p>
+            ) : filteredProgramGroups.length === 0 ? (
+              <p className="text-sm text-slate-400">{search.trim() ? ap.searchEmptyMessage : ap.emptyMessage}</p>
             ) : (
               <div className="space-y-3">
-                {programGroups.map((program) => (
+                {filteredProgramGroups.map((program) => (
                   <ProgramRow
                     key={program.businessId}
                     program={program}

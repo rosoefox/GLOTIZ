@@ -28,7 +28,7 @@ function ProgramMultiSelect({ businesses, selected, onToggle }) {
         </span>
         <Icon
           name="chevronDown"
-          className={`h-4 w-4 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`}
+          className={`w-5 h-5 text-slate-500 transition-transform ${open ? "rotate-180" : ""}`}
         />
       </button>
 
@@ -104,7 +104,7 @@ function BasicInfoForm({ item, businesses, onSave, onCancel }) {
           취소
         </Button>
         <Button className="px-4 py-2 text-sm" onClick={() => onSave({ name, destination, govPrograms })}>
-          <Icon name="check" className="h-4 w-4" />
+          <Icon name="check" className="w-5 h-5" />
           저장
         </Button>
       </div>
@@ -246,7 +246,7 @@ function ProgramBlock({ business, userId }) {
           onClick={() => setShowProgress((v) => !v)}
         >
           {mi.actionLabel}
-          <Icon name="chevronDown" className={`h-3.5 w-3.5 transition-transform ${showProgress ? "rotate-180" : ""}`} />
+          <Icon name="chevronDown" className={`w-5 h-5 transition-transform ${showProgress ? "rotate-180" : ""}`} />
         </Button>
       </div>
 
@@ -312,14 +312,14 @@ export default function MyExportItems() {
           <p className="mt-1 text-sm text-slate-500">{mi.subtitle}</p>
         </div>
         <Button onClick={toggleNewForm}>
-          <Icon name="plus" className="h-4 w-4" />
+          <Icon name="plus" className="w-5 h-5" />
           {mi.addButtonLabel}
         </Button>
       </div>
 
       {revisionCount > 0 && (
         <div className="mt-4 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">
-          <Icon name="bell" className="h-4 w-4" />
+          <Icon name="bell" className="w-5 h-5" />
           {revisionCount}
           {mi.revisionBannerLabel}
         </div>

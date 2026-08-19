@@ -166,7 +166,7 @@ export default function AiDocumentFill() {
       <div className="mx-auto max-w-3xl px-8 py-8">
         <p className="text-sm text-slate-500">선택된 서식이 없습니다.</p>
         <Button className="mt-4" onClick={() => navigate("/ai-docs")}>
-          <Icon name="arrowLeft" className="h-4 w-4" />
+          <Icon name="arrowLeft" className="w-5 h-5" />
           사업/서식 선택으로 돌아가기
         </Button>
       </div>
@@ -177,7 +177,7 @@ export default function AiDocumentFill() {
     return (
       <div className="mx-auto max-w-3xl px-8 py-8">
         <Card className="p-8 text-center">
-          <Icon name="checkCircle" className="mx-auto h-10 w-10 text-emerald-500" />
+          <Icon name="checkCircle" className="mx-auto w-5 h-5 text-slate-500" />
           <h1 className="mt-3 text-xl font-bold text-slate-900">입력 정보가 저장되었습니다</h1>
           <p className="mt-1 text-sm text-slate-500">제출 ID: {submissionId}</p>
 
@@ -197,7 +197,7 @@ export default function AiDocumentFill() {
                   rel="noreferrer"
                   className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700"
                 >
-                  <Icon name="download" className="h-4 w-4" />
+                  <Icon name="download" className="w-5 h-5" />
                   PDF 다운로드
                 </a>
               ) : (
@@ -206,7 +206,7 @@ export default function AiDocumentFill() {
             </div>
           ) : (
             <Button className="mt-6" onClick={handleGenerate} disabled={generating}>
-              <Icon name="sparkle" className="h-4 w-4" />
+              <Icon name="sparkle" className="w-5 h-5" />
               {generating ? "AI 문서 생성 중..." : "AI로 문서 생성하기"}
             </Button>
           )}
@@ -248,7 +248,7 @@ export default function AiDocumentFill() {
 
             <Button type="submit" className="w-full justify-center" disabled={saving}>
               {saving ? "저장 중..." : "저장하기"}
-              <Icon name="arrowRight" className="h-4 w-4" />
+              <Icon name="arrowRight" className="w-5 h-5" />
             </Button>
           </form>
         )}

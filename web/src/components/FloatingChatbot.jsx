@@ -85,10 +85,10 @@ export default function FloatingChatbot() {
                 aria-label={expanded ? "화면 줄이기" : "화면 키우기"}
                 className="text-white/80 hover:text-white"
               >
-                <Icon name={expanded ? "collapse" : "expand"} className="h-4 w-4" />
+                <Icon name={expanded ? "collapse" : "expand"} className="w-5 h-5" />
               </button>
               <button onClick={() => setOpen(false)} aria-label="닫기">
-                <Icon name="x" className="h-4 w-4" />
+                <Icon name="x" className="w-5 h-5" />
               </button>
             </div>
           </div>
@@ -172,7 +172,7 @@ export default function FloatingChatbot() {
               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50"
               aria-label="질문 보내기"
             >
-              <Icon name="send" className="h-4 w-4" />
+              <Icon name="send" className="w-5 h-5" />
             </button>
           </form>
         </div>
@@ -183,7 +183,7 @@ export default function FloatingChatbot() {
         className="relative flex h-14 w-14 items-center justify-center rounded-full bg-brand-600 text-white shadow-lg transition-transform hover:scale-105 hover:bg-brand-700"
         aria-label="AI 챗봇 열기"
       >
-        <Icon name={open ? "x" : "chatbot"} className="h-6 w-6" />
+        <Icon name={open ? "x" : "chatbot"} className="w-5 h-5" />
       </button>
     </div>
   );

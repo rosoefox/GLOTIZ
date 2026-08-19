@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { toPng } from "html-to-image";
 import Icon from "../components/Icon";
-import { Card, Button, TextField } from "../components/ui";
+import { Button, TextField, CONTROL_CLASS, emptyFieldClass, SectionCardHeader, FieldLabel } from "../components/ui";
 import { marketingMaterialCreator as mc } from "../data/mockData";
 import { useMarketingImages } from "../context/MarketingImagesContext";
 import { useAuth } from "../context/AuthContext";
@@ -20,17 +20,63 @@ function findImage(images, slot) {
   return images?.find((img) => img.slot === slot)?.url;
 }
 
-function PlaceholderPreview({ uploadedImage }) {
+// 아직 실제 생성 결과가 없는 템플릿 카드에 형태를 미리 보여주는 예시 썸네일 —
+// 실사 이미지 대신 각 레이아웃의 구조(세로 포스터/가로 카드뉴스/세로 상세페이지)를 축소해 그린다.
+function TemplateThumb({ id }) {
+  if (id === "tpl-poster") {
+    return (
+      <div className="relative aspect-[3/4] w-full overflow-hidden bg-gradient-to-b from-rose-200 via-orange-100 to-amber-50">
+        <div className="absolute inset-x-4 top-3 h-1 rounded-full bg-white/80" />
+        <div className="absolute inset-x-6 top-1/2 h-2.5 -translate-y-1/2 rounded bg-white/90" />
+        <div className="absolute inset-x-9 bottom-4 h-1 rounded-full bg-white/70" />
+      </div>
+    );
+  }
+  if (id === "tpl-card-news") {
+    return (
+      <div className="flex aspect-[3/4] w-full items-stretch gap-1 bg-slate-100 p-2.5">
+        <div className="flex-1 rounded bg-sky-200" />
+        <div className="flex-1 rounded bg-violet-200" />
+        <div className="flex-1 rounded bg-teal-200" />
+      </div>
+    );
+  }
   return (
-    <div className="relative flex aspect-[3/4] w-full items-center justify-center overflow-hidden rounded-2xl bg-slate-200 shadow-lg">
-      {uploadedImage ? (
+    <div className="flex aspect-[3/4] w-full flex-col gap-1 bg-slate-100 p-2.5">
+      <div className="h-2/5 rounded bg-slate-300" />
+      <div className="flex flex-1 gap-1">
+        <div className="flex-1 rounded bg-slate-200" />
+        <div className="flex-1 rounded bg-slate-200" />
+      </div>
+    </div>
+  );
+}
+
+
+function PlaceholderPreview({ uploadedImage }) {
+  if (uploadedImage) {
+    return (
+      <div className="relative flex aspect-[3/4] w-full items-center justify-center overflow-hidden rounded-2xl bg-slate-200 shadow-lg">
         <div
           className="absolute inset-0 bg-contain bg-center bg-no-repeat"
           style={{ backgroundImage: `url(${uploadedImage})` }}
         />
-      ) : (
-        <Icon name="camera" className="h-10 w-10 text-slate-400" />
-      )}
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col items-center justify-center gap-3 py-10 text-center">
+      <div className="flex h-14 w-14 items-center justify-center rounded-full border border-dashed border-slate-300">
+        <Icon name="camera" className="w-5 h-5 text-slate-400" />
+      </div>
+      <div>
+        <p className="text-sm font-semibold text-slate-600">아직 생성된 이미지가 없어요</p>
+        <p className="mt-1 text-xs leading-relaxed text-slate-400">
+          왼쪽에서 사진과 상품 정보를 채우고
+          <br />
+          &ldquo;이미지 생성하기&rdquo; 버튼을 눌러보세요
+        </p>
+      </div>
     </div>
   );
 }
@@ -243,9 +289,9 @@ function TranslateMenu({ activeLang, translating, onTranslate, disabled }) {
         disabled={translating || disabled}
         title={disabled ? "먼저 이미지를 생성해주세요." : undefined}
       >
-        <Icon name="globe" className="h-4 w-4" />
+        <Icon name="globe" className="w-5 h-5" />
         {translating ? "번역 중..." : activeLabel ? `이미지 언어: ${activeLabel}` : "이미지 언어 변경하기"}
-        <Icon name="chevronDown" className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
+        <Icon name="chevronDown" className={`w-5 h-5 transition-transform ${open ? "rotate-180" : ""}`} />
       </Button>
       {open && !disabled && (
         <div className="absolute right-0 top-full z-10 mt-2 w-48 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg">
@@ -258,7 +304,7 @@ function TranslateMenu({ activeLang, translating, onTranslate, disabled }) {
             className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
           >
             한국어(원본)
-            {activeLang === null && <Icon name="check" className="h-3.5 w-3.5 text-brand-600" />}
+            {activeLang === null && <Icon name="check" className="w-5 h-5 text-brand-600" />}
           </button>
           {TRANSLATE_LANGUAGES.map((lang) => (
             <button
@@ -271,7 +317,7 @@ function TranslateMenu({ activeLang, translating, onTranslate, disabled }) {
               className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
             >
               {lang.label}
-              {activeLang === lang.code && <Icon name="check" className="h-3.5 w-3.5 text-brand-600" />}
+              {activeLang === lang.code && <Icon name="check" className="w-5 h-5 text-brand-600" />}
             </button>
           ))}
         </div>
@@ -492,53 +538,33 @@ export default function MarketingMaterialCreator() {
   const hasMatchingResult = generatedResult && generatedResult.layout === layout;
 
   return (
-    <div className="mx-auto max-w-6xl px-8 py-8">
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">{mc.title}</h1>
-          <p className="mt-1 text-sm text-slate-500">{mc.subtitle}</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="secondary" className="py-2">
-            <Icon name="history" className="h-4 w-4" />
-            기존 정보 불러오기
-          </Button>
-          <Button className="py-2" onClick={handleGenerate} disabled={generating}>
-            <Icon name="sparkle" className="h-4 w-4" />
-            {generating ? "생성 중..." : "이미지 생성하기"}
-          </Button>
-          <TranslateMenu
-            activeLang={activeLang}
-            translating={translating}
-            onTranslate={runTranslate}
-            disabled={!hasMatchingResult}
-          />
-          <Button className="py-2" onClick={handleSaveImage} disabled={savingImage}>
-            <Icon name="download" className="h-4 w-4" />
-            {savingImage ? "저장 중..." : mc.actions.saveImage}
-          </Button>
-        </div>
-      </div>
-      {translateError && <p className="-mt-4 mb-4 text-xs font-medium text-red-500">{translateError}</p>}
+    <div className="mx-auto max-w-6xl px-6 py-8 sm:px-8">
+      <h1 className="text-2xl font-bold text-slate-900">{mc.title}</h1>
+      <p className="mt-1 text-sm text-slate-500">{mc.subtitle}</p>
 
-      <div className="grid grid-cols-1 items-stretch gap-6 lg:grid-cols-[380px_1fr]">
-        <div className="space-y-6">
-          <Card className="p-5">
-            <h3 className="mb-3 flex items-center gap-2 text-sm font-bold text-slate-900">
-              <Icon name="camera" className="h-4 w-4" />
-              {mc.uploadLabel}
-            </h3>
+      {translateError && <p className="mt-4 text-xs font-medium text-red-500">{translateError}</p>}
+      {generateError && (
+        <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+          {generateError}
+        </div>
+      )}
+
+      {/* 1행: 상품 사진 업로드 + 템플릿 선택 */}
+      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <div className="rounded-lg border border-slate-200 bg-white">
+          <SectionCardHeader title={mc.uploadLabel} />
+          <div className="p-6">
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="flex w-full flex-col items-center justify-center overflow-hidden rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 bg-contain bg-center bg-no-repeat px-4 py-8 text-center hover:border-brand-300 hover:bg-brand-50"
+              className={`flex w-full flex-col items-center justify-center overflow-hidden rounded-md border-2 border-dashed bg-contain bg-center bg-no-repeat px-4 py-8 text-center hover:border-brand-300 hover:bg-brand-50 ${
+                uploadedImage ? "border-slate-200 bg-slate-50" : "border-brand-300 bg-brand-50/40"
+              }`}
               style={uploadedImage ? { backgroundImage: `url(${uploadedImage})`, minHeight: "9rem" } : undefined}
             >
               {!uploadedImage && (
                 <>
-                  <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-brand-100 text-brand-600">
-                    <Icon name="upload" className="h-5 w-5" />
-                  </div>
+                  <Icon name="upload" className="mb-3 w-5 h-5 text-brand-500" />
                   <p className="text-sm font-medium text-slate-700">{mc.uploadHint.title}</p>
                   <p className="mt-1 text-xs text-slate-400">{mc.uploadHint.sub}</p>
                 </>
@@ -547,94 +573,24 @@ export default function MarketingMaterialCreator() {
             <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
             {uploadedImage && (
               <Button variant="secondary" className="mt-3 w-full py-2" onClick={() => fileInputRef.current?.click()}>
-                <Icon name="upload" className="h-4 w-4" />
+                <Icon name="upload" className="w-5 h-5" />
                 사진 변경하기
               </Button>
             )}
-          </Card>
-
-          <Card className="p-5">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900">
-                <Icon name="documents" className="h-4 w-4" />
-                상품 정보 입력
-              </h3>
-              <Button
-                type="button"
-                variant="outlineBrand"
-                className="px-3 py-1.5 text-xs"
-                onClick={handleAiFillInfo}
-                disabled={aiFillingInfo}
-              >
-                <Icon name="sparkle" className="h-3.5 w-3.5" />
-                {aiFillingInfo ? "채우는 중..." : "AI로 채우기"}
-              </Button>
-            </div>
-            {aiFillError && <p className="mb-3 text-xs font-medium text-red-500">{aiFillError}</p>}
-            <div className="space-y-3">
-              <TextField
-                label="상품명"
-                value={preview.productName}
-                onChange={handlePreviewChange("productName")}
-                placeholder={mc.preview.productName}
-                inputClassName="placeholder:text-sky-300"
-              />
-              <TextField
-                label="태그라인"
-                value={preview.tagline}
-                onChange={handlePreviewChange("tagline")}
-                placeholder={mc.preview.tagline}
-                inputClassName="placeholder:text-sky-300"
-              />
-              <label className="block">
-                <span className="mb-1.5 block text-sm font-medium text-slate-700">상품 설명</span>
-                <textarea
-                  className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-sky-300 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
-                  rows={3}
-                  value={preview.description}
-                  onChange={handlePreviewChange("description")}
-                  placeholder={mc.preview.description}
-                />
-              </label>
-              <TextField
-                label="가격"
-                value={preview.price}
-                onChange={handlePreviewChange("price")}
-                placeholder={mc.preview.price}
-                inputClassName="placeholder:text-sky-300"
-              />
-              <label className="block">
-                <span className="mb-1.5 block text-sm font-medium text-slate-700">꼭 들어갔으면 하는 사진</span>
-                <textarea
-                  className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-sky-300 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
-                  rows={3}
-                  value={preview.mustHavePhoto}
-                  onChange={handlePreviewChange("mustHavePhoto")}
-                  placeholder="예: 제품을 사용하는 모습"
-                />
-              </label>
-              {activeTemplate === "tpl-detail" && (
-                <label className="block">
-                  <span className="mb-1.5 block text-sm font-medium text-slate-700">스펙 정보 (상세설명 전용)</span>
-                  <textarea
-                    className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-sky-300 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
-                    rows={4}
-                    value={spec}
-                    onChange={(e) => setSpec(e.target.value)}
-                    placeholder={"사이즈: 20 x 10 x 5cm\n무게: 320g\n소재: 스테인리스 스틸\n색상: 블랙, 화이트"}
-                  />
-                  <span className="mt-1 block text-xs text-slate-400">
-                    한 줄에 하나씩 라벨: 값 형식으로 입력해주세요.
-                  </span>
-                </label>
-              )}
-            </div>
-          </Card>
+          </div>
         </div>
 
-        <div className="space-y-6">
-          <Card className="p-5">
-            <h3 className="mb-3 text-sm font-bold text-slate-900">{mc.templateSectionTitle}</h3>
+        <div className="rounded-lg border border-slate-200 bg-white">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-6 py-4">
+            <h2 className="text-sm font-bold text-slate-900">{mc.templateSectionTitle}</h2>
+            <TranslateMenu
+              activeLang={activeLang}
+              translating={translating}
+              onTranslate={runTranslate}
+              disabled={!hasMatchingResult}
+            />
+          </div>
+          <div className="p-6">
             <div className="mb-4 flex gap-2">
               {mc.templates.categories.map((c) => (
                 <button
@@ -657,34 +613,150 @@ export default function MarketingMaterialCreator() {
                   <button
                     key={t.id}
                     onClick={() => handleTemplateSelect(t.id)}
-                    className={`overflow-hidden rounded-xl border-2 text-left transition-colors ${
-                      activeTemplate === t.id ? "border-brand-500" : "border-slate-200 hover:border-slate-300"
+                    className={`overflow-hidden rounded-md border-2 text-left transition-all duration-300 ease-spring ${
+                      activeTemplate === t.id
+                        ? "border-brand-500 ring-4 ring-brand-100 scale-[1.02]"
+                        : "border-slate-200 hover:scale-[1.02] hover:border-brand-300 hover:ring-4 hover:ring-slate-100"
                     }`}
                   >
-                    <div className="flex h-20 items-center justify-center bg-slate-100 text-slate-400">
-                      <Icon name="documents" className="h-6 w-6" />
-                    </div>
+                    <TemplateThumb id={t.id} />
                     <div className="flex items-center justify-between px-3 py-2">
                       <span className="text-xs font-semibold text-slate-700">{t.name}</span>
-                      {activeTemplate === t.id && <Icon name="checkCircle" className="h-4 w-4 text-brand-600" />}
+                      {activeTemplate === t.id && <Icon name="checkCircle" className="w-5 h-5 text-brand-600" />}
                     </div>
                   </button>
                 ))}
             </div>
-          </Card>
+          </div>
+        </div>
+      </div>
 
-          <Card className="p-6">
-            <h3 className="mb-4 flex items-center gap-2 text-sm font-bold text-slate-900">
-              <Icon name="eye" className="h-4 w-4" />
+      {/* 2행: 상품 정보 입력 + 미리보기 */}
+      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <div className="rounded-lg border border-slate-200 bg-white">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-6 py-4">
+            <h2 className="text-sm font-bold text-slate-900">상품 정보 입력</h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outlineBrand" className="px-3 py-1.5 text-xs">
+                <Icon name="history" className="w-3.5 h-3.5" />
+                기존 정보 불러오기
+              </Button>
+              <Button
+                type="button"
+                variant="outlineBrand"
+                className="px-3 py-1.5 text-xs"
+                onClick={handleAiFillInfo}
+                disabled={aiFillingInfo}
+              >
+                <Icon name="sparkle" className="w-3.5 h-3.5" />
+                {aiFillingInfo ? "채우는 중..." : "AI로 채우기"}
+              </Button>
+            </div>
+          </div>
+          <div className="p-6">
+            {aiFillError && <p className="mb-3 text-xs font-medium text-red-500">{aiFillError}</p>}
+            <div className="space-y-4">
+              <label className="block">
+                <FieldLabel required>상품명</FieldLabel>
+                <input
+                  className={`${emptyFieldClass(!preview.productName.trim())} h-10`}
+                  value={preview.productName}
+                  onChange={handlePreviewChange("productName")}
+                  placeholder={mc.preview.productName}
+                />
+              </label>
+              <TextField
+                label="태그라인"
+                value={preview.tagline}
+                onChange={handlePreviewChange("tagline")}
+                placeholder={mc.preview.tagline}
+              />
+              <label className="block">
+                <FieldLabel>상품 설명</FieldLabel>
+                <textarea
+                  className={`${CONTROL_CLASS} py-2.5`}
+                  rows={3}
+                  value={preview.description}
+                  onChange={handlePreviewChange("description")}
+                  placeholder={mc.preview.description}
+                />
+              </label>
+              <TextField
+                label="가격"
+                value={preview.price}
+                onChange={handlePreviewChange("price")}
+                placeholder={mc.preview.price}
+              />
+              <label className="block">
+                <FieldLabel>꼭 들어갔으면 하는 사진</FieldLabel>
+                <textarea
+                  className={`${CONTROL_CLASS} py-2.5`}
+                  rows={3}
+                  value={preview.mustHavePhoto}
+                  onChange={handlePreviewChange("mustHavePhoto")}
+                  placeholder="예: 제품을 사용하는 모습"
+                />
+              </label>
+              {activeTemplate === "tpl-detail" && (
+                <label className="block">
+                  <FieldLabel>스펙 정보 (상세설명 전용)</FieldLabel>
+                  <textarea
+                    className={`${CONTROL_CLASS} py-2.5`}
+                    rows={4}
+                    value={spec}
+                    onChange={(e) => setSpec(e.target.value)}
+                    placeholder={"사이즈: 20 x 10 x 5cm\n무게: 320g\n소재: 스테인리스 스틸\n색상: 블랙, 화이트"}
+                  />
+                  <span className="mt-1 block text-xs text-slate-400">
+                    한 줄에 하나씩 라벨: 값 형식으로 입력해주세요.
+                  </span>
+                </label>
+              )}
+            </div>
+          </div>
+          <div className="border-t border-slate-100 p-6 pt-4">
+            <Button
+              className="w-full justify-center py-3.5 text-base"
+              onClick={handleGenerate}
+              disabled={generating}
+            >
+              <Icon name="sparkle" className="w-5 h-5" />
+              {generating ? "생성 중..." : "이미지 생성하기"}
+            </Button>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-slate-200 bg-white">
+          <div className="flex items-center justify-between gap-2 border-b border-slate-200 px-6 py-4">
+            <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900">
+              <Icon name="eye" className="w-5 h-5" />
               {mc.previewTitle}
-            </h3>
-
+            </h2>
+            <Button variant="secondary" className="px-3 py-1.5 text-xs" onClick={handleSaveImage} disabled={savingImage}>
+              <Icon name="download" className="w-3.5 h-3.5" />
+              {savingImage ? "저장 중..." : mc.actions.saveImage}
+            </Button>
+          </div>
+          <div className="p-6">
             {generating && (
-              <div className="flex min-h-[420px] flex-col items-center justify-center gap-3 rounded-xl bg-slate-100 p-8 text-center">
-                <Icon name="sparkle" className="h-8 w-8 animate-pulse text-brand-500" />
-                <p className="text-sm font-medium text-slate-600">
-                  이미지를 생성하고 있어요. 최대 1~2분 정도 걸릴 수 있어요.
-                </p>
+              <div className="relative flex min-h-[320px] flex-col items-center justify-center gap-3 overflow-hidden rounded-md border border-slate-200 bg-slate-900 p-8 text-center">
+                {uploadedImage && (
+                  <div
+                    className="absolute inset-0 bg-cover bg-center opacity-25 blur-[2px]"
+                    style={{ backgroundImage: `url(${uploadedImage})` }}
+                  />
+                )}
+                <div className="absolute inset-0 bg-gradient-to-b from-slate-900/70 via-slate-900/30 to-slate-900/70" />
+                {/* 위→아래로 스캔하는 브랜드 컬러 라인 + 은은한 쉬머 스윕. */}
+                <div className="pointer-events-none absolute inset-0 animate-shimmer bg-[length:200%_100%] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                <div className="pointer-events-none absolute inset-x-0 top-0 h-24 animate-scan-line bg-gradient-to-b from-transparent via-brand-400/50 to-transparent" />
+                <div className="pointer-events-none absolute inset-x-0 top-0 h-px animate-scan-line bg-brand-300 shadow-[0_0_16px_2px_theme(colors.brand.400)]" />
+
+                <div className="relative flex flex-col items-center gap-3">
+                  <Icon name="sparkle" className="w-6 h-6 animate-pulse text-brand-300" />
+                  <p className="text-sm font-semibold text-white">AI가 이미지를 생성하고 있어요</p>
+                  <p className="text-xs text-white/60">최대 1~2분 정도 걸릴 수 있어요</p>
+                </div>
               </div>
             )}
 
@@ -693,10 +765,10 @@ export default function MarketingMaterialCreator() {
                 className={
                   hasMatchingResult && layout === "detail"
                     ? ""
-                    : "flex min-h-[420px] items-center justify-center rounded-xl bg-slate-100 p-8"
+                    : "flex min-h-[320px] items-center justify-center rounded-md border border-dashed border-slate-200 bg-[radial-gradient(theme(colors.slate.300)_1px,transparent_1px)] bg-[size:16px_16px] p-6"
                 }
               >
-                <div ref={previewRef} className={hasMatchingResult && layout === "detail" ? "w-full" : "w-full max-w-sm"}>
+                <div ref={previewRef} className="w-full">
                   {!hasMatchingResult && <PlaceholderPreview uploadedImage={uploadedImage} />}
                   {hasMatchingResult && layout === "poster" && (
                     <PosterPreview images={generatedResult.images} preview={preview} />
@@ -716,13 +788,8 @@ export default function MarketingMaterialCreator() {
               </div>
             )}
 
-            {generateError && (
-              <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
-                {generateError}
-              </div>
-            )}
             {saveError && <p className="mt-3 text-xs font-medium text-red-500">{saveError}</p>}
-          </Card>
+          </div>
         </div>
       </div>
     </div>

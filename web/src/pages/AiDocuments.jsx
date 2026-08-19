@@ -72,10 +72,9 @@ export default function AiDocuments() {
             {businesses.map((b) => (
               <Card
                 key={b.id}
+                interactive
                 onClick={() => selectBusiness(b)}
-                className={`cursor-pointer p-5 transition-shadow hover:shadow-md ${
-                  selectedBusiness?.id === b.id ? "ring-2 ring-brand-400" : ""
-                }`}
+                className={`p-5 ${selectedBusiness?.id === b.id ? "border-brand-400 ring-2 ring-brand-100" : ""}`}
               >
                 <p className="font-bold text-slate-900">{b.name}</p>
                 {b.description && <p className="mt-1 text-sm text-slate-500">{b.description}</p>}
@@ -100,16 +99,14 @@ export default function AiDocuments() {
               {templates.map((t) => (
                 <Card key={t.id} className="flex items-center justify-between gap-3 p-4">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
-                      <Icon name="documents" className="h-5 w-5" />
-                    </div>
+                    <Icon name="documents" className="w-5 h-5 shrink-0 text-slate-500" />
                     <div>
                       <p className="font-semibold text-slate-900">{t.name}</p>
                       {t.form_number && <p className="text-xs text-slate-400">{t.form_number}</p>}
                     </div>
                   </div>
                   <Button className="px-4 py-2 text-sm" onClick={() => selectTemplate(t)}>
-                    <Icon name="sparkle" className="h-4 w-4" />
+                    <Icon name="sparkle" className="w-5 h-5" />
                     AI로 채우기
                   </Button>
                 </Card>

@@ -48,8 +48,7 @@ export default function Login() {
         <div className="pointer-events-none absolute bottom-0 right-0 h-96 w-96 translate-x-1/3 translate-y-1/3 rounded-full bg-brand-400/20 blur-3xl" />
 
         <Link to="/" className="relative z-10 flex items-center gap-2.5 text-white">
-          <img src={brand.logo} alt={brand.name} className="h-9 w-9 rounded-xl object-contain" />
-          <span className="text-lg font-bold tracking-tight">{brand.name}</span>
+          <img src={brand.logo} alt={brand.name} className="h-8 w-auto object-contain brightness-0 invert" />
         </Link>
 
         <div className="relative z-10">
@@ -73,14 +72,13 @@ export default function Login() {
       <div className="flex flex-1 flex-col items-center justify-center px-6 py-12">
         <div className="mb-8 flex w-full max-w-sm items-center justify-between lg:hidden">
           <Link to="/" className="flex items-center gap-2 text-brand-700">
-            <img src={brand.logo} alt={brand.name} className="h-8 w-8 rounded-lg object-contain" />
-            <span className="text-base font-bold">{brand.name}</span>
+            <img src={brand.logo} alt={brand.name} className="h-7 w-auto object-contain" />
           </Link>
           <Link
             to="/"
             className="flex items-center gap-1 text-sm font-medium text-slate-500 hover:text-slate-800"
           >
-            <Icon name="arrowLeft" className="h-3.5 w-3.5" />
+            <Icon name="arrowLeft" className="w-5 h-5" />
             {login.backLabel}
           </Link>
         </div>
@@ -90,7 +88,7 @@ export default function Login() {
             to="/"
             className="mb-6 hidden items-center gap-1.5 text-sm font-medium text-slate-400 hover:text-slate-700 lg:flex"
           >
-            <Icon name="arrowLeft" className="h-3.5 w-3.5" />
+            <Icon name="arrowLeft" className="w-5 h-5" />
             {login.backLabel}
           </Link>
 
@@ -118,7 +116,7 @@ export default function Login() {
               <div className="relative">
                 <Icon
                   name="user"
-                  className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+                  className="pointer-events-none absolute left-3.5 top-1/2 w-5 h-5 -translate-y-1/2 text-slate-500"
                 />
                 <input
                   type="email"
@@ -136,7 +134,7 @@ export default function Login() {
               <div className="relative">
                 <Icon
                   name="lock"
-                  className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+                  className="pointer-events-none absolute left-3.5 top-1/2 w-5 h-5 -translate-y-1/2 text-slate-500"
                 />
                 <input
                   type={showPassword ? "text" : "password"}
@@ -152,7 +150,7 @@ export default function Login() {
                   aria-label={showPassword ? "비밀번호 숨기기" : "비밀번호 표시"}
                   className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                 >
-                  <Icon name={showPassword ? "eyeOff" : "eye"} className="h-4 w-4" />
+                  <Icon name={showPassword ? "eyeOff" : "eye"} className="w-5 h-5" />
                 </button>
               </div>
             </label>
@@ -191,7 +189,7 @@ export default function Login() {
                 onClick={() => handleSocialLogin(login.socialLoginUrls.google)}
                 className="flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-2.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50"
               >
-                <Icon name="globe" className="h-3.5 w-3.5" />
+                <Icon name="globe" className="w-5 h-5" />
                 Google
               </button>
               <button
@@ -199,7 +197,7 @@ export default function Login() {
                 onClick={() => handleSocialLogin(login.socialLoginUrls.enterprise)}
                 className="flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-2.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50"
               >
-                <Icon name="building" className="h-3.5 w-3.5" />
+                <Icon name="building" className="w-5 h-5" />
                 기업/기관 SSO
               </button>
             </div>

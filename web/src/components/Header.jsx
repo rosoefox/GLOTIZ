@@ -66,7 +66,7 @@ export default function Header({ overlay = false, scrolled = false }) {
                 }`}
               >
                 {item.label}
-                <Icon name="lock" className="h-3 w-3" />
+                <Icon name="lock" className="w-3.5 h-3.5" />
               </button>
             );
           }
@@ -123,7 +123,7 @@ export default function Header({ overlay = false, scrolled = false }) {
                     className="flex items-center gap-1.5 border-b border-slate-50 py-3 text-left text-sm font-medium text-slate-400 last:border-b-0"
                   >
                     {item.label}
-                    <Icon name="lock" className="h-3 w-3" />
+                    <Icon name="lock" className="w-3.5 h-3.5" />
                   </button>
                 );
               }

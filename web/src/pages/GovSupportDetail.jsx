@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import Icon from "../components/Icon";
-import { Card, Button } from "../components/ui";
+import { Card, CardHeader, CardTitle, CardContent, Button } from "../components/ui";
 import { govSupport as gs, govAnnouncementDetails } from "../data/mockData";
 import { supabase } from "../lib/supabase";
 
@@ -59,7 +59,7 @@ export default function GovSupportDetail() {
       <div className="mx-auto max-w-3xl px-4 py-8 sm:px-8">
         <p className="text-sm text-slate-400">해당 공고를 찾을 수 없습니다.</p>
         <Button variant="secondary" className="mt-4" onClick={() => navigate(-1)}>
-          <Icon name="arrowLeft" className="h-4 w-4" /> 목록으로
+          <Icon name="arrowLeft" className="w-5 h-5" /> 목록으로
         </Button>
       </div>
     );
@@ -72,45 +72,53 @@ export default function GovSupportDetail() {
         onClick={() => navigate(-1)}
         className="mb-4 flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-800"
       >
-        <Icon name="arrowLeft" className="h-4 w-4" /> 목록으로
+        <Icon name="arrowLeft" className="w-5 h-5" /> 목록으로
       </button>
 
       <h1 className="text-3xl font-extrabold text-slate-900">{gs.detailPageTitle}</h1>
       <p className="mt-2 text-lg font-bold text-brand-700">{business.name}</p>
 
-      <Card className="mt-6 p-6">
-        <h2 className="mb-3 text-sm font-bold text-slate-900">{gs.basicInfoTitle}</h2>
-        <dl className="space-y-2">
-          {detail ? (
-            <>
-              <Row label={gs.basicInfoLabels.org} value={detail.org} />
-              <Row label={gs.basicInfoLabels.period} value={detail.period} />
-              <Row label={gs.basicInfoLabels.target} value={detail.target} />
-              <Row label={gs.basicInfoLabels.support} value={detail.support} />
-              <Row label={gs.basicInfoLabels.contact} value={detail.contact} />
-            </>
-          ) : (
-            business.description && <Row label="안내" value={business.description} />
-          )}
-        </dl>
+      <Card className="mt-6">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm">{gs.basicInfoTitle}</CardTitle>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <dl className="space-y-2">
+            {detail ? (
+              <>
+                <Row label={gs.basicInfoLabels.org} value={detail.org} />
+                <Row label={gs.basicInfoLabels.period} value={detail.period} />
+                <Row label={gs.basicInfoLabels.target} value={detail.target} />
+                <Row label={gs.basicInfoLabels.support} value={detail.support} />
+                <Row label={gs.basicInfoLabels.contact} value={detail.contact} />
+              </>
+            ) : (
+              business.description && <Row label="안내" value={business.description} />
+            )}
+          </dl>
+        </CardContent>
       </Card>
 
       <Button className="mt-6 w-full justify-center py-4 text-base" onClick={handleApply}>
-        <Icon name="sparkle" className="h-4 w-4" />
+        <Icon name="sparkle" className="w-5 h-5" />
         {gs.applyButtonLabel}
       </Button>
 
-      <Card className="mt-6 p-6">
-        <h2 className="mb-4 text-sm font-bold text-slate-900">{gs.previewSectionTitle}</h2>
-        {business.reference_file_path ? (
-          <iframe
-            title="기본서류 미리보기"
-            src={`${BACKEND_URL}/businesses/${business.id}/reference-doc/preview-pdf`}
-            className="h-[420px] w-full rounded-xl border border-slate-200 sm:h-[600px] lg:h-[900px]"
-          />
-        ) : (
-          <p className="text-sm text-slate-400">{gs.previewUnavailable}</p>
-        )}
+      <Card className="mt-6">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm">{gs.previewSectionTitle}</CardTitle>
+        </CardHeader>
+        <CardContent className="pt-0">
+          {business.reference_file_path ? (
+            <iframe
+              title="기본서류 미리보기"
+              src={`${BACKEND_URL}/businesses/${business.id}/reference-doc/preview-pdf`}
+              className="h-[420px] w-full rounded-md border border-slate-200 sm:h-[600px] lg:h-[900px]"
+            />
+          ) : (
+            <p className="text-sm text-slate-400">{gs.previewUnavailable}</p>
+          )}
+        </CardContent>
       </Card>
     </div>
   );

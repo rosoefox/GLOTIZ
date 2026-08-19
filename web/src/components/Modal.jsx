@@ -43,7 +43,7 @@ export default function Modal({ title, onClose, children, width = "max-w-md" }) 
           aria-label="닫기"
           className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700"
         >
-          <Icon name="x" className="h-4 w-4" />
+          <Icon name="x" className="w-5 h-5" />
         </button>
       </div>
       <div className="max-h-[80vh] overflow-y-auto p-6">{children}</div>

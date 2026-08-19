@@ -5,17 +5,25 @@ export default {
     extend: {
       colors: {
         brand: {
-          50: "#f7f6fb",
-          100: "#eae6fa",
-          200: "#d5caf9",
-          300: "#bba9f9",
-          400: "#a186fb",
-          500: "#9171fb",
-          600: "#8764fb",
-          700: "#5e31f4",
-          800: "#4215d5",
-          900: "#381b98",
+          50: "#f0f2fe",
+          100: "#e2e5fe",
+          200: "#c9cffd",
+          300: "#acb4fb",
+          400: "#8f9afa",
+          500: "#808df9",
+          600: "#7583f9",
+          700: "#4558f7",
+          800: "#142cf5",
+          900: "#091ecd",
         },
+      },
+      // 카드/섹션 박스의 둥근 정도를 사이트 전체에서 한 번에 낮춘다 (rounded-full은 배지/아바타/
+      // 원형 버튼용이라 그대로 둔다). rounded-lg 이상을 쓰던 곳은 전부 이 값으로 좁혀진다.
+      borderRadius: {
+        lg: "0.375rem",
+        xl: "0.375rem",
+        "2xl": "0.375rem",
+        "3xl": "0.5rem",
       },
       fontFamily: {
         sans: [
@@ -26,6 +34,10 @@ export default {
           "system-ui",
           "sans-serif",
         ],
+      },
+      // 살짝 튕기는 스프링 느낌의 hover/select 트랜지션에 쓴다 (back-out 근사 곡선).
+      transitionTimingFunction: {
+        spring: "cubic-bezier(0.34, 1.56, 0.64, 1)",
       },
       keyframes: {
         marquee: {
@@ -53,6 +65,16 @@ export default {
           "0%": { backgroundPosition: "0 0" },
           "100%": { backgroundPosition: "0 28px" },
         },
+        "scan-line": {
+          "0%": { transform: "translateY(-100%)", opacity: "0" },
+          "10%": { opacity: "1" },
+          "90%": { opacity: "1" },
+          "100%": { transform: "translateY(calc(100% + 100%))", opacity: "0" },
+        },
+        shimmer: {
+          "0%": { backgroundPosition: "-200% 0" },
+          "100%": { backgroundPosition: "200% 0" },
+        },
       },
       animation: {
         marquee: "marquee 26s linear infinite",
@@ -61,6 +83,8 @@ export default {
         "ship-bob": "ship-bob 4.5s ease-in-out infinite",
         "ship-cruise": "ship-cruise 4.5s cubic-bezier(0.34,0,0.2,1) infinite",
         "wake-flow": "wake-flow 1.1s linear infinite",
+        "scan-line": "scan-line 2.2s ease-in-out infinite",
+        shimmer: "shimmer 1.8s linear infinite",
       },
     },
   },

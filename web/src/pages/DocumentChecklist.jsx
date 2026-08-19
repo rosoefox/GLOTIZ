@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import Icon from "../components/Icon";
-import { Badge, Card, Button } from "../components/ui";
+import { Badge, Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter, Button } from "../components/ui";
 import LoginPopup from "../components/LoginPopup";
 import { documentChecklist as dc, govAnnouncementDetails } from "../data/mockData";
 import { useAuth } from "../context/AuthContext";
@@ -65,17 +65,16 @@ function GovTemplateGroup({
           return (
             <div key={t.id} className="flex flex-wrap items-center justify-between gap-3 p-4">
               <div className="flex items-center gap-3">
-                <div
-                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
+                <Icon
+                  name={statusKey === "reviewed" ? "checkCircle" : "documents"}
+                  className={`w-5 h-5 shrink-0 ${
                     statusKey === "reviewed"
-                      ? "bg-emerald-50 text-emerald-600"
+                      ? "text-emerald-600"
                       : statusKey === "needsRevision"
-                        ? "bg-red-50 text-red-500"
-                        : "bg-slate-100 text-slate-400"
+                        ? "text-red-500"
+                        : "text-slate-500"
                   }`}
-                >
-                  <Icon name={statusKey === "reviewed" ? "checkCircle" : "documents"} className="h-5 w-5" />
-                </div>
+                />
                 <div>
                   <p className="flex items-center gap-2 font-semibold text-slate-900">
                     {t.form_number && <span className="text-slate-400">{t.form_number}.</span>}
@@ -99,11 +98,11 @@ function GovTemplateGroup({
                 {t.user_upload_required ? (
                   <>
                     <a href="#" target="_blank" rel="noopener noreferrer" className={SECONDARY_BUTTON_CLASS}>
-                      <Icon name="externalLink" className="h-3.5 w-3.5" />
+                      <Icon name="externalLink" className="w-5 h-5" />
                       {dc.issueLinkLabel}
                     </a>
                     <label className={`cursor-pointer ${SECONDARY_BUTTON_CLASS} ${isUploading ? "opacity-50" : ""}`}>
-                      <Icon name="upload" className="h-3.5 w-3.5" />
+                      <Icon name="upload" className="w-5 h-5" />
                       {isUploading ? dc.uploadingLabel : dc.uploadButtonLabel}
                       <input
                         type="file"
@@ -162,8 +161,9 @@ function ProgramCard({ business, progress, onClick }) {
   const complete = total > 0 && done >= total;
   return (
     <Card
+      interactive
       onClick={onClick}
-      className={`flex h-full cursor-pointer flex-col justify-between overflow-hidden p-4 transition-shadow hover:shadow-md ${
+      className={`flex h-full flex-col justify-between overflow-hidden p-4 ${
         complete ? "ring-2 ring-emerald-300" : "ring-2 ring-amber-300"
       }`}
     >
@@ -171,7 +171,7 @@ function ProgramCard({ business, progress, onClick }) {
         <div className="mb-2 flex items-center justify-between gap-2">
           <Badge tone="brand">모집 공고</Badge>
           <Badge tone={complete ? "success" : "warning"}>
-            <Icon name={complete ? "checkCircle" : "history"} className="h-3 w-3" />
+            <Icon name={complete ? "checkCircle" : "history"} className="w-3.5 h-3.5" />
             제출 {done}/{total}
           </Badge>
         </div>
@@ -436,7 +436,7 @@ export default function DocumentChecklist() {
             onClick={() => navigate(-1)}
             className="mb-4 flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-800"
           >
-            <Icon name="arrowLeft" className="h-4 w-4" /> 지원사업 목록으로
+            <Icon name="arrowLeft" className="w-5 h-5" /> 지원사업 목록으로
           </button>
 
           <div className="mb-3">
@@ -460,34 +460,38 @@ export default function DocumentChecklist() {
               {uploadError && (
                 <p className="mb-4 text-xs font-medium text-red-500">{uploadError}</p>
               )}
-              <Card className="mt-2 p-6">
-                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <Card className="mt-2">
+                <CardHeader className="flex-row flex-wrap items-center justify-between gap-2">
                   <div>
-                    <h3 className="text-lg font-bold text-slate-900">전체 서류 준비 현황</h3>
-                    <p className="mt-1 text-sm text-slate-500">이 지원사업에 필요한 전체 서류의 작성 진행률입니다.</p>
+                    <CardTitle>전체 서류 준비 현황</CardTitle>
+                    <CardDescription className="mt-1">이 지원사업에 필요한 전체 서류의 작성 진행률입니다.</CardDescription>
                   </div>
                   <span className="text-2xl font-extrabold" style={{ color: progressColor(govPercent) }}>
                     {govPercent}% {dc.overallSuffix}
                   </span>
-                </div>
-                <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
-                  <div
-                    className="h-2.5 rounded-full transition-all"
-                    style={{ width: `${govPercent}%`, backgroundColor: progressColor(govPercent) }}
-                  />
-                </div>
-                <div className="mt-1 flex justify-between text-xs text-slate-400">
-                  <span>0%</span>
-                  <span>100%</span>
-                </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
+                    <div
+                      className="h-2.5 rounded-full transition-all"
+                      style={{ width: `${govPercent}%`, backgroundColor: progressColor(govPercent) }}
+                    />
+                  </div>
+                  <div className="mt-1 flex justify-between text-xs text-slate-400">
+                    <span>0%</span>
+                    <span>100%</span>
+                  </div>
+                </CardContent>
                 {govPercent === 100 && (
-                  <Link
-                    to="/marketing"
-                    className="mt-4 flex w-full items-center justify-center gap-1.5 rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-brand-700"
-                  >
-                    <Icon name="sparkle" className="h-3.5 w-3.5" />
-                    마케팅을 위한 AI 이미지 생성하러 가기
-                  </Link>
+                  <CardFooter>
+                    <Link
+                      to="/marketing"
+                      className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-brand-700"
+                    >
+                      <Icon name="sparkle" className="w-5 h-5" />
+                      마케팅을 위한 AI 이미지 생성하러 가기
+                    </Link>
+                  </CardFooter>
                 )}
               </Card>
             </>

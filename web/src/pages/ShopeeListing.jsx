@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Icon from "../components/Icon";
-import { Card, Button } from "../components/ui";
+import { Card, Button, emptyFieldClass, SectionCardHeader } from "../components/ui";
 import { shopeeListing as sl } from "../data/mockData";
+import sellerScreenImage from "../../셀러 화면.png";
 import { useMarketingImages } from "../context/MarketingImagesContext";
 import { useExportItems } from "../context/ExportItemsContext";
 import { useAuth } from "../context/AuthContext";
@@ -10,10 +11,12 @@ import { readErrorMessage } from "../lib/apiError";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
 
-// AI 자동완성/추천 버튼이 따로 없어서 사용자가 직접 채워야 하는 항목들 — 비어 있는 동안은
-// 포커스를 준 것처럼 보라색 테두리로 강조해서 채우는 걸 잊지 않게 하고, 값을 입력하면
-// 바로 원래(회색 테두리) 모습으로 돌아온다.
-const HIGHLIGHT_WHEN_EMPTY = new Set(["shelfLife", "stock", "weight", "daysToShip"]);
+// "이전 정보 불러오기"(전체 일괄, 매칭되는 값이 있을 때만)나 필드 옆 전용 AI 버튼(AI로
+// 채우기/가격 추천받기)으로 채워지는 항목(description, price)을 뺀 나머지는 사용자가 직접
+// 입력해야 하는 항목들이다 — 비어 있는 동안은 테두리를 브랜드 색으로 강조해서 채우는 걸
+// 잊지 않게 하고, 값을 입력하면 바로 원래(회색 테두리) 모습으로 돌아온다.
+const AI_ASSISTED_FIELD_KEYS = new Set(sl.fields.filter((f) => f.aiFillable || f.priceSuggestable).map((f) => f.key));
+const HIGHLIGHT_WHEN_EMPTY = new Set(sl.fields.map((f) => f.key).filter((k) => !AI_ASSISTED_FIELD_KEYS.has(k)));
 
 // 서류(template_fields)의 field_key는 사업별로 제각각이라, 흔히 쓰이는 패턴으로
 // 쇼피 입력 항목과 매칭한다. 여러 서류에 걸쳐 값이 있으면 가장 최근 값을 쓴다.
@@ -29,6 +32,13 @@ const FIELD_KEY_PATTERNS = {
   daysToShip: /days.?to.?ship|배송.?준비|리드타임/i,
 };
 
+// 쇼피 입력 항목(원래는 카테고리 구분 없이 한 줄로 쭉 나열됨)을 오른쪽 작성 현황 패널에서
+// 섹션별로 체크할 수 있도록 두 그룹으로 나눈다.
+const FIELD_GROUPS = [
+  { title: "기본 정보", keys: ["productName", "category", "brand", "description"] },
+  { title: "판매 정보", keys: ["price", "stock", "shelfLife", "weight", "daysToShip"] },
+].map((g) => ({ ...g, fields: g.keys.map((k) => sl.fields.find((f) => f.key === k)).filter(Boolean) }));
+
 function mockAiDescription(productName, category) {
   const name = productName?.trim() || "이 상품";
   const cat = category?.trim() || "관심 카테고리";
@@ -43,7 +53,7 @@ function CopyButton({ copied, onClick }) {
       className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-300 text-slate-500 hover:bg-slate-50"
       aria-label={sl.copyLabel}
     >
-      <Icon name={copied ? "check" : "documents"} className="h-4 w-4" />
+      <Icon name={copied ? "check" : "documents"} className="w-5 h-5" />
     </button>
   );
 }
@@ -58,7 +68,7 @@ function ImagePickerButton({ onPick }) {
         onClick={() => setOpen((v) => !v)}
         className="flex items-center gap-1.5 rounded-lg border border-brand-300 bg-brand-50/60 px-2.5 py-1.5 text-[11px] font-semibold text-brand-700 hover:bg-brand-50"
       >
-        <Icon name="sparkle" className="h-3 w-3" />
+        <Icon name="sparkle" className="w-3.5 h-3.5" />
         {sl.imagePickerLabel}
       </button>
       {open && (
@@ -105,7 +115,7 @@ function ProductImages({ images, onAdd, onRemove }) {
         <div className="flex items-center gap-2">
           <ImagePickerButton onPick={onAdd} />
           <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-50">
-            <Icon name="upload" className="h-3 w-3" />
+            <Icon name="upload" className="w-3.5 h-3.5" />
             {sl.imageUploadLabel}
             <input type="file" accept="image/*" className="hidden" onChange={handleUpload} />
           </label>
@@ -124,13 +134,13 @@ function ProductImages({ images, onAdd, onRemove }) {
               className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity group-hover:opacity-100"
               aria-label="삭제"
             >
-              <Icon name="x" className="h-3 w-3" />
+              <Icon name="x" className="w-3.5 h-3.5" />
             </button>
           </div>
         ))}
         {images.length === 0 && (
           <div className="flex h-20 w-20 items-center justify-center rounded-lg border-2 border-dashed border-slate-200 text-slate-300">
-            <Icon name="camera" className="h-6 w-6" />
+            <Icon name="camera" className="w-5 h-5" />
           </div>
         )}
       </div>
@@ -182,9 +192,9 @@ function PriceSuggestion({ values, onApply }) {
           onClick={() => setOpen((v) => !v)}
           disabled={loading || !values.productName}
         >
-          <Icon name="sparkle" className="h-3 w-3" />
+          <Icon name="sparkle" className="w-3.5 h-3.5" />
           {loading ? sl.priceSuggestPendingLabel : sl.priceSuggestLabel}
-          <Icon name="chevronDown" className={`h-3 w-3 transition-transform ${open ? "rotate-180" : ""}`} />
+          <Icon name="chevronDown" className={`w-3.5 h-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
         </Button>
         {open && (
           <div className="absolute left-0 top-full z-10 mt-1 w-44 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg">
@@ -230,7 +240,7 @@ function TranslatePanel({ values, activeLang, translating, onTranslate }) {
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       <span className="mr-1 text-xs font-medium text-slate-500">
-        <Icon name="globe" className="mr-1 inline h-3.5 w-3.5 align-[-2px]" />
+        <Icon name="globe" className="mr-1 inline w-3.5 h-3.5 align-[-2px]" />
         {sl.translateAllLabel}
       </span>
       <button
@@ -276,6 +286,29 @@ export default function ShopeeListing() {
   const [translateError, setTranslateError] = useState(null);
   const [originalValues, setOriginalValues] = useState(null); // 번역 전 한글 원본 백업 (되돌리기용)
   const [activeLang, setActiveLang] = useState(null); // null이면 한국어 원본 상태
+
+  const [activeStep, setActiveStep] = useState(0);
+  const sectionRefs = useRef([]);
+  sectionRefs.current = [];
+  const registerSection = (el) => {
+    if (el && !sectionRefs.current.includes(el)) sectionRefs.current.push(el);
+  };
+
+  useEffect(() => {
+    const els = sectionRefs.current;
+    if (!els.length) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries.filter((e) => e.isIntersecting);
+        if (!visible.length) return;
+        const topMost = visible.reduce((a, b) => (a.boundingClientRect.top < b.boundingClientRect.top ? a : b));
+        setActiveStep(Number(topMost.target.dataset.stepIndex));
+      },
+      { rootMargin: "-88px 0px -55% 0px", threshold: 0 }
+    );
+    els.forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  }, []);
 
   const updateValue = (key, value) => setValues((prev) => ({ ...prev, [key]: value }));
 
@@ -409,18 +442,18 @@ export default function ShopeeListing() {
                 rel="noreferrer"
                 className="mt-4 inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700"
               >
-                <Icon name="play" className="h-4 w-4" />
+                <Icon name="play" className="w-5 h-5" />
                 {sl.guideVideoLabel}
-                <Icon name="externalLink" className="h-3.5 w-3.5" />
+                <Icon name="externalLink" className="w-5 h-5" />
               </a>
             ) : (
               <span className="mt-4 inline-flex cursor-not-allowed items-center gap-2 rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-400">
-                <Icon name="play" className="h-4 w-4" />
+                <Icon name="play" className="w-5 h-5" />
                 {sl.guideVideoLabel}
               </span>
             )}
             <p className="mt-2 flex items-center gap-1.5 text-xs text-slate-400">
-              <Icon name="help" className="h-3.5 w-3.5" />
+              <Icon name="help" className="w-3.5 h-3.5" />
               {sl.guideVideoUrl ? sl.officialGuide.note : sl.guideVideoPendingNote}
             </p>
           </div>
@@ -429,21 +462,17 @@ export default function ShopeeListing() {
             href={sl.guideVideoUrl || undefined}
             target="_blank"
             rel="noreferrer"
-            className={`group relative block aspect-video w-full overflow-hidden rounded-2xl bg-gradient-to-br from-orange-500 to-orange-600 p-6 text-white shadow-lg ${
+            className={`group relative block aspect-video w-full overflow-hidden rounded-2xl text-white shadow-lg ${
               sl.guideVideoUrl ? "" : "pointer-events-none opacity-70"
             }`}
           >
-            <div className="flex items-center gap-1.5 text-lg font-extrabold">
-              <Icon name="box" className="h-5 w-5" />
-              Shopee
-            </div>
-            <p className="mt-4 text-xl font-extrabold leading-snug">{sl.officialGuide.thumbnailKicker}</p>
-            <p className="mt-2 max-w-[70%] text-xs leading-relaxed text-white/90">{sl.officialGuide.thumbnailDescription}</p>
+            <img
+              src={sellerScreenImage}
+              alt="Shopee 셀러 화면"
+              className="absolute inset-0 h-full w-full object-cover"
+            />
             <span className="absolute right-4 top-1/2 flex h-14 w-14 -translate-y-1/2 items-center justify-center rounded-full bg-black/30 transition-transform group-hover:scale-110">
-              <Icon name="play" className="h-6 w-6 text-white" />
-            </span>
-            <span className="absolute bottom-3 right-3 rounded bg-black/60 px-2 py-1 text-[11px] font-semibold">
-              {sl.officialGuide.thumbnailDuration}
+              <Icon name="play" className="w-5 h-5 text-white" />
             </span>
           </a>
         </div>
@@ -463,14 +492,14 @@ export default function ShopeeListing() {
               {idx < sl.supportSteps.steps.length - 1 && (
                 <Icon
                   name="arrowRight"
-                  className="absolute right-[-1.5rem] top-6 hidden h-4 w-4 text-slate-300 lg:block"
+                  className="absolute right-[-1.5rem] top-6 hidden w-5 h-5 text-slate-400 lg:block"
                 />
               )}
-              <div className="relative mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-white text-brand-600 shadow-sm">
+              <div className="relative mx-auto mb-3 flex h-14 w-14 items-center justify-center">
                 <span className="absolute -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-brand-600 text-[10px] font-bold text-white">
                   {String(idx + 1).padStart(2, "0")}
                 </span>
-                <Icon name={step.icon} className="h-6 w-6" />
+                <Icon name={step.icon} className="w-5 h-5 text-slate-500" />
               </div>
               <p className="text-sm font-bold text-slate-900">{step.title}</p>
               <p className="mt-1 text-xs leading-relaxed text-slate-500">{step.description}</p>
@@ -487,81 +516,160 @@ export default function ShopeeListing() {
       {loadError && <p className="mb-3 text-xs font-medium text-red-500">{loadError}</p>}
       {translateError && <p className="mb-3 text-xs font-medium text-red-500">{translateError}</p>}
 
-      {/* 실제 입력 폼 (기능 동일) */}
-      <Card className="p-6">
-        <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-bold text-slate-900">{sl.formTitle}</h2>
-            <p className="mt-1 text-sm text-slate-500">{sl.formSubtitle}</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button type="button" variant="secondary" className="px-3 py-2 text-xs" onClick={loadPreviousInfo} disabled={loadingPrevious}>
-              <Icon name="history" className="h-3.5 w-3.5" />
-              {loadingPrevious ? "불러오는 중..." : sl.loadPreviousLabel}
-            </Button>
-            <TranslatePanel values={values} activeLang={activeLang} translating={translating} onTranslate={runTranslate} />
-          </div>
+      {/* 실제 입력 폼 (기능 동일, 오른쪽에 작성 현황 요약 패널) */}
+      <div>
+        <h2 className="text-lg font-bold text-slate-900">{sl.formTitle}</h2>
+        <p className="mt-1 text-sm text-slate-500">{sl.formSubtitle}</p>
+
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <Button type="button" variant="outlineBrand" className="px-3.5 py-2 text-xs" onClick={loadPreviousInfo} disabled={loadingPrevious}>
+            <Icon name="history" className="w-3.5 h-3.5" />
+            {loadingPrevious ? "불러오는 중..." : sl.loadPreviousLabel}
+          </Button>
+          <TranslatePanel values={values} activeLang={activeLang} translating={translating} onTranslate={runTranslate} />
         </div>
 
-        <div className="mb-5">
-          <ProductImages images={images} onAdd={addImage} onRemove={removeImage} />
-        </div>
-
-        <div className="grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-2">
-        {sl.fields.map((field) => {
-          const isEmptyHighlighted = HIGHLIGHT_WHEN_EMPTY.has(field.key) && !(values[field.key] ?? "").toString().trim();
-          const fieldInputClass = `w-full rounded-lg border px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100 ${
-            isEmptyHighlighted ? "border-brand-500 bg-white ring-2 ring-brand-100" : "border-slate-300 bg-slate-50"
-          }`;
-          return (
-            <div key={field.key} className={field.multiline ? "sm:col-span-2" : ""}>
-              <div className="mb-1 flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
-                <span className="text-sm font-bold text-slate-800">
-                  {field.label}
-                  <span className="ml-1.5 text-xs font-normal text-slate-400">{field.ko}</span>
-                </span>
-                {field.aiFillable && (
-                  <Button
-                    type="button"
-                    variant="outlineBrand"
-                    className="px-2 py-0.5 text-[10px]"
-                    onClick={() => aiFill(field.key)}
-                  >
-                    <Icon name="sparkle" className="h-3 w-3" />
-                    {sl.aiFillLabel}
-                  </Button>
-                )}
+        <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[1fr_300px]">
+          <div className="space-y-6">
+            <div
+              ref={registerSection}
+              data-step-index={0}
+              className="rounded-lg border border-slate-200 bg-white"
+            >
+              <SectionCardHeader title="상품 이미지" />
+              <div className="p-6">
+                <ProductImages images={images} onAdd={addImage} onRemove={removeImage} />
               </div>
-              <div className="flex items-start gap-2">
-                {field.multiline ? (
-                  <textarea
-                    rows={3}
-                    value={values[field.key] ?? ""}
-                    onChange={(e) => updateValue(field.key, e.target.value)}
-                    placeholder={field.placeholder}
-                    className={fieldInputClass}
-                  />
-                ) : (
-                  <input
-                    value={values[field.key] ?? ""}
-                    onChange={(e) => updateValue(field.key, e.target.value)}
-                    placeholder={field.placeholder}
-                    className={fieldInputClass}
-                  />
-                )}
-                <CopyButton copied={copiedKey === field.key} onClick={() => copyField(field.key, values[field.key])} />
-              </div>
-              {field.priceSuggestable && <PriceSuggestion values={values} onApply={(price) => updateValue(field.key, price)} />}
             </div>
-          );
-        })}
-        </div>
 
-        <p className="mt-6 flex items-center gap-1.5 border-t border-slate-100 pt-4 text-xs text-slate-400">
-          <Icon name="help" className="h-3.5 w-3.5 shrink-0" />
-          {sl.formNote}
-        </p>
-      </Card>
+            {FIELD_GROUPS.map((group, groupIdx) => (
+              <div
+                key={group.title}
+                ref={registerSection}
+                data-step-index={groupIdx + 1}
+                className="rounded-lg border border-slate-200 bg-white"
+              >
+                <SectionCardHeader title={group.title} />
+                <div className="grid grid-cols-1 gap-x-6 gap-y-5 p-6 sm:grid-cols-2">
+                  {group.fields.map((field) => {
+                    const isEmptyHighlighted =
+                      HIGHLIGHT_WHEN_EMPTY.has(field.key) && !(values[field.key] ?? "").toString().trim();
+                    const fieldInputClass = `${emptyFieldClass(isEmptyHighlighted)} ${field.multiline ? "py-2.5" : "h-10"}`;
+                    return (
+                      <div key={field.key} className={field.multiline ? "sm:col-span-2" : ""}>
+                        <div className="mb-1.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+                          <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                            {field.label}
+                            <span className="ml-1.5 normal-case tracking-normal text-slate-400">{field.ko}</span>
+                          </span>
+                          {field.aiFillable && (
+                            <Button
+                              type="button"
+                              variant="outlineBrand"
+                              className="px-2 py-0.5 text-[10px]"
+                              onClick={() => aiFill(field.key)}
+                            >
+                              <Icon name="sparkle" className="w-3.5 h-3.5" />
+                              {sl.aiFillLabel}
+                            </Button>
+                          )}
+                        </div>
+                        <div className="flex items-start gap-2">
+                          {field.multiline ? (
+                            <textarea
+                              rows={3}
+                              value={values[field.key] ?? ""}
+                              onChange={(e) => updateValue(field.key, e.target.value)}
+                              placeholder={field.placeholder}
+                              className={fieldInputClass}
+                            />
+                          ) : (
+                            <input
+                              value={values[field.key] ?? ""}
+                              onChange={(e) => updateValue(field.key, e.target.value)}
+                              placeholder={field.placeholder}
+                              className={fieldInputClass}
+                            />
+                          )}
+                          <CopyButton copied={copiedKey === field.key} onClick={() => copyField(field.key, values[field.key])} />
+                        </div>
+                        {field.priceSuggestable && (
+                          <PriceSuggestion values={values} onApply={(price) => updateValue(field.key, price)} />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <aside className="lg:sticky lg:top-24 lg:self-start">
+            <div className="rounded-lg border border-slate-200 bg-white p-5">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">작성 현황</p>
+              <p className="mt-1.5 flex items-baseline gap-1">
+                <span className="text-2xl font-bold text-slate-900">
+                  {sl.fields.filter((f) => (values[f.key] ?? "").toString().trim()).length}
+                </span>
+                <span className="text-sm font-medium text-slate-400">/ {sl.fields.length}건 입력</span>
+              </p>
+              <div className="mt-2.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+                <div
+                  className="h-1.5 rounded-full bg-brand-600 transition-all"
+                  style={{
+                    width: `${Math.round(
+                      (sl.fields.filter((f) => (values[f.key] ?? "").toString().trim()).length / sl.fields.length) * 100
+                    )}%`,
+                  }}
+                />
+              </div>
+
+              <div className="mt-5 space-y-3 border-t border-slate-100 pt-4">
+                <div className="flex items-center justify-between gap-2 text-sm">
+                  <span
+                    className={`flex items-center gap-2 ${
+                      activeStep === 0 ? "font-semibold text-slate-900" : "text-slate-500"
+                    }`}
+                  >
+                    <Icon
+                      name={images.length > 0 ? "checkCircle" : "camera"}
+                      className={`w-4 h-4 shrink-0 ${images.length > 0 ? "text-emerald-500" : "text-slate-300"}`}
+                    />
+                    상품 이미지
+                  </span>
+                  <span className="shrink-0 text-xs text-slate-400">{images.length}장</span>
+                </div>
+                {FIELD_GROUPS.map((group, idx) => {
+                  const done = group.fields.filter((f) => (values[f.key] ?? "").toString().trim()).length;
+                  return (
+                    <div key={group.title} className="flex items-center justify-between gap-2 text-sm">
+                      <span
+                        className={`flex items-center gap-2 ${
+                          activeStep === idx + 1 ? "font-semibold text-slate-900" : "text-slate-500"
+                        }`}
+                      >
+                        <Icon
+                          name={done === group.fields.length ? "checkCircle" : "documents"}
+                          className={`w-4 h-4 shrink-0 ${done === group.fields.length ? "text-emerald-500" : "text-slate-300"}`}
+                        />
+                        {group.title}
+                      </span>
+                      <span className="shrink-0 text-xs text-slate-400">
+                        {done}/{group.fields.length}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <p className="mt-5 flex items-start gap-1.5 border-t border-slate-100 pt-4 text-xs text-slate-400">
+                <Icon name="help" className="w-3.5 h-3.5 shrink-0" />
+                {sl.formNote}
+              </p>
+            </div>
+          </aside>
+        </div>
+      </div>
     </div>
   );
 }

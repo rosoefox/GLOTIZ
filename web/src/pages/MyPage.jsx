@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import Icon from "../components/Icon";
-import { Card, Button, TextField } from "../components/ui";
+import { Card, CardHeader, CardTitle, CardDescription, CardFooter, Button, TextField } from "../components/ui";
 import { myPage as mp } from "../data/mockData";
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../lib/supabase";
@@ -82,7 +82,7 @@ export default function MyPage() {
           to="/my-applications"
           className="mb-6 flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600 hover:bg-red-100"
         >
-          <Icon name="bell" className="h-4 w-4 shrink-0" />
+          <Icon name="bell" className="w-5 h-5 shrink-0" />
           {mp.needsRevisionAlert.replace("{count}", needsRevisionCount)}
         </Link>
       )}
@@ -141,7 +141,7 @@ export default function MyPage() {
                 {mp.cancelButtonLabel}
               </Button>
               <Button className="px-4 py-2 text-sm" onClick={handleSave} disabled={saving}>
-                <Icon name="check" className="h-4 w-4" />
+                <Icon name="check" className="w-5 h-5" />
                 {saving ? "저장 중..." : mp.saveButtonLabel}
               </Button>
             </div>
@@ -172,17 +172,21 @@ export default function MyPage() {
         )}
       </Card>
 
-      <Card className="mt-6 border-red-100 bg-red-50/40 p-6">
-        <h3 className="text-sm font-bold text-red-600">{mp.dangerZone.title}</h3>
-        <p className="mt-1 text-xs leading-relaxed text-red-500/80">{mp.dangerZone.description}</p>
-        <Button
-          variant="secondary"
-          className="mt-4 border-red-200 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
-          onClick={handleWithdraw}
-          disabled={withdrawing}
-        >
-          {withdrawing ? "탈퇴 처리 중..." : mp.dangerZone.buttonLabel}
-        </Button>
+      <Card className="mt-6 border-red-100 bg-red-50/40">
+        <CardHeader>
+          <CardTitle className="text-sm text-red-600">{mp.dangerZone.title}</CardTitle>
+          <CardDescription className="text-xs text-red-500/80">{mp.dangerZone.description}</CardDescription>
+        </CardHeader>
+        <CardFooter className="pt-0">
+          <Button
+            variant="secondary"
+            className="border-red-200 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+            onClick={handleWithdraw}
+            disabled={withdrawing}
+          >
+            {withdrawing ? "탈퇴 처리 중..." : mp.dangerZone.buttonLabel}
+          </Button>
+        </CardFooter>
       </Card>
     </div>
   );

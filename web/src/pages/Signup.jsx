@@ -89,14 +89,13 @@ export default function Signup() {
         to="/login"
         className="absolute left-4 top-4 flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-slate-500 hover:bg-white/60 hover:text-slate-800"
       >
-        <Icon name="arrowLeft" className="h-4 w-4" />
+        <Icon name="arrowLeft" className="w-5 h-5" />
         뒤로가기
       </Link>
 
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
-          <img src={brand.logo} alt={brand.name} className="mx-auto h-12 w-12 rounded-2xl object-contain" />
-          <h1 className="mt-3 text-4xl font-extrabold tracking-tight text-brand-700">{brand.name}</h1>
+          <img src={brand.logo} alt={brand.name} className="mx-auto h-12 w-auto object-contain" />
           <p className="mt-2 text-sm text-slate-500">{s.subtitle}</p>
         </div>
 

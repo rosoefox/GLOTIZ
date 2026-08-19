@@ -51,7 +51,7 @@ function ProgramRow({ index, program, expanded, onToggle, onViewDocument, onGoTo
             className="px-3 py-1.5 text-xs"
             onClick={() => onGoToDocs(program)}
           >
-            <Icon name="documents" className="h-3.5 w-3.5" />
+            <Icon name="documents" className="w-5 h-5" />
             서류 작성하러 가기
           </Button>
           <button
@@ -59,7 +59,7 @@ function ProgramRow({ index, program, expanded, onToggle, onViewDocument, onGoTo
             onClick={onToggle}
             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-slate-300 text-slate-500 transition-transform hover:bg-slate-50"
           >
-            <Icon name={expanded ? "x" : "plus"} className="h-3.5 w-3.5" />
+            <Icon name={expanded ? "x" : "plus"} className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
@@ -268,7 +268,7 @@ export default function MyApplicationStatus() {
         onClick={() => navigate(-1)}
         className="mb-4 flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-800"
       >
-        <Icon name="arrowLeft" className="h-4 w-4" /> 마이페이지로
+        <Icon name="arrowLeft" className="w-5 h-5" /> 마이페이지로
       </button>
 
       <h1 className="text-3xl font-extrabold text-slate-900">{mas.title}</h1>
@@ -277,7 +277,7 @@ export default function MyApplicationStatus() {
       {!loadingBookmarks && bookmarks.length > 0 && (
         <div className="mb-8">
           <h2 className="mb-3 flex items-center gap-1.5 text-base font-bold text-slate-900">
-            <Icon name="bookmark" filled className="h-4 w-4 text-brand-600" />
+            <Icon name="bookmark" filled className="w-5 h-5 text-brand-600" />
             북마크한 공고
           </h2>
           <div className="space-y-2">
@@ -297,7 +297,7 @@ export default function MyApplicationStatus() {
                     className="px-3 py-1.5 text-xs"
                     onClick={() => navigate("/docs", { state: { businessId: b.businessId, businessName: b.businessName } })}
                   >
-                    <Icon name="documents" className="h-3.5 w-3.5" />
+                    <Icon name="documents" className="w-5 h-5" />
                     서류 작성하러 가기
                   </Button>
                   <button
@@ -306,7 +306,7 @@ export default function MyApplicationStatus() {
                     aria-label="북마크 해제"
                     className="text-brand-500 hover:text-brand-700"
                   >
-                    <Icon name="bookmark" filled className="h-4 w-4" />
+                    <Icon name="bookmark" filled className="w-5 h-5" />
                   </button>
                 </div>
               </Card>

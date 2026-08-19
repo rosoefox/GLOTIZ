@@ -1,4 +1,4 @@
-const logoUrl = new URL("../../로고1.png", import.meta.url).href;
+const logoUrl = new URL("../../로고1-icon.png", import.meta.url).href;
 const profileGreenLiving = new URL("../../profile/그린리빙.png", import.meta.url).href;
 const profileMisoFood = new URL("../../profile/미소식품.png", import.meta.url).href;
 const profileOurHangwa = new URL("../../profile/우리한과.png", import.meta.url).href;
@@ -194,7 +194,7 @@ export const dashboard = {
       to: "/gov-support",
     },
     {
-      icon: "sparkle",
+      icon: "imageGenerate",
       tone: "cream",
       title: "AI 이미지 생성",
       description: "상품 사진 한 장으로 마케팅에 바로 쓸 수 있는 이미지를 AI가 만들어드려요.",
@@ -970,8 +970,10 @@ export const adminPanel = {
   summaryLabels: {
     applicants: "신청 기업 수",
     programs: "지원 사업 수",
-    completed: "생성 완료",
+    needsApproval: "승인 필요 서류 수",
   },
+  searchPlaceholder: "사업 또는 기업 이름으로 검색",
+  searchEmptyMessage: "검색 결과가 없습니다.",
   applicantFallbackName: "익명 신청자",
   tableHeaders: {
     applicant: "신청 기업",

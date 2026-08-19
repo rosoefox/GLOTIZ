@@ -75,9 +75,7 @@ export default function NotificationAlert() {
           key={t.id}
           className="flex items-start gap-3 rounded-xl border border-red-200 bg-white p-4 shadow-xl"
         >
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-500">
-            <Icon name="bell" className="h-4 w-4" />
-          </div>
+          <Icon name="bell" className="mt-0.5 w-5 h-5 shrink-0 text-slate-500" />
           <div className="min-w-0 flex-1">
             <p className="text-sm font-bold text-slate-900">서류 보완 요청</p>
             <p className="mt-0.5 text-xs leading-relaxed text-slate-600">{t.message}</p>
@@ -95,7 +93,7 @@ export default function NotificationAlert() {
             aria-label="알림 닫기"
             className="shrink-0 text-slate-300 hover:text-slate-500"
           >
-            <Icon name="x" className="h-4 w-4" />
+            <Icon name="x" className="w-5 h-5" />
           </button>
         </div>
       ))}

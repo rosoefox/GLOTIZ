@@ -61,22 +61,19 @@ export default function ResetPassword() {
         to="/login"
         className="absolute left-4 top-4 flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-slate-500 hover:bg-white/60 hover:text-slate-800"
       >
-        <Icon name="arrowLeft" className="h-4 w-4" />
+        <Icon name="arrowLeft" className="w-5 h-5" />
         뒤로가기
       </Link>
 
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
-          <img src={brand.logo} alt={brand.name} className="mx-auto h-12 w-12 rounded-2xl object-contain" />
-          <h1 className="mt-3 text-4xl font-extrabold tracking-tight text-brand-700">{brand.name}</h1>
+          <img src={brand.logo} alt={brand.name} className="mx-auto h-12 w-auto object-contain" />
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
           {done ? (
             <div className="py-4 text-center">
-              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-500">
-                <Icon name="checkCircle" className="h-7 w-7" />
-              </div>
+              <Icon name="checkCircle" className="mx-auto mb-4 w-5 h-5 text-slate-500" />
               <h2 className="mb-1.5 text-lg font-bold text-slate-900">
                 {mode === "update" ? r.successTitle : r.requestSuccessTitle}
               </h2>

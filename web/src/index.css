@@ -11,10 +11,24 @@ html {
 }
 
 body {
-  @apply bg-white text-slate-900 antialiased;
+  @apply bg-slate-50 text-slate-700 antialiased;
   margin: 0;
+  /* 한글 단어(어절) 중간이 잘려서 다음 줄로 넘어가지 않도록 어절 단위로만 줄바꿈한다.
+     아주 긴 URL/영문 문자열처럼 어절 안에 공백이 없는 경우를 대비해 overflow-wrap도 같이 둔다. */
+  word-break: keep-all;
+  overflow-wrap: break-word;
   scrollbar-width: thin;
   scrollbar-color: rgba(15, 23, 42, 0.22) transparent;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  /* 제목이 여러 줄로 감길 때 마지막 줄에 한두 글자만 남지 않도록 줄 길이를 고르게 맞춘다. */
+  text-wrap: balance;
 }
 
 #root {

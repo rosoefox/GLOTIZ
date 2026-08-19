@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import Icon from "../components/Icon";
-import { Card, Button } from "../components/ui";
+import { Card, CardHeader, CardTitle, CardContent, Button } from "../components/ui";
 import { helpAndFaq as hf } from "../data/mockData";
 import { useChatbot } from "../context/ChatbotContext";
 
@@ -17,7 +17,7 @@ function FaqItem({ question, answer }) {
         <span className="text-sm font-medium text-slate-800">{question}</span>
         <Icon
           name="chevronDown"
-          className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`}
+          className={`w-5 h-5 shrink-0 text-slate-500 transition-transform ${open ? "rotate-180" : ""}`}
         />
       </button>
       {open && <p className="pb-4 text-sm leading-relaxed text-slate-500">{answer}</p>}
@@ -55,39 +55,37 @@ export default function HelpAndFaq() {
         <p className="mt-2 text-sm text-slate-500">{hf.subtitle}</p>
       </div>
 
-      <Card className="mb-8 flex flex-wrap items-center justify-between gap-4 border-brand-100 bg-gradient-to-r from-brand-50 to-white p-6">
+      <Card className="mb-8 flex flex-wrap items-center justify-between gap-4 p-6">
         <div className="flex items-center gap-4">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 text-amber-600">
-            <Icon name="chatbot" className="h-6 w-6" />
-          </div>
+          <Icon name="chatbot" className="w-5 h-5 shrink-0 text-slate-500" />
           <div>
             <h2 className="text-base font-bold text-slate-900">{hf.chatBanner.title}</h2>
-            <p className="mt-1 whitespace-nowrap text-sm text-slate-500">{hf.chatBanner.description}</p>
+            <p className="mt-1 text-sm text-slate-500">{hf.chatBanner.description}</p>
           </div>
         </div>
         <Button className="whitespace-nowrap" onClick={openChatbot}>
           {hf.chatBanner.ctaLabel}
-          <Icon name="arrowRight" className="h-4 w-4" />
+          <Icon name="arrowRight" className="w-5 h-5" />
         </Button>
       </Card>
 
-      <Card className="p-6">
-        <div className="mb-2 flex items-center gap-2">
-          <h2 className="text-lg font-bold text-slate-900">{hf.faqSectionTitle}</h2>
+      <Card>
+        <CardHeader className="flex-row items-center gap-2 pb-4">
+          <CardTitle>{hf.faqSectionTitle}</CardTitle>
           {loadingFaqs ? (
             <span className="text-xs font-medium text-slate-400">AI가 질문을 고르는 중...</span>
           ) : (
             <span className="flex items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-semibold text-brand-700">
-              <Icon name="sparkle" className="h-3 w-3" />
+              <Icon name="sparkle" className="w-3.5 h-3.5" />
               AI 추천
             </span>
           )}
-        </div>
-        <div>
+        </CardHeader>
+        <CardContent className="pt-0">
           {faqs.map((f) => (
             <FaqItem key={f.question} {...f} />
           ))}
-        </div>
+        </CardContent>
       </Card>
     </div>
   );

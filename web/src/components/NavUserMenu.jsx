@@ -71,19 +71,20 @@ export default function NavUserMenu({ light = false, mobile = false, onNavigate 
   // 좁은 화면에서는 헤더 안에 한 줄로 우겨넣으면 넘치므로, 햄버거 메뉴 패널 안에서
   // 세로로 쌓이는 형태로 렌더링한다 (같은 상태/핸들러를 재사용).
   if (mobile) {
+    const mobileLinkCls = light ? "text-white/90 hover:bg-white/10" : "text-slate-700 hover:bg-slate-50";
     return (
       <div className="flex flex-col gap-1.5">
         <button
           type="button"
           onClick={handleMyApplicationsClick}
-          className="rounded-lg px-3 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          className={`rounded-lg px-3 py-2.5 text-left text-sm font-semibold ${mobileLinkCls}`}
         >
           나의 지원사업 현황
         </button>
         <button
           type="button"
           onClick={handleMyPageClick}
-          className="relative rounded-lg px-3 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          className={`relative rounded-lg px-3 py-2.5 text-left text-sm font-semibold ${mobileLinkCls}`}
         >
           마이페이지
           {needsRevisionCount > 0 && (
@@ -92,7 +93,12 @@ export default function NavUserMenu({ light = false, mobile = false, onNavigate 
         </button>
         <div className="mt-1.5">
           {isLoggedIn ? (
-            <Button type="button" variant="secondary" onClick={handleLogout} className="w-full justify-center">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={handleLogout}
+              className={`w-full justify-center ${light ? "border-white/20 bg-white/10 text-white hover:bg-white/15" : ""}`}
+            >
               로그아웃
             </Button>
           ) : (

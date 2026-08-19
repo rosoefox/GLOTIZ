@@ -33,7 +33,7 @@ export default function SearchBar({
         <div className="relative w-full max-w-xl flex-1">
           <Icon
             name="search"
-            className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+            className="pointer-events-none absolute left-4 top-1/2 w-5 h-5 -translate-y-1/2 text-slate-500"
           />
           <input
             value={value}
