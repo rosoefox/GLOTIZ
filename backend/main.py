@@ -40,6 +40,40 @@ GENERATED_BUCKET = "generated"
 AI_FIELD_TYPES = {"long_text", "checkbox"}
 VALID_FIELD_TYPES = {"text", "number", "date", "select", "checkbox", "textarea", "long_text"}
 
+# 내일 시연용: 이 공고의 참가 신청서만 AI 필드 추출 결과에 의존하지 않고 고정한다.
+VIETNAM_EXPO_BUSINESS_ID = "5090843f-cf8e-4945-a51d-69e1aa8e61e6"
+VIETNAM_APPLICATION_FIELDS = [
+    {"field_key": "company_name_kr", "field_label": "기업명(국문)", "field_type": "text", "options": None},
+    {"field_key": "founded_date", "field_label": "설립일", "field_type": "date", "options": None},
+    {"field_key": "company_name_en", "field_label": "기업명(영문)", "field_type": "text", "options": None},
+    {"field_key": "ceo_name", "field_label": "대표자", "field_type": "text", "options": None},
+    {"field_key": "business_reg_number", "field_label": "사업자등록번호", "field_type": "text", "options": None},
+    {"field_key": "company_type", "field_label": "기업형태", "field_type": "checkbox", "options": ["법인", "개인"]},
+    {"field_key": "main_product", "field_label": "주생산품", "field_type": "text", "options": None},
+    {"field_key": "product_category", "field_label": "품목 구분", "field_type": "checkbox", "options": ["소비재", "산업재"]},
+    {"field_key": "company_phone", "field_label": "전화번호", "field_type": "text", "options": None},
+    {"field_key": "website", "field_label": "홈페이지", "field_type": "text", "options": None},
+    {"field_key": "headquarters_address", "field_label": "본사 주소", "field_type": "text", "options": None},
+    {"field_key": "participation_field", "field_label": "사업 분야(택 1)", "field_type": "checkbox", "options": ["K-AI&테크", "K-라이프스타일", "K-뷰티", "K-푸드"]},
+    {"field_key": "main_export_product", "field_label": "주요 수출제품", "field_type": "text", "options": None},
+    {"field_key": "hs_code", "field_label": "HS CODE", "field_type": "text", "options": None},
+    {"field_key": "primary_business_code", "field_label": "주업종코드", "field_type": "text", "options": None},
+    {"field_key": "primary_ksic_code", "field_label": "주업종 한국표준산업분류코드(KSIC)", "field_type": "text", "options": None},
+    {"field_key": "secondary_business_code", "field_label": "부업종코드", "field_type": "text", "options": None},
+    {"field_key": "secondary_ksic_code", "field_label": "부업종 한국표준산업분류코드(KSIC)", "field_type": "text", "options": None},
+    {"field_key": "contact_name_kr", "field_label": "담당자 성명(국문)", "field_type": "text", "options": None},
+    {"field_key": "contact_department", "field_label": "담당자 소속(부서)", "field_type": "text", "options": None},
+    {"field_key": "contact_name_en", "field_label": "담당자 성명(영문)", "field_type": "text", "options": None},
+    {"field_key": "contact_position", "field_label": "담당자 직위", "field_type": "text", "options": None},
+    {"field_key": "contact_email", "field_label": "담당자 이메일", "field_type": "text", "options": None},
+    {"field_key": "contact_mobile", "field_label": "담당자 핸드폰", "field_type": "text", "options": None},
+    {"field_key": "application_date", "field_label": "신청일", "field_type": "date", "options": None},
+    {"field_key": "signature_company_name", "field_label": "서명 기업명", "field_type": "text", "options": None},
+    {"field_key": "signature_ceo_name", "field_label": "서명 대표이사", "field_type": "text", "options": None},
+    {"field_key": "company_intro_kr", "field_label": "기업 소개(국문)", "field_type": "long_text", "options": None},
+    {"field_key": "company_intro_en", "field_label": "기업 소개(영문)", "field_type": "long_text", "options": None},
+]
+
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 gemini_client = genai.Client(vertexai=True, project=VERTEX_AI_PROJECT_ID, location=VERTEX_AI_LOCATION)
 market_gemini_client = gemini_client
@@ -1198,6 +1232,45 @@ def call_gemini_blank_candidates(business_name, template_name, candidates):
     return json.loads(response.text)
 
 
+def apply_vietnam_application_placeholders(doc):
+    """베트남 EXPO 참가신청서 원본 표의 고정 위치에 플레이스홀더를 심는다."""
+    if len(doc.tables) < 2 or len(doc.tables[0].rows) < 19 or len(doc.tables[1].rows) < 4:
+        raise HTTPException(status_code=400, detail="베트남 참가신청서의 표 구조가 예상과 다릅니다.")
+
+    main = doc.tables[0]
+    intro = doc.tables[1]
+    placements = [
+        (main, 0, 3, "company_name_kr"),
+        (main, 0, 9, "founded_date"),
+        (main, 1, 3, "company_name_en"),
+        (main, 1, 9, "ceo_name"),
+        (main, 2, 3, "business_reg_number"),
+        (main, 3, 3, "main_product"),
+        (main, 4, 3, "company_phone"),
+        (main, 4, 9, "website"),
+        (main, 5, 3, "headquarters_address"),
+        (main, 9, 3, "main_export_product"),
+        (main, 9, 6, "hs_code"),
+        (main, 10, 3, "primary_business_code"),
+        (main, 10, 9, "primary_ksic_code"),
+        (main, 11, 3, "secondary_business_code"),
+        (main, 11, 9, "secondary_ksic_code"),
+        (main, 12, 3, "contact_name_kr"),
+        (main, 12, 9, "contact_department"),
+        (main, 13, 3, "contact_name_en"),
+        (main, 13, 9, "contact_position"),
+        (main, 14, 3, "contact_email"),
+        (main, 14, 9, "contact_mobile"),
+        (main, 16, 0, "application_date"),
+        (main, 17, 2, "signature_company_name"),
+        (main, 17, 8, "signature_ceo_name"),
+        (intro, 1, 0, "company_intro_kr"),
+        (intro, 3, 0, "company_intro_en"),
+    ]
+    for table, row_index, cell_index, field_key in placements:
+        table.rows[row_index].cells[cell_index].text = "{{" + field_key + "}}"
+
+
 @app.post("/admin/templates/{template_id}/suggest-fields")
 def suggest_template_fields(template_id: str, authorization: str | None = Header(None)):
     require_admin(authorization)
@@ -1214,6 +1287,22 @@ def suggest_template_fields(template_id: str, authorization: str | None = Header
 
     file_bytes = supabase.storage.from_(TEMPLATES_BUCKET).download(template["original_file_path"])
     doc = Document(io.BytesIO(file_bytes))
+
+    if template["business_id"] == VIETNAM_EXPO_BUSINESS_ID and template["name"].strip() == "참가 신청서":
+        apply_vietnam_application_placeholders(doc)
+        output = io.BytesIO()
+        doc.save(output)
+        # 같은 Storage 경로를 덮어쓰면 CDN 캐시 때문에 직전 원본이 다시 내려올 수 있어
+        # 고정 필드를 심은 파일은 새 경로로 올리고 template 포인터를 교체한다.
+        patched_path = f"{template['business_id']}/{uuid.uuid4().hex}.docx"
+        supabase.storage.from_(TEMPLATES_BUCKET).upload(
+            patched_path,
+            output.getvalue(),
+            {"content-type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
+        )
+        supabase.table("templates").update({"original_file_path": patched_path}).eq("id", template_id).execute()
+        return {"fields": VIETNAM_APPLICATION_FIELDS}
+
     field_keys, checkbox_options = extract_docx_fields(doc)
 
     if not field_keys and not checkbox_options:
@@ -1306,13 +1395,18 @@ def build_gemini_prompt(business_name, template_name, ai_fields, user_values):
 아래는 신청자가 직접 입력한 정보입니다:
 {json.dumps(user_values, ensure_ascii=False, indent=2)}
 
-아래 필드들을 채워야 합니다. long_text는 새 문장을 작성하고, checkbox는 후보 중 하나를 선택하세요:
+아래의 비어 있는 필드들을 모두 채워야 합니다:
 {chr(10).join(fields_desc)}
 
 규칙:
-- long_text 필드는 신청자 정보를 바탕으로 신청서 톤에 맞는 격식 있는 문장을 새로 작성하세요. 국문/영문 필드는 서로 번역이 아니라 각각 자연스럽게 작성하세요.
-- checkbox 필드는 options 중 정확히 일치하는 값 하나만 선택하세요.
-- 정보가 부족해 추측/일반화했거나, 후보 사이에서 애매하거나, 원본 정보에 모순이 있어 보이면 needs_review를 true로 하고 confidence_note에 이유를 짧게 남기세요. 그 외에는 needs_review를 false로, confidence_note는 빈 문자열로 두세요.
+- 응답에는 위에 제시된 모든 field_key를 정확히 한 번씩 포함하고, value를 비워두지 마세요.
+- text 필드는 필드명에 맞는 짧고 자연스러운 값을 작성하세요.
+- number 필드는 숫자만, date 필드는 YYYY-MM-DD 형식으로 작성하세요.
+- select와 checkbox 필드는 options가 있으면 그중 정확히 일치하는 값 하나만 선택하세요.
+- textarea와 long_text 필드는 신청자 정보를 바탕으로 신청서 톤에 맞는 격식 있는 문장을 새로 작성하세요. 국문/영문 필드는 서로 번역이 아니라 각각 자연스럽게 작성하세요.
+- 신청자가 입력한 값에서 직접 확인하거나 논리적으로 확정할 수 없는 정보는 시연에 사용할 수 있는 합리적인 예시값으로 채우되 반드시 needs_review를 true로 하고, confidence_note에 확인이 필요한 이유를 짧게 적으세요.
+- 특히 등록번호, 날짜, 금액, 수출실적, 인원, 이메일, 전화번호, 주소, URL, HS CODE처럼 사실 확인이 필요한 값을 추정했다면 반드시 needs_review를 true로 표시하세요.
+- 입력 정보만으로 충분히 확인되는 값만 needs_review를 false로 하고 confidence_note는 빈 문자열로 두세요.
 """
 
 
@@ -1895,7 +1989,7 @@ class AiFillRequest(BaseModel):
 @app.post("/templates/{template_id}/ai-fill")
 def ai_fill_template(template_id: str, req: AiFillRequest, authorization: str | None = Header(None)):
     """작성 중인 서류 화면에서 'AI 채우기'를 누르면, 지금까지 입력한 값을 참고해 AI가 채울 수
-    있는 필드(long_text/checkbox)만 채워서 돌려준다. 제출/문서 생성과는 별개로 값만 미리보고
+    있는 모든 빈 필드를 채워서 돌려준다. 제출/문서 생성과는 별개로 값만 미리보고
     편집할 수 있게 하기 위한 용도라 submission을 만들거나 저장하지 않는다."""
     require_user(authorization)
 
@@ -1912,12 +2006,84 @@ def ai_fill_template(template_id: str, req: AiFillRequest, authorization: str | 
     fields = (
         supabase.table("template_fields").select("*").eq("template_id", template_id).execute().data or []
     )
-    ai_fields = [f for f in fields if f["field_type"] in AI_FIELD_TYPES]
+    ai_fields = [
+        f for f in fields
+        if not str(req.values.get(f["field_key"], "") or "").strip()
+    ]
 
     try:
-        results = call_gemini(business_name, template["name"], ai_fields, req.values)
+        # 필드가 많은 신청서를 한 번에 요청하면 모델 응답 길이 때문에 뒤쪽 항목이 누락될 수 있다.
+        # 작은 묶음으로 나눠 요청한 뒤 아래에서 원래 필드 순서대로 다시 조립한다.
+        raw_results = []
+        for start in range(0, len(ai_fields), 15):
+            raw_results.extend(
+                call_gemini(
+                    business_name,
+                    template["name"],
+                    ai_fields[start:start + 15],
+                    req.values,
+                )
+            )
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"AI 채우기에 실패했습니다: {friendly_ai_error(e)}")
+
+    result_by_key = {
+        item.get("field_key"): item
+        for item in raw_results
+        if item.get("field_key")
+    }
+
+    def fallback_value(field):
+        options = field.get("options") or []
+        if options:
+            first = options[0]
+            if isinstance(first, dict):
+                return str(first.get("value") or first.get("label") or "확인 필요")
+            return str(first)
+
+        field_type = field.get("field_type")
+        search_text = f"{field.get('field_key', '')} {field.get('field_label', '')}".lower()
+        if field_type == "date":
+            return datetime.now(timezone.utc).date().isoformat()
+        if field_type == "number":
+            return "0"
+        if "email" in search_text or "이메일" in search_text:
+            return "contact@example.com"
+        if any(token in search_text for token in ("phone", "tel", "전화", "핸드폰", "연락처")):
+            return "010-0000-0000"
+        if any(token in search_text for token in ("homepage", "website", "url", "링크", "홈페이지")):
+            return "https://example.com"
+        if "hs" in search_text and "code" in search_text:
+            return "3304.99"
+        if "원산지" in search_text or "origin" in search_text:
+            return "대한민국"
+        if field_type in ("textarea", "long_text"):
+            return "관련 내용을 확인하여 보완해주세요."
+        return "확인 필요"
+
+    results = []
+    for field in ai_fields:
+        item = result_by_key.get(field["field_key"]) or {}
+        value = str(item.get("value") or "").strip() or fallback_value(field)
+        options = field.get("options") or []
+        option_values = [
+            str((option.get("value") or option.get("label") or "") if isinstance(option, dict) else option)
+            for option in options
+        ]
+        option_values = [option for option in option_values if option]
+        if field.get("field_type") in ("select", "checkbox") and option_values and value not in option_values:
+            value = option_values[0]
+        if field.get("field_type") == "date" and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+            value = fallback_value(field)
+        if field.get("field_type") == "number" and not re.fullmatch(r"-?\d+(?:\.\d+)?", value):
+            value = fallback_value(field)
+        results.append({
+            "field_key": field["field_key"],
+            "value": value,
+            # 빈칸을 AI가 새로 만든 값은 제출 전에 사용자가 한 번 확인하도록 보수적으로 표시한다.
+            "needs_review": True,
+            "confidence_note": item.get("confidence_note") or "AI가 생성한 값이므로 실제 정보와 일치하는지 확인해주세요.",
+        })
     return {"fields": results}
 
 

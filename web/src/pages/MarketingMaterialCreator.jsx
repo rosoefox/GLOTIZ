@@ -16,6 +16,31 @@ const LAYOUT_BY_TEMPLATE = {
   "tpl-detail": "detail",
 };
 
+const PREVIOUS_PRODUCT_OPTIONS = [
+  {
+    id: "happy-vita-calming-sunscreen",
+    name: "해피 비타 카밍 선크림",
+    preview: {
+      productName: "해피 비타 카밍 선크림",
+      tagline: "비타민 캡슐 · 진정 · 수분 · 데일리 UV 케어",
+      description:
+        "민감한 피부도 편안하게 사용할 수 있다는 콘셉트의 데일리 자외선 차단제. 산뜻한 사용감, 백탁 부담 완화, 메이크업 전 사용 편의성을 핵심 메시지로 설정한 가상 제품입니다.",
+      mustHavePhoto:
+        "20~40대 K-Beauty 관심 소비자가 제품을 사용하는 모습과 산뜻한 사용감, 메이크업 전 사용 장면",
+      price: "",
+    },
+    spec: [
+      "제품 유형: 자외선 차단 화장품",
+      "표시 사양: SPF50+ / PA++++ (가상 제품 설정)",
+      "용량: 50 mL",
+      "주요 콘셉트: 비타민 캡슐 · 진정 · 수분 · 데일리 UV 케어",
+      "타깃: 20~40대 K-Beauty 관심 소비자",
+      "주요 시장: 베트남, 싱가포르",
+      "판매 채널: 온라인 마켓플레이스 및 현지 유통 파트너",
+    ].join("\n"),
+  },
+];
+
 function findImage(images, slot) {
   return images?.find((img) => img.slot === slot)?.url;
 }
@@ -230,7 +255,9 @@ function DetailPreview({ images, copy, preview, specLines }) {
       })}
 
       <div className="bg-slate-50 py-12 text-center">
-        <h3 className="font-serif text-lg font-semibold text-slate-900">다양한 각도에서 확인하세요</h3>
+        <h3 className="font-serif text-lg font-semibold text-slate-900">
+          {copy?.angleTitle || "다양한 각도에서 확인하세요"}
+        </h3>
         <div className="mt-6 grid grid-cols-3 gap-3 px-6">
           {angles.map(({ slot, label }) => {
             const url = findImage(images, slot);
@@ -263,7 +290,7 @@ function DetailPreview({ images, copy, preview, specLines }) {
       )}
 
       <p className="pb-8 text-center text-xs text-slate-400">
-        ※ 이미지는 연출된 예시이며 실제 상품과 다를 수 있습니다.
+        {copy?.disclaimer || "※ 이미지는 연출된 예시이며 실제 상품과 다를 수 있습니다."}
       </p>
     </div>
   );
@@ -275,8 +302,9 @@ const TRANSLATE_LANGUAGES = [
   { code: "th", label: "ภาษาไทย" },
 ];
 
-// 생성된 이미지 위에 얹히는 문구(preview/copy)를 다른 언어로 바꿔치기하는 드롭다운.
-// 이미지 자체는 다시 만들지 않고, 오버레이 텍스트만 번역해서 그 위에 얹는다.
+// 이미지에 얹힐 언어를 미리 고르는 드롭다운. 생성 전에 고르면 "이미지 생성하기"를 누를 때
+// 바로 그 언어로 생성되고, 이미 생성된 이미지가 있는 상태에서 고르면 문구만 바로 번역해서 바꿔친다.
+// 이미지 자체(사진)는 다시 만들지 않고, 오버레이 텍스트만 번역해서 그 위에 얹는 방식이다.
 function TranslateMenu({ activeLang, translating, onTranslate, disabled }) {
   const [open, setOpen] = useState(false);
   const activeLabel = TRANSLATE_LANGUAGES.find((l) => l.code === activeLang)?.label;
@@ -287,7 +315,6 @@ function TranslateMenu({ activeLang, translating, onTranslate, disabled }) {
         className="py-2"
         onClick={() => setOpen((v) => !v)}
         disabled={translating || disabled}
-        title={disabled ? "먼저 이미지를 생성해주세요." : undefined}
       >
         <Icon name="globe" className="w-5 h-5" />
         {translating ? "번역 중..." : activeLabel ? `이미지 언어: ${activeLabel}` : "이미지 언어 변경하기"}
@@ -346,13 +373,13 @@ export default function MarketingMaterialCreator() {
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState("");
   const [generatedResult, setGeneratedResult] = useState(null);
-  const [aiFillingInfo, setAiFillingInfo] = useState(false);
-  const [aiFillError, setAiFillError] = useState("");
+  const [showPreviousProducts, setShowPreviousProducts] = useState(false);
   const [translating, setTranslating] = useState(false);
   const [translateError, setTranslateError] = useState(null);
   const [activeLang, setActiveLang] = useState(null); // null이면 한국어 원본
   const [originalPreview, setOriginalPreview] = useState(null);
   const [originalCopy, setOriginalCopy] = useState(null);
+  const [originalSpec, setOriginalSpec] = useState(null);
   const fileInputRef = useRef(null);
   const previewRef = useRef(null);
   const { addImage } = useMarketingImages();
@@ -381,30 +408,12 @@ export default function MarketingMaterialCreator() {
     setPreview((p) => ({ ...p, [field]: e.target.value }));
   };
 
-  // 내 기본 정보(회사명/수출 희망 국가)를 바탕으로 AI가 그럴듯한 상품 정보 예시를 채운다.
-  const handleAiFillInfo = async () => {
-    if (!session) return;
-    setAiFillingInfo(true);
-    setAiFillError("");
-    try {
-      const res = await fetch(`${BACKEND_URL}/marketing/ai-fill`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${session.access_token}` },
-      });
-      if (!res.ok) throw new Error(await readErrorMessage(res, "AI로 채우기에 실패했습니다."));
-      const data = await res.json();
-      setPreview((p) => ({
-        productName: p.productName || data.product_name || "",
-        tagline: p.tagline || data.tagline || "",
-        description: p.description || data.description || "",
-        price: p.price || data.price || "",
-        mustHavePhoto: p.mustHavePhoto || data.must_have_photo || "",
-      }));
-    } catch (err) {
-      setAiFillError(err.message || "AI로 채우기에 실패했습니다.");
-    } finally {
-      setAiFillingInfo(false);
-    }
+  const handlePreviousProductSelect = (product) => {
+    setPreview(product.preview);
+    setSpec(product.spec);
+    setGeneratedResult(null);
+    setGenerateError("");
+    setShowPreviousProducts(false);
   };
 
   const handleFileChange = (e) => {
@@ -434,6 +443,19 @@ export default function MarketingMaterialCreator() {
     setGenerating(true);
     setGenerateError("");
     try {
+      if (activeTemplate === "tpl-detail") {
+        await new Promise((resolve) => window.setTimeout(resolve, 5000));
+        const data = {
+          layout: "detail",
+          hardcodedImage: "/sangse.png",
+          images: [],
+          copy: null,
+        };
+        setGeneratedResult(data);
+        addImage(data.hardcodedImage, `${preview.productName} - 상세페이지`);
+        return;
+      }
+
       const formData = new FormData();
       formData.append("layout", LAYOUT_BY_TEMPLATE[activeTemplate]);
       formData.append("product_name", preview.productName);
@@ -450,10 +472,29 @@ export default function MarketingMaterialCreator() {
       });
       if (!res.ok) throw new Error(await readErrorMessage(res, "이미지 생성에 실패했습니다."));
       const data = await res.json();
-      setGeneratedResult(data);
-      setActiveLang(null);
-      setOriginalPreview(null);
-      setOriginalCopy(null);
+
+      // 생성 전에 언어를 미리 골라뒀다면, 갓 생성된(한국어) 문구를 바로 그 언어로 번역해서 얹는다.
+      if (activeLang) {
+        try {
+          const koreanPreview = preview;
+          const { nextPreview, nextCopy, nextSpec } = await applyTranslation(activeLang, koreanPreview, data.copy, spec);
+          setOriginalPreview(koreanPreview);
+          setOriginalCopy(data.copy);
+          setOriginalSpec(spec);
+          setPreview(nextPreview);
+          setSpec(nextSpec);
+          setGeneratedResult({ ...data, copy: nextCopy });
+        } catch (err) {
+          setTranslateError(err.message);
+          setActiveLang(null);
+          setOriginalPreview(null);
+          setOriginalCopy(null);
+          setOriginalSpec(null);
+          setGeneratedResult(data);
+        }
+      } else {
+        setGeneratedResult(data);
+      }
       (data.images || []).forEach((img) => addImage(img.url, `${preview.productName} - ${img.slot}`));
     } catch (err) {
       setGenerateError(err.message || "이미지 생성에 실패했습니다.");
@@ -465,66 +506,120 @@ export default function MarketingMaterialCreator() {
   // 이미지 안에는 문자를 렌더링하지 않고, 실제 문구(상품명/태그라인/카드뉴스 문구 등)는
   // preview/generatedResult.copy 상태를 화면에서 오버레이로 얹는 방식이라(PosterPreview 등 참고),
   // 이 상태들만 번역해서 바꿔치기하면 같은 이미지 위에 번역된 문구가 그대로 얹힌다.
-  const flattenForTranslate = (p, copy) => {
-    const dict = { productName: p.productName || "", tagline: p.tagline || "" };
+  const flattenForTranslate = (p, copy, currentSpec) => {
+    const dict = {
+      productName: p.productName || "",
+      tagline: p.tagline || "",
+      description: p.description || "",
+    };
     if (copy) {
       if (copy.promoLine) dict.promoLine = copy.promoLine;
       (copy.features || []).forEach((f, i) => {
         dict[`feature_${i}`] = f || "";
       });
       (copy.captions || []).forEach((c, i) => {
+        if (c?.eyebrow) dict[`caption_${i}_eyebrow`] = c.eyebrow;
         if (c?.heading) dict[`caption_${i}_heading`] = c.heading;
-        if (c?.body) dict[`caption_${i}_body`] = c.body;
+        if (c?.description) dict[`caption_${i}_description`] = c.description;
       });
+      dict.angleTitle = copy.angleTitle || "다양한 각도에서 확인하세요";
+      dict.disclaimer = copy.disclaimer || "※ 이미지는 연출된 예시이며 실제 상품과 다를 수 있습니다.";
     }
+    parseSpecLines(currentSpec).forEach((row, i) => {
+      dict[`spec_${i}_label`] = row.label;
+      dict[`spec_${i}_value`] = row.value;
+    });
     return dict;
   };
 
+  // flattenForTranslate로 펼친 문구를 번역 API에 보내고, preview/copy/spec 각각의
+  // 다음 상태(번역이 반영된 버전)를 만들어 돌려준다. 실제 state 반영은 호출부 책임.
+  const applyTranslation = async (langCode, basePreview, baseCopy, baseSpec) => {
+    const payload = flattenForTranslate(basePreview, baseCopy, baseSpec);
+    const res = await fetch(`${BACKEND_URL}/translate-fields`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fields: payload, target_lang: langCode }),
+    });
+    if (!res.ok) throw new Error(await readErrorMessage(res, "번역에 실패했습니다."));
+    const { translated } = await res.json();
+
+    const nextPreview = {
+      ...basePreview,
+      productName: translated.productName ?? basePreview.productName,
+      tagline: translated.tagline ?? basePreview.tagline,
+      description: translated.description ?? basePreview.description,
+    };
+
+    let nextSpec = baseSpec;
+    const baseSpecLines = parseSpecLines(baseSpec);
+    if (baseSpecLines.length > 0) {
+      nextSpec = baseSpecLines
+        .map((row, i) => {
+          const label = translated[`spec_${i}_label`] ?? row.label;
+          const value = translated[`spec_${i}_value`] ?? row.value;
+          return `${label}: ${value}`;
+        })
+        .join("\n");
+    }
+
+    let nextCopy = baseCopy;
+    if (baseCopy) {
+      nextCopy = { ...baseCopy };
+      if (translated.promoLine !== undefined) nextCopy.promoLine = translated.promoLine;
+      nextCopy.angleTitle = translated.angleTitle ?? baseCopy.angleTitle;
+      nextCopy.disclaimer = translated.disclaimer ?? baseCopy.disclaimer;
+      if (Array.isArray(baseCopy.features)) {
+        nextCopy.features = baseCopy.features.map((f, i) => translated[`feature_${i}`] ?? f);
+      }
+      if (Array.isArray(baseCopy.captions)) {
+        nextCopy.captions = baseCopy.captions.map((c, i) => ({
+          ...c,
+          eyebrow: translated[`caption_${i}_eyebrow`] ?? c?.eyebrow,
+          heading: translated[`caption_${i}_heading`] ?? c?.heading,
+          description: translated[`caption_${i}_description`] ?? c?.description,
+        }));
+      }
+    }
+
+    return { nextPreview, nextCopy, nextSpec };
+  };
+
+  // "이미지 언어 선택하기"에서 언어를 고르면 실행된다. 아직 생성된 이미지가 없으면 언어만
+  // 기억해뒀다가 handleGenerate에서 그 언어로 바로 생성하고, 이미 이미지가 있으면 지금
+  // 바로 문구만 번역해서 바꿔친다.
   const runTranslate = async (langCode) => {
     if (langCode === "ko") {
       if (originalPreview) setPreview(originalPreview);
       if (originalCopy) setGeneratedResult((r) => (r ? { ...r, copy: originalCopy } : r));
+      if (originalSpec !== null) setSpec(originalSpec);
       setOriginalPreview(null);
       setOriginalCopy(null);
+      setOriginalSpec(null);
       setActiveLang(null);
       return;
     }
+
+    if (!hasMatchingResult) {
+      setActiveLang(langCode);
+      return;
+    }
+
     setTranslating(true);
     setTranslateError(null);
     try {
       const basePreview = originalPreview || preview;
       const baseCopy = originalCopy || generatedResult?.copy || null;
-      const payload = flattenForTranslate(basePreview, baseCopy);
-      const res = await fetch(`${BACKEND_URL}/translate-fields`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fields: payload, target_lang: langCode }),
-      });
-      if (!res.ok) throw new Error(await readErrorMessage(res, "번역에 실패했습니다."));
-      const { translated } = await res.json();
+      const baseSpec = originalSpec ?? spec;
+      const { nextPreview, nextCopy, nextSpec } = await applyTranslation(langCode, basePreview, baseCopy, baseSpec);
 
       if (!originalPreview) setOriginalPreview(preview);
       if (!originalCopy && baseCopy) setOriginalCopy(baseCopy);
+      if (originalSpec === null) setOriginalSpec(spec);
 
-      setPreview((p) => ({ ...p, productName: translated.productName ?? p.productName, tagline: translated.tagline ?? p.tagline }));
-      if (baseCopy) {
-        setGeneratedResult((r) => {
-          if (!r) return r;
-          const nextCopy = { ...baseCopy };
-          if (translated.promoLine !== undefined) nextCopy.promoLine = translated.promoLine;
-          if (Array.isArray(baseCopy.features)) {
-            nextCopy.features = baseCopy.features.map((f, i) => translated[`feature_${i}`] ?? f);
-          }
-          if (Array.isArray(baseCopy.captions)) {
-            nextCopy.captions = baseCopy.captions.map((c, i) => ({
-              ...c,
-              heading: translated[`caption_${i}_heading`] ?? c?.heading,
-              body: translated[`caption_${i}_body`] ?? c?.body,
-            }));
-          }
-          return { ...r, copy: nextCopy };
-        });
-      }
+      setPreview(nextPreview);
+      setSpec(nextSpec);
+      if (baseCopy) setGeneratedResult((r) => (r ? { ...r, copy: nextCopy } : r));
       setActiveLang(langCode);
     } catch (err) {
       setTranslateError(err.message);
@@ -637,10 +732,47 @@ export default function MarketingMaterialCreator() {
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-6 py-4">
             <h2 className="text-sm font-bold text-slate-900">상품 정보 입력</h2>
             <div className="flex flex-wrap items-center gap-2">
-              <Button variant="outlineBrand" className="px-3 py-1.5 text-xs">
-                <Icon name="history" className="w-3.5 h-3.5" />
-                기존 정보 불러오기
-              </Button>
+              <div className="relative">
+                <Button
+                  type="button"
+                  variant="outlineBrand"
+                  className="px-3 py-1.5 text-xs"
+                  title="기입한 정보나 서류에서 정보를 가져옵니다."
+                  aria-expanded={showPreviousProducts}
+                  onClick={() => setShowPreviousProducts((open) => !open)}
+                >
+                  <Icon name="history" className="w-3.5 h-3.5" />
+                  기존 정보 불러오기
+                  <Icon
+                    name="chevronDown"
+                    className={`w-3.5 h-3.5 transition-transform ${showPreviousProducts ? "rotate-180" : ""}`}
+                  />
+                </Button>
+
+                {showPreviousProducts && (
+                  <div className="absolute left-0 top-full z-30 mt-2 w-80 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+                    <div className="border-b border-slate-100 px-4 py-3">
+                      <p className="text-xs font-bold text-slate-800">불러올 제품 선택</p>
+                      <p className="mt-0.5 text-[11px] text-slate-400">저장된 제품을 선택하면 입력란에 자동으로 채워집니다.</p>
+                    </div>
+                    <div className="max-h-56 overflow-y-auto p-2">
+                      {PREVIOUS_PRODUCT_OPTIONS.map((product) => (
+                        <button
+                          key={product.id}
+                          type="button"
+                          onClick={() => handlePreviousProductSelect(product)}
+                          className="w-full rounded-lg px-3 py-3 text-left transition-colors hover:bg-slate-50"
+                        >
+                          <p className="text-sm font-semibold text-slate-800">{product.name}</p>
+                          <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-500">
+                            {product.preview.description}
+                          </p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
               <Button
                 type="button"
                 variant="outlineBrand"
@@ -732,7 +864,12 @@ export default function MarketingMaterialCreator() {
               <Icon name="eye" className="w-5 h-5" />
               {mc.previewTitle}
             </h2>
-            <Button variant="secondary" className="px-3 py-1.5 text-xs" onClick={handleSaveImage} disabled={savingImage}>
+            <Button
+              variant="secondary"
+              className="px-3 py-1.5 text-xs"
+              onClick={handleSaveImage}
+              disabled={savingImage || !hasMatchingResult}
+            >
               <Icon name="download" className="w-3.5 h-3.5" />
               {savingImage ? "저장 중..." : mc.actions.saveImage}
             </Button>
@@ -754,7 +891,11 @@ export default function MarketingMaterialCreator() {
 
                 <div className="relative flex flex-col items-center gap-3">
                   <Icon name="sparkle" className="w-6 h-6 animate-pulse text-brand-300" />
-                  <p className="text-sm font-semibold text-white">AI가 이미지를 생성하고 있어요</p>
+                  <p className="text-sm font-semibold text-white">
+                    {activeTemplate === "tpl-detail"
+                      ? "상세페이지를 생성하고 있어요..."
+                      : "AI가 이미지를 생성하고 있어요"}
+                  </p>
                   <p className="text-xs text-white/60">최대 1~2분 정도 걸릴 수 있어요</p>
                 </div>
               </div>
@@ -777,12 +918,20 @@ export default function MarketingMaterialCreator() {
                     <CardNewsPreview images={generatedResult.images} copy={generatedResult.copy} preview={preview} />
                   )}
                   {hasMatchingResult && layout === "detail" && (
-                    <DetailPreview
-                      images={generatedResult.images}
-                      copy={generatedResult.copy}
-                      preview={preview}
-                      specLines={specLines}
-                    />
+                    generatedResult.hardcodedImage ? (
+                      <img
+                        src={generatedResult.hardcodedImage}
+                        alt="생성된 상세페이지"
+                        className="block h-auto w-full"
+                      />
+                    ) : (
+                      <DetailPreview
+                        images={generatedResult.images}
+                        copy={generatedResult.copy}
+                        preview={preview}
+                        specLines={specLines}
+                      />
+                    )
                   )}
                 </div>
               </div>

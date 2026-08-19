@@ -4,6 +4,7 @@ import Icon from "../components/Icon";
 import { Card, CardHeader, CardTitle, CardContent, Button } from "../components/ui";
 import { govSupport as gs, govAnnouncementDetails } from "../data/mockData";
 import { supabase } from "../lib/supabase";
+import { displayPeriod } from "../lib/period";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
 
@@ -87,7 +88,7 @@ export default function GovSupportDetail() {
             {detail ? (
               <>
                 <Row label={gs.basicInfoLabels.org} value={detail.org} />
-                <Row label={gs.basicInfoLabels.period} value={detail.period} />
+                <Row label={gs.basicInfoLabels.period} value={displayPeriod(business, govAnnouncementDetails)} />
                 <Row label={gs.basicInfoLabels.target} value={detail.target} />
                 <Row label={gs.basicInfoLabels.support} value={detail.support} />
                 <Row label={gs.basicInfoLabels.contact} value={detail.contact} />

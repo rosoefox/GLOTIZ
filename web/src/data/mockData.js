@@ -391,7 +391,7 @@ export const govSupport = {
       { id: "closed", label: "마감" },
     ],
   },
-  detailPageTitle: "공고 상세화면 확인",
+  detailPageTitle: "공고 확인",
   basicInfoTitle: "기본 정보",
   basicInfoLabels: { org: "주관기관", period: "접수기간", target: "지원대상", support: "지원내용", contact: "문의처" },
   previewSectionTitle: "공고 서식 미리보기",
