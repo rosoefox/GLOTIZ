@@ -743,6 +743,87 @@ function BusinessManager({ session }) {
     swapOrder("template", list[index], list[neighborIndex]);
   };
 
+  // 사업자등록증처럼 신청자가 직접 발급받아 올리는 "사용자 업로드형"과, AI가 자동으로 채워주는
+  // "제출 서식"은 성격이 달라서 목록을 둘로 나눈다 — 업로드형이 위, 그 아래 서식은 서식 번호순.
+  function splitTemplates(templates) {
+    const uploadTemplates = templates.filter((t) => t.user_upload_required);
+    const formTemplates = templates
+      .filter((t) => !t.user_upload_required)
+      .slice()
+      .sort((a, b) => {
+        const an = parseFloat(a.form_number);
+        const bn = parseFloat(b.form_number);
+        const aValid = !Number.isNaN(an);
+        const bValid = !Number.isNaN(bn);
+        if (aValid && bValid && an !== bn) return an - bn;
+        if (aValid !== bValid) return aValid ? -1 : 1;
+        return (a.form_number || "").localeCompare(b.form_number || "");
+      });
+    return { uploadTemplates, formTemplates };
+  }
+
+  function renderTemplateRow(t, reorderControls) {
+    return (
+      <div key={t.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+        <div>
+          <p className="text-sm font-semibold text-slate-900">{t.name}</p>
+          {t.user_upload_required ? (
+            <Badge tone="brand" className="mt-1">
+              {bm.userUploadBadgeLabel}
+            </Badge>
+          ) : (
+            t.form_number && <p className="text-xs text-slate-400">서식 번호 {t.form_number}</p>
+          )}
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {reorderControls}
+          <Button variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => setEditTemplateTarget(t)}>
+            {bm.editTemplateButtonLabel}
+          </Button>
+          {!t.user_upload_required && (
+            <Button variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => setFieldsModalTemplate(t)}>
+              {bm.addFieldsButtonLabel}
+            </Button>
+          )}
+          <Button
+            variant="secondary"
+            className="px-3 py-1.5 text-xs text-red-500 hover:bg-red-50"
+            disabled={deletingTemplateId === t.id}
+            onClick={() => handleDeleteTemplate(t)}
+          >
+            <Icon name="trash" className="w-5 h-5" />
+            {deletingTemplateId === t.id ? "삭제 중..." : bm.deleteTemplateButtonLabel}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  function reorderArrows(list, index, onMove) {
+    return (
+      <div className="flex flex-col">
+        <button
+          type="button"
+          aria-label="서식 순서 위로"
+          disabled={index === 0}
+          onClick={() => onMove(list, index, -1)}
+          className="flex h-5 w-5 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30"
+        >
+          <Icon name="chevronDown" className="w-3.5 h-3.5 rotate-180" />
+        </button>
+        <button
+          type="button"
+          aria-label="서식 순서 아래로"
+          disabled={index === list.length - 1}
+          onClick={() => onMove(list, index, 1)}
+          className="flex h-5 w-5 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30"
+        >
+          <Icon name="chevronDown" className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    );
+  }
+
   async function loadBusinessManager() {
     setLoadingBM(true);
     const [{ data: biz }, { data: tpl }] = await Promise.all([
@@ -835,7 +916,7 @@ function BusinessManager({ session }) {
                         <button
                           type="button"
                           onClick={() => setExpandedBusinessId((id) => (id === biz.id ? null : biz.id))}
-                          className="flex items-center gap-1.5"
+                          className="group flex items-center gap-1.5"
                         >
                           <Icon
                             name="chevronDown"
@@ -843,7 +924,7 @@ function BusinessManager({ session }) {
                               expandedBusinessId === biz.id ? "rotate-180" : ""
                             }`}
                           />
-                          <p className="font-bold text-slate-900">{biz.name}</p>
+                          <p className="font-bold text-slate-900 group-hover:text-brand-600">{biz.name}</p>
                         </button>
                         <button
                           type="button"
@@ -915,70 +996,39 @@ function BusinessManager({ session }) {
                     {templates.length === 0 ? (
                       <p className="text-xs text-slate-400">{bm.templateListEmptyMessage}</p>
                     ) : (
-                      <div className="divide-y divide-slate-100 rounded-xl border border-slate-200">
-                        {templates.map((t, tIndex) => (
-                      <div key={t.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
-                        <div>
-                          <p className="text-sm font-semibold text-slate-900">{t.name}</p>
-                          {t.user_upload_required ? (
-                            <Badge tone="brand" className="mt-1">
-                              {bm.userUploadBadgeLabel}
-                            </Badge>
-                          ) : (
-                            t.form_number && <p className="text-xs text-slate-400">서식 번호 {t.form_number}</p>
-                          )}
-                        </div>
-                        <div className="flex shrink-0 items-center gap-2">
-                          <div className="flex flex-col">
-                            <button
-                              type="button"
-                              aria-label="서식 순서 위로"
-                              disabled={tIndex === 0}
-                              onClick={() => moveTemplate(templates, tIndex, -1)}
-                              className="flex h-5 w-5 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30"
-                            >
-                              <Icon name="chevronDown" className="w-3.5 h-3.5 rotate-180" />
-                            </button>
-                            <button
-                              type="button"
-                              aria-label="서식 순서 아래로"
-                              disabled={tIndex === templates.length - 1}
-                              onClick={() => moveTemplate(templates, tIndex, 1)}
-                              className="flex h-5 w-5 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30"
-                            >
-                              <Icon name="chevronDown" className="w-3.5 h-3.5" />
-                            </button>
+                      (() => {
+                        const { uploadTemplates, formTemplates } = splitTemplates(templates);
+                        return (
+                          <div className="space-y-4">
+                            {uploadTemplates.length > 0 && (
+                              <div>
+                                <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                                  {bm.userUploadGroupLabel}
+                                </p>
+                                <div className="divide-y divide-slate-100 rounded-xl border border-slate-200">
+                                  {uploadTemplates.map((t, tIndex) =>
+                                    renderTemplateRow(
+                                      t,
+                                      reorderArrows(uploadTemplates, tIndex, moveTemplate)
+                                    )
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                            {formTemplates.length > 0 && (
+                              <div>
+                                <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                                  {bm.formTemplateGroupLabel}
+                                </p>
+                                <div className="divide-y divide-slate-100 rounded-xl border border-slate-200">
+                                  {formTemplates.map((t) => renderTemplateRow(t, null))}
+                                </div>
+                              </div>
+                            )}
                           </div>
-                          <Button
-                            variant="secondary"
-                            className="px-3 py-1.5 text-xs"
-                            onClick={() => setEditTemplateTarget(t)}
-                          >
-                            {bm.editTemplateButtonLabel}
-                          </Button>
-                          {!t.user_upload_required && (
-                            <Button
-                              variant="secondary"
-                              className="px-3 py-1.5 text-xs"
-                              onClick={() => setFieldsModalTemplate(t)}
-                            >
-                              {bm.addFieldsButtonLabel}
-                            </Button>
-                          )}
-                          <Button
-                            variant="secondary"
-                            className="px-3 py-1.5 text-xs text-red-500 hover:bg-red-50"
-                            disabled={deletingTemplateId === t.id}
-                            onClick={() => handleDeleteTemplate(t)}
-                          >
-                            <Icon name="trash" className="w-5 h-5" />
-                            {deletingTemplateId === t.id ? "삭제 중..." : bm.deleteTemplateButtonLabel}
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                        );
+                      })()
+                    )}
                   </div>
                 </div>
               </Card>
@@ -1031,6 +1081,7 @@ export default function AdminPage() {
   const [reviewStatusError, setReviewStatusError] = useState(null);
   const [downloadingId, setDownloadingId] = useState(null);
   const [search, setSearch] = useState("");
+  const [showBusinessModal, setShowBusinessModal] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -1427,6 +1478,23 @@ export default function AdminPage() {
           <BusinessManager session={session} />
         ) : (
           <>
+            <div className="mb-4 flex justify-end">
+              <Button onClick={() => setShowBusinessModal(true)}>
+                <Icon name="plus" className="w-5 h-5" />
+                {ap.businessManager.newBusinessButtonLabel}
+              </Button>
+            </div>
+            {showBusinessModal && (
+              <NewBusinessModal
+                session={session}
+                onClose={() => setShowBusinessModal(false)}
+                onCreated={() => {
+                  setShowBusinessModal(false);
+                  setActiveTab("businesses");
+                }}
+              />
+            )}
+
             <div className="relative mb-6">
               <Icon
                 name="search"

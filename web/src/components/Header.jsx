@@ -4,7 +4,7 @@ import Icon from "./Icon";
 import NavUserMenu from "./NavUserMenu";
 import { brand, nav, login } from "../data/mockData";
 import { useAuth } from "../context/AuthContext";
-import logoImage from "../../로고1-icon.png";
+import logoImage from "../../로고최종1.png";
 
 // 홈 화면을 포함한 모든 페이지가 공유하는 단일 상단 네비게이션.
 // (예전엔 홈만 상단 가로 메뉴, 나머지 페이지는 왼쪽 사이드바를 썼는데 전부 이걸로 통일한다.)
@@ -41,7 +41,7 @@ export default function Header({ overlay = false, scrolled = false }) {
     >
       <Link to="/" className="flex min-w-0 shrink-0 items-center" onClick={() => setMobileOpen(false)}>
         {/* brand.logo(정사각 캔버스, 위아래 여백이 커서 작게 보임) 대신 이 헤더 전용으로 꽉 차게
-            잘라낸 로고를 쓴다. 이미지 자체에 GLOBIZ 워드마크가 들어있어서 별도 텍스트 라벨은 없앴다.
+            잘라낸 로고를 쓴다. 이미지 자체에 GLOTIZ 워드마크가 들어있어서 별도 텍스트 라벨은 없앴다.
             투명 헤더(홈 히어로 위에 뜬 상태)에서는 원본이 남색이라 어두운 배경에 묻히므로,
             흰색으로 반전시켜 배경 위에서도 잘 보이게 한다. */}
         <img

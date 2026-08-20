@@ -141,7 +141,7 @@ export default function FloatingChatbot() {
             {messages.map((turn, i) => (
               <div
                 key={i}
-                className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm shadow-sm ${
+                className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-3 py-2 text-sm leading-relaxed shadow-sm ${
                   turn.role === "user"
                     ? "ml-auto rounded-tr-sm bg-brand-600 text-white"
                     : "rounded-tl-sm bg-white text-slate-700"

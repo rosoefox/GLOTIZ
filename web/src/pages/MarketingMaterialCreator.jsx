@@ -1,54 +1,92 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toPng } from "html-to-image";
 import Icon from "../components/Icon";
-import { Button, TextField, CONTROL_CLASS, emptyFieldClass, SectionCardHeader, FieldLabel } from "../components/ui";
+import { Button, CONTROL_CLASS, emptyFieldClass, SectionCardHeader, FieldLabel } from "../components/ui";
 import { marketingMaterialCreator as mc } from "../data/mockData";
 import { useMarketingImages } from "../context/MarketingImagesContext";
 import { useAuth } from "../context/AuthContext";
 import { readErrorMessage } from "../lib/apiError";
 import { parseSpecLines } from "../lib/spec";
+import thumbMinimal from "../../미니멀 클린.jpg";
+import thumbLuxury from "../../럭셔리.jpg";
+import thumbPop from "../../팝.jpg";
+import thumbEmotional from "../../감성 무드.jpg";
+import thumbModern from "../../모던.jpg";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
 
-const LAYOUT_BY_TEMPLATE = {
-  "tpl-poster": "poster",
-  "tpl-card-news": "card-news",
-  "tpl-detail": "detail",
+// Step 3 템플릿 카드에 쓰는 실제 예시 이미지 — 해당하는 포스터 템플릿에만 있고, 없는 템플릿은
+// TemplateThumb의 기존 도형 플레이스홀더로 자연히 대체된다.
+const POSTER_TEMPLATE_THUMBS = {
+  "tpl-poster-minimal": thumbMinimal,
+  "tpl-poster-luxury": thumbLuxury,
+  "tpl-poster-pop": thumbPop,
+  "tpl-poster-emotional": thumbEmotional,
+  "tpl-poster-modern": thumbModern,
 };
 
-const PREVIOUS_PRODUCT_OPTIONS = [
-  {
-    id: "happy-vita-calming-sunscreen",
-    name: "해피 비타 카밍 선크림",
-    preview: {
-      productName: "해피 비타 카밍 선크림",
-      tagline: "비타민 캡슐 · 진정 · 수분 · 데일리 UV 케어",
-      description:
-        "민감한 피부도 편안하게 사용할 수 있다는 콘셉트의 데일리 자외선 차단제. 산뜻한 사용감, 백탁 부담 완화, 메이크업 전 사용 편의성을 핵심 메시지로 설정한 가상 제품입니다.",
-      mustHavePhoto:
-        "20~40대 K-Beauty 관심 소비자가 제품을 사용하는 모습과 산뜻한 사용감, 메이크업 전 사용 장면",
-      price: "",
-    },
-    spec: [
-      "제품 유형: 자외선 차단 화장품",
-      "표시 사양: SPF50+ / PA++++ (가상 제품 설정)",
-      "용량: 50 mL",
-      "주요 콘셉트: 비타민 캡슐 · 진정 · 수분 · 데일리 UV 케어",
-      "타깃: 20~40대 K-Beauty 관심 소비자",
-      "주요 시장: 베트남, 싱가포르",
-      "판매 채널: 온라인 마켓플레이스 및 현지 유통 파트너",
-    ].join("\n"),
-  },
-];
+// 상품 사진은 최대 이만큼 올릴 수 있다 — 여러 각도의 사진을 같이 넘기면 AI가 더 정확하게 생성한다.
+const MAX_PRODUCT_PHOTOS = 4;
+
+// 레이아웃별로 "대표 이미지"로 삼을 슬롯 — 버전 썸네일이나 저장 파일명 등에 쓴다.
+const MAIN_SLOT_BY_LAYOUT = {
+  poster: "poster",
+  "card-news": "card-1",
+  detail: "hero",
+};
+
+// 1~3단계에서 입력한 내용(사진·상품정보·템플릿)을 브라우저에만 임시저장해서, 페이지를
+// 벗어났다 돌아오거나 뒤로가기를 해도 다시 입력할 필요 없게 한다. 사용자별로 구분한다.
+function setupDraftKey(userId) {
+  return `jbxport:marketing:setup:${userId || "guest"}`;
+}
+
+// 임시저장된 상품 사진(dataURL)을 실제 업로드에 쓸 수 있는 File 객체로 되돌린다.
+function dataUrlToFile(dataUrl, filename, mimeType) {
+  try {
+    const [header, base64] = dataUrl.split(",");
+    const mime = mimeType || header.match(/data:(.*?);base64/)?.[1] || "image/png";
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return new File([bytes], filename || "photo.png", { type: mime });
+  } catch {
+    return null;
+  }
+}
 
 function findImage(images, slot) {
   return images?.find((img) => img.slot === slot)?.url;
 }
 
+// AI가 방금 채운 필드를 은은한 브랜드 컬러로 표시해서 눈에 띄게 한다 — emptyFieldClass와
+// 같은 방식으로 border-slate-300/bg-white를 통째로 치환해야 우선순위 문제 없이 실제로 반영된다.
+function aiFilledFieldClass(isAiFilled) {
+  if (!isAiFilled) return CONTROL_CLASS;
+  return CONTROL_CLASS.replace("border-slate-300", "border-brand-300").replace("bg-white", "bg-brand-50/30");
+}
+
+function AiFilledHint() {
+  return (
+    <p className="mt-1 flex items-center gap-1 text-[11px] font-medium text-brand-600">
+      <Icon name="sparkle" className="w-3 h-3" />
+      AI가 작성한 내용이에요. 검토 후 필요하면 수정해주세요.
+    </p>
+  );
+}
+
 // 아직 실제 생성 결과가 없는 템플릿 카드에 형태를 미리 보여주는 예시 썸네일 —
 // 실사 이미지 대신 각 레이아웃의 구조(세로 포스터/가로 카드뉴스/세로 상세페이지)를 축소해 그린다.
-function TemplateThumb({ id }) {
-  if (id === "tpl-poster") {
+function TemplateThumb({ layout, templateId }) {
+  const realThumb = POSTER_TEMPLATE_THUMBS[templateId];
+  if (realThumb) {
+    return (
+      <div className="relative aspect-[3/4] w-full overflow-hidden bg-slate-100">
+        <img src={realThumb} alt="" className="h-full w-full object-cover" />
+      </div>
+    );
+  }
+  if (layout === "poster") {
     return (
       <div className="relative aspect-[3/4] w-full overflow-hidden bg-gradient-to-b from-rose-200 via-orange-100 to-amber-50">
         <div className="absolute inset-x-4 top-3 h-1 rounded-full bg-white/80" />
@@ -57,7 +95,7 @@ function TemplateThumb({ id }) {
       </div>
     );
   }
-  if (id === "tpl-card-news") {
+  if (layout === "card-news") {
     return (
       <div className="flex aspect-[3/4] w-full items-stretch gap-1 bg-slate-100 p-2.5">
         <div className="flex-1 rounded bg-sky-200" />
@@ -77,119 +115,173 @@ function TemplateThumb({ id }) {
   );
 }
 
+// 템플릿 무드별 오버레이 폰트 — 헤드라인(상품명)/서브헤드(태그라인)/가격 역할마다 다른 폰트를 쓴다.
+// 한글에는 이 폰트들에 글자가 없어서 지정한 폴백(Pretendard)으로 자동으로 넘어간다.
+const MOOD_FONTS = {
+  bold: {
+    headline: "'Anton', 'Pretendard Variable', sans-serif",
+    subhead: "'Montserrat', 'Pretendard Variable', sans-serif",
+    subheadWeight: 600,
+    price: "'Montserrat', 'Pretendard Variable', sans-serif",
+  },
+  editorial: {
+    headline: "'Bebas Neue', 'Pretendard Variable', sans-serif",
+    subhead: "'DM Sans', 'Pretendard Variable', sans-serif",
+    subheadWeight: 600,
+    price: "'DM Sans', 'Pretendard Variable', sans-serif",
+  },
+  luxury: {
+    headline: "'Playfair Display', 'Pretendard Variable', serif",
+    subhead: "'Montserrat', 'Pretendard Variable', sans-serif",
+    subheadWeight: 500,
+    price: "'Montserrat', 'Pretendard Variable', sans-serif",
+  },
+  tech: {
+    headline: "'Space Grotesk', 'Pretendard Variable', sans-serif",
+    subhead: "'Space Grotesk', 'Pretendard Variable', sans-serif",
+    subheadWeight: 500,
+    price: "'Space Grotesk', 'Pretendard Variable', sans-serif",
+  },
+};
 
-function PlaceholderPreview({ uploadedImage }) {
-  if (uploadedImage) {
-    return (
-      <div className="relative flex aspect-[3/4] w-full items-center justify-center overflow-hidden rounded-2xl bg-slate-200 shadow-lg">
-        <div
-          className="absolute inset-0 bg-contain bg-center bg-no-repeat"
-          style={{ backgroundImage: `url(${uploadedImage})` }}
-        />
-      </div>
-    );
-  }
-  return (
-    <div className="flex flex-col items-center justify-center gap-3 py-10 text-center">
-      <div className="flex h-14 w-14 items-center justify-center rounded-full border border-dashed border-slate-300">
-        <Icon name="camera" className="w-5 h-5 text-slate-400" />
-      </div>
-      <div>
-        <p className="text-sm font-semibold text-slate-600">아직 생성된 이미지가 없어요</p>
-        <p className="mt-1 text-xs leading-relaxed text-slate-400">
-          왼쪽에서 사진과 상품 정보를 채우고
-          <br />
-          &ldquo;이미지 생성하기&rdquo; 버튼을 눌러보세요
-        </p>
-      </div>
-    </div>
-  );
+function moodForTemplateId(templateId = "") {
+  if (templateId.includes("luxury") || templateId.includes("premium") || templateId.includes("classic")) return "luxury";
+  if (templateId.includes("pop") || templateId.includes("trendy")) return "bold";
+  if (templateId.includes("modern")) return "tech";
+  return "editorial"; // 미니멀/감성/내추럴 등 기본값
 }
 
-function PosterPreview({ images, preview }) {
+// 포스터 위 문구는 이미지 크기에 비례해서 커지고 작아져야 하므로, 화면 폭이 아니라 이 박스 자체의
+// 렌더링 폭을 기준으로 삼는 컨테이너 쿼리 단위(cqw)를 쓴다 — 그래야 미리보기/상세 모달처럼 실제
+// 렌더링 크기가 다른 곳에서도 항상 그 박스에 맞게 글자 크기와 여백이 조정된다.
+// 타이포그래피 문서의 위치 규칙(헤드라인=상단/상단중앙, 서브헤드=헤드라인 근처, 가격=배지 형태)을 그대로
+// 따른다. 글자 크기는 cqw(박스 폭 비례)만 쓰지 않고 clamp(최소, cqw, 최대)로 상/하한을 같이 둬서,
+// 상품명이 아무리 길어도 포스터 프레임을 벗어나지 않는다 — 거기에 line-clamp+overflow-hidden까지 겹쳐서
+// 정말로 넘치지 않게 이중으로 막는다.
+function PosterPreview({ images, preview, templateId, aspectRatio = "4:5" }) {
   const url = findImage(images, "poster");
+  const fonts = MOOD_FONTS[moodForTemplateId(templateId)];
+  // 럭셔리&프리미엄은 Gemini가 태그라인·상품명(Bebas Neue)·가격·CTA를 이미지 안에 직접 그려 넣는
+  // 전용 프롬프트를 쓰기 때문에, 다른 템플릿들처럼 프론트에서 문구를 또 얹으면 글자가 겹쳐 보인다.
+  const isLuxury = templateId === "tpl-poster-luxury";
+  const ratioClass = aspectRatio === "9:16" ? "aspect-[9/16]" : "aspect-[4/5]";
   return (
-    <div className="relative mx-auto aspect-[9/16] w-full max-w-xs overflow-hidden rounded-2xl shadow-lg">
+    <div
+      className={`relative mx-auto ${ratioClass} w-full max-w-sm overflow-hidden rounded-2xl shadow-lg`}
+      style={{ containerType: "inline-size" }}
+    >
       {url && <img src={url} alt="포스터" className="absolute inset-0 h-full w-full object-cover" />}
-      <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-black/35 to-black/25" />
-      <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
-        {preview.tagline && (
-          <p
-            className="text-xs font-semibold uppercase tracking-[0.3em] text-white/90"
-            style={{ textShadow: "0 2px 8px rgba(0,0,0,0.6)" }}
-          >
-            {preview.tagline}
-          </p>
-        )}
-        <p
-          className="-skew-x-6 text-4xl font-black italic leading-[1.05] text-white"
-          style={{ textShadow: "0 4px 16px rgba(0,0,0,0.7)" }}
-        >
-          {preview.productName}
-        </p>
-        {preview.price && (
-          <p
-            className="-skew-x-6 text-3xl font-black italic text-amber-300"
-            style={{ textShadow: "0 4px 16px rgba(0,0,0,0.7)" }}
-          >
-            {preview.price}
-          </p>
-        )}
-      </div>
+      {!isLuxury && (
+        <>
+          <div className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-black/70 via-black/15 to-transparent" />
+          <div className="absolute inset-x-0 top-0 flex flex-col gap-[1.2cqw] p-[6cqw] pr-[25cqw] text-white">
+            {preview.tagline && (
+              <p
+                className="line-clamp-2 overflow-hidden text-[clamp(0.6rem,2.6cqw,1rem)] uppercase tracking-[0.2em] text-white/85"
+                style={{ textShadow: "0 2px 8px rgba(0,0,0,0.6)", fontFamily: fonts.subhead, fontWeight: fonts.subheadWeight }}
+              >
+                {preview.tagline}
+              </p>
+            )}
+            <p
+              className="line-clamp-3 overflow-hidden text-[clamp(1.3rem,7.5cqw,3rem)] leading-[1.1] tracking-tight"
+              style={{ textShadow: "0 3px 12px rgba(0,0,0,0.65)", fontFamily: fonts.headline }}
+            >
+              {preview.productName}
+            </p>
+          </div>
+          {preview.price && (
+            <div className="absolute right-[5cqw] top-[5cqw] max-w-[24cqw] rounded-full bg-black/70 px-[3.5cqw] py-[2cqw]">
+              <p
+                className="line-clamp-2 overflow-hidden text-center text-[clamp(0.65rem,3.2cqw,1.2rem)] font-bold text-amber-300"
+                style={{ textShadow: "0 2px 8px rgba(0,0,0,0.6)", fontFamily: fonts.price }}
+              >
+                {preview.price}
+              </p>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
 
-function CardNewsPreview({ images, copy, preview }) {
-  const cards = [
-    {
-      slot: "card-1",
-      overlay: (
-        <p
-          className="-skew-x-3 text-2xl font-black italic leading-tight text-white"
-          style={{ textShadow: "0 3px 12px rgba(0,0,0,0.7)" }}
-        >
-          {preview.productName}
-        </p>
-      ),
-    },
-    {
-      slot: "card-2",
-      overlay: (
-        <div className="flex flex-wrap gap-1.5">
-          {(copy?.features || []).map((f) => (
-            <span
-              key={f}
-              className="rounded-full bg-white/95 px-2.5 py-1 text-xs font-bold text-slate-800"
-            >
-              {f}
-            </span>
-          ))}
-        </div>
-      ),
-    },
-    { slot: "card-3", overlay: null },
-    {
-      slot: "card-4",
-      overlay: (
-        <div>
-          {preview.price && (
+function CardNewsPreview({ images, copy, preview, templateId }) {
+  // 카드뉴스는 4장 고정 레이아웃이다. 생성된 이미지 개수를 그대로 썸네일에 반영한다.
+  const fonts = MOOD_FONTS[moodForTemplateId(templateId)];
+  const cardCount = images?.length || 4;
+  const cards = Array.from({ length: cardCount }, (_, i) => {
+    const index = i + 1;
+    const slot = `card-${index}`;
+    if (index === 1) {
+      return {
+        slot,
+        // CARD_01_HERO_PRICE — 상품명과 가격을 함께 보여준다 (가격은 마지막 카드에도 한 번 더 나온다).
+        overlay: (
+          <div className="space-y-[1cqw]">
             <p
-              className="-skew-x-3 text-2xl font-black italic text-amber-300"
-              style={{ textShadow: "0 3px 12px rgba(0,0,0,0.7)" }}
+              className="line-clamp-3 overflow-hidden text-[clamp(1.1rem,8cqw,2.2rem)] leading-tight tracking-tight text-white"
+              style={{ textShadow: "0 3px 12px rgba(0,0,0,0.7)", fontFamily: fonts.headline }}
             >
-              {preview.price}
+              {preview.productName}
             </p>
-          )}
-          {copy?.promoLine && (
-            <p className="mt-1 text-sm font-semibold text-white/95" style={{ textShadow: "0 2px 6px rgba(0,0,0,0.6)" }}>
-              {copy.promoLine}
-            </p>
-          )}
-        </div>
-      ),
-    },
-  ];
+            {preview.price && (
+              <p
+                className="line-clamp-1 overflow-hidden text-[clamp(1rem,7cqw,1.9rem)] font-bold text-amber-300"
+                style={{ textShadow: "0 3px 12px rgba(0,0,0,0.7)", fontFamily: fonts.price }}
+              >
+                {preview.price}
+              </p>
+            )}
+          </div>
+        ),
+      };
+    }
+    if (index === 2) {
+      return {
+        slot,
+        overlay: (
+          <div className="flex flex-wrap gap-[1.5cqw]">
+            {(copy?.features || []).map((f) => (
+              <span
+                key={f}
+                className="rounded-full bg-white/95 px-[3cqw] py-[1.5cqw] text-[clamp(0.6rem,3.2cqw,0.9rem)] text-slate-800"
+                style={{ fontFamily: fonts.subhead, fontWeight: fonts.subheadWeight }}
+              >
+                {f}
+              </span>
+            ))}
+          </div>
+        ),
+      };
+    }
+    if (index === cardCount) {
+      return {
+        slot,
+        overlay: (
+          <div className="space-y-[1cqw]">
+            {preview.price && (
+              <p
+                className="line-clamp-1 overflow-hidden text-[clamp(1rem,7cqw,1.9rem)] font-bold text-amber-300"
+                style={{ textShadow: "0 3px 12px rgba(0,0,0,0.7)", fontFamily: fonts.price }}
+              >
+                {preview.price}
+              </p>
+            )}
+            {copy?.promoLine && (
+              <p
+                className="line-clamp-2 overflow-hidden font-sans text-[clamp(0.6rem,3.2cqw,0.9rem)] font-medium text-white/95"
+                style={{ textShadow: "0 2px 6px rgba(0,0,0,0.6)" }}
+              >
+                {copy.promoLine}
+              </p>
+            )}
+          </div>
+        ),
+      };
+    }
+    return { slot, overlay: null };
+  });
 
   return (
     <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2">
@@ -198,13 +290,14 @@ function CardNewsPreview({ images, copy, preview }) {
         return (
           <div
             key={slot}
-            className="relative aspect-square w-full max-w-xs shrink-0 snap-center overflow-hidden rounded-2xl shadow-lg"
+            className="relative aspect-square w-full max-w-sm shrink-0 snap-center overflow-hidden rounded-2xl shadow-lg"
+            style={{ containerType: "inline-size" }}
           >
             {url && <img src={url} alt={slot} className="absolute inset-0 h-full w-full object-cover" />}
             {overlay && (
               <>
                 <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/5 to-transparent" />
-                <div className="absolute bottom-0 left-0 right-0 p-4">{overlay}</div>
+                <div className="absolute bottom-0 left-0 right-0 p-[4cqw]">{overlay}</div>
               </>
             )}
           </div>
@@ -296,6 +389,76 @@ function DetailPreview({ images, copy, preview, specLines }) {
   );
 }
 
+// 결과 페이지 미리보기 자리에서 generatedResult.layout에 맞춰 알맞은 미리보기 컴포넌트를 고른다.
+function LayoutPreview({ layout, images, copy, preview, specLines, templateId, aspectRatio }) {
+  if (layout === "poster")
+    return <PosterPreview images={images} preview={preview} templateId={templateId} aspectRatio={aspectRatio} />;
+  if (layout === "card-news")
+    return <CardNewsPreview images={images} copy={copy} preview={preview} templateId={templateId} />;
+  if (layout === "detail") return <DetailPreview images={images} copy={copy} preview={preview} specLines={specLines} />;
+  return null;
+}
+
+// 이미지 생성/수정 중 결과 미리보기 자리에 보여주는 로딩 연출 — 사각 프레임과 사진 아이콘을
+// 연필이 테두리를 따라 그려나가는 듯한 스케치 애니메이션으로 표현한다.
+function PencilDrawingLoader({ label }) {
+  return (
+    <div className="relative flex min-h-[520px] flex-col items-center justify-center gap-5 overflow-hidden rounded-md border border-slate-200 bg-slate-900 p-8 text-center">
+      <div className="absolute inset-0 bg-gradient-to-b from-slate-900/70 via-slate-900/30 to-slate-900/70" />
+      <div className="pointer-events-none absolute inset-0 animate-shimmer bg-[length:200%_100%] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+
+      <div className="relative flex h-40 w-40 items-center justify-center text-brand-300">
+        <svg viewBox="0 0 160 160" className="h-40 w-40" fill="none">
+          <rect
+            x="16"
+            y="26"
+            width="128"
+            height="108"
+            stroke="currentColor"
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            pathLength="1"
+            className="animate-sketch-draw"
+            style={{ strokeDasharray: 1, strokeDashoffset: 1 }}
+          />
+          <circle
+            cx="48"
+            cy="58"
+            r="9"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            pathLength="1"
+            className="animate-sketch-draw text-brand-200/80"
+            style={{ strokeDasharray: 1, strokeDashoffset: 1, animationDelay: "0.3s" }}
+          />
+          <path
+            d="M22 118 L58 84 L80 104 L104 76 L138 118"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            pathLength="1"
+            className="animate-sketch-draw text-brand-200/80"
+            style={{ strokeDasharray: 1, strokeDashoffset: 1, animationDelay: "0.5s" }}
+          />
+        </svg>
+        <div
+          className="animate-pencil-travel absolute h-7 w-7 text-brand-300"
+          style={{ offsetPath: "path('M16,26 L144,26 L144,134 L16,134 Z')", offsetRotate: "auto" }}
+        >
+          <Icon name="pencil" className="h-7 w-7 -rotate-45" />
+        </div>
+      </div>
+
+      <div className="relative flex flex-col items-center gap-2">
+        <p className="text-sm font-semibold text-white">{label}</p>
+        <p className="text-xs text-white/60">최대 1~2분 정도 걸릴 수 있어요</p>
+      </div>
+    </div>
+  );
+}
+
 const TRANSLATE_LANGUAGES = [
   { code: "en", label: "English" },
   { code: "vi", label: "Tiếng Việt" },
@@ -317,7 +480,7 @@ function TranslateMenu({ activeLang, translating, onTranslate, disabled }) {
         disabled={translating || disabled}
       >
         <Icon name="globe" className="w-5 h-5" />
-        {translating ? "번역 중..." : activeLabel ? `이미지 언어: ${activeLabel}` : "이미지 언어 변경하기"}
+        {translating ? "번역 중..." : activeLabel ? `이미지 언어: ${activeLabel}` : "이미지 언어 설정하기"}
         <Icon name="chevronDown" className={`w-5 h-5 transition-transform ${open ? "rotate-180" : ""}`} />
       </Button>
       {open && !disabled && (
@@ -354,10 +517,14 @@ function TranslateMenu({ activeLang, translating, onTranslate, disabled }) {
 }
 
 export default function MarketingMaterialCreator() {
+  // "setup" = 1~3단계로 사진/정보/템플릿을 채우는 화면, "result" = 생성된 이미지를 보고
+  // 프롬프트로 다듬거나 저장하는 화면.
+  const [stage, setStage] = useState("setup");
   const [activeTemplate, setActiveTemplate] = useState(
     mc.templates.items.find((t) => t.selected)?.id
   );
   const [activeCategory, setActiveCategory] = useState(mc.templates.categories[0]);
+  const [posterAspectRatio, setPosterAspectRatio] = useState("4:5");
   const [preview, setPreview] = useState({
     productName: "",
     tagline: "",
@@ -366,24 +533,107 @@ export default function MarketingMaterialCreator() {
     price: "",
   });
   const [spec, setSpec] = useState("");
-  const [uploadedFile, setUploadedFile] = useState(null);
-  const [uploadedImage, setUploadedImage] = useState(null);
+  const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [uploadedImages, setUploadedImages] = useState([]);
+  const [logoFile, setLogoFile] = useState(null);
+  const [logoImage, setLogoImage] = useState(null);
   const [savingImage, setSavingImage] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState("");
   const [generatedResult, setGeneratedResult] = useState(null);
-  const [showPreviousProducts, setShowPreviousProducts] = useState(false);
+  const [aiFillingInfo, setAiFillingInfo] = useState(false);
+  const [aiFillError, setAiFillError] = useState("");
+  const [priceSuggestLang, setPriceSuggestLang] = useState("en");
+  const [suggestingPrice, setSuggestingPrice] = useState(false);
+  const [priceSuggestError, setPriceSuggestError] = useState("");
+  const [priceSuggestion, setPriceSuggestion] = useState(null);
+  const [aiFilledFields, setAiFilledFields] = useState(() => new Set()); // AI가 채운 뒤 아직 사용자가 손대지 않은 필드
   const [translating, setTranslating] = useState(false);
   const [translateError, setTranslateError] = useState(null);
   const [activeLang, setActiveLang] = useState(null); // null이면 한국어 원본
   const [originalPreview, setOriginalPreview] = useState(null);
   const [originalCopy, setOriginalCopy] = useState(null);
   const [originalSpec, setOriginalSpec] = useState(null);
+
+  // 결과 페이지 전용: 프롬프트로 이미지 수정하기 + 이전 버전 목록
+  const [editPrompt, setEditPrompt] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [editError, setEditError] = useState("");
+  const [versionHistory, setVersionHistory] = useState([]);
+  const [viewingVersion, setViewingVersion] = useState(null);
+  const [savingVersionImage, setSavingVersionImage] = useState(false);
+
   const fileInputRef = useRef(null);
+  const logoInputRef = useRef(null);
   const previewRef = useRef(null);
+  const historyPreviewRef = useRef(null);
   const { addImage } = useMarketingImages();
-  const { session } = useAuth();
+  const { session, user } = useAuth();
+  const [showPreviousContent, setShowPreviousContent] = useState(false);
+
+  // 1~3단계에서 채운 내용을 브라우저에 저장해두고, 다시 이 페이지로 돌아오면 그대로 불러온다.
+  useEffect(() => {
+    const raw = localStorage.getItem(setupDraftKey(user?.id));
+    if (!raw) return;
+    try {
+      const saved = JSON.parse(raw);
+      if (saved.preview) setPreview(saved.preview);
+      if (typeof saved.spec === "string") setSpec(saved.spec);
+      if (saved.activeTemplate) setActiveTemplate(saved.activeTemplate);
+      if (saved.activeCategory) setActiveCategory(saved.activeCategory);
+      if (saved.posterAspectRatio) setPosterAspectRatio(saved.posterAspectRatio);
+      if (Array.isArray(saved.uploadedPhotos) && saved.uploadedPhotos.length) {
+        const files = [];
+        const images = [];
+        for (const p of saved.uploadedPhotos) {
+          if (!p?.dataUrl) continue;
+          const file = dataUrlToFile(p.dataUrl, p.name, p.type);
+          if (!file) continue;
+          files.push(file);
+          images.push(p.dataUrl);
+        }
+        if (files.length) {
+          setUploadedFiles(files);
+          setUploadedImages(images);
+        }
+      }
+      if (saved.logo?.dataUrl) {
+        const logoFileRestored = dataUrlToFile(saved.logo.dataUrl, saved.logo.name, saved.logo.type);
+        if (logoFileRestored) {
+          setLogoFile(logoFileRestored);
+          setLogoImage(saved.logo.dataUrl);
+        }
+      }
+    } catch {
+      // 저장된 내용이 깨졌으면 무시하고 빈 화면으로 시작한다.
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
+  useEffect(() => {
+    const payload = {
+      preview,
+      spec,
+      activeTemplate,
+      activeCategory,
+      posterAspectRatio,
+      uploadedPhotos: uploadedFiles.map((file, i) => ({
+        dataUrl: uploadedImages[i],
+        name: file.name,
+        type: file.type,
+      })),
+      logo: logoFile && logoImage ? { dataUrl: logoImage, name: logoFile.name, type: logoFile.type } : null,
+    };
+    try {
+      localStorage.setItem(setupDraftKey(user?.id), JSON.stringify(payload));
+    } catch {
+      // 저장 공간이 부족하면(용량 큰 사진 등) 조용히 건너뛴다 — 화면 동작에는 영향 없다.
+    }
+  }, [
+    user?.id, preview, spec, activeTemplate, activeCategory, posterAspectRatio,
+    uploadedFiles, uploadedImages, logoFile, logoImage,
+  ]);
 
   const handleSaveImage = async () => {
     if (!previewRef.current) return;
@@ -404,25 +654,151 @@ export default function MarketingMaterialCreator() {
     }
   };
 
-  const handlePreviewChange = (field) => (e) => {
-    setPreview((p) => ({ ...p, [field]: e.target.value }));
+  const handleSaveVersionImage = async () => {
+    if (!historyPreviewRef.current) return;
+    setSavingVersionImage(true);
+    try {
+      const dataUrl = await toPng(historyPreviewRef.current, { pixelRatio: 2 });
+      const a = document.createElement("a");
+      a.href = dataUrl;
+      a.download = `마케팅이미지_${preview.productName || "이미지"}_${viewingVersion?.label || ""}.png`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch {
+      // 저장 실패는 조용히 무시 — 다시 눌러보게 버튼은 그대로 둔다.
+    } finally {
+      setSavingVersionImage(false);
+    }
   };
 
-  const handlePreviousProductSelect = (product) => {
-    setPreview(product.preview);
-    setSpec(product.spec);
-    setGeneratedResult(null);
-    setGenerateError("");
-    setShowPreviousProducts(false);
+  const handlePreviewChange = (field) => (e) => {
+    setPreview((p) => ({ ...p, [field]: e.target.value }));
+    // 사용자가 AI가 채운 값을 직접 고치면, 이제 검토·수정이 끝난 값이니 "AI 작성" 표시를 뗀다.
+    setAiFilledFields((prev) => {
+      if (!prev.has(field)) return prev;
+      const next = new Set(prev);
+      next.delete(field);
+      return next;
+    });
+  };
+
+  const handleAiFillInfo = async () => {
+    if (!preview.productName.trim()) {
+      setAiFillError("상품명을 입력해야 작성 가능합니다.");
+      return;
+    }
+    if (uploadedFiles.length === 0) {
+      setAiFillError("먼저 상품 사진을 넣어주세요.");
+      return;
+    }
+    setAiFillingInfo(true);
+    setAiFillError("");
+    try {
+      const formData = new FormData();
+      formData.append("product_name", preview.productName);
+      uploadedFiles.forEach((file) => formData.append("product_images", file));
+      const res = await fetch(`${BACKEND_URL}/marketing/ai-fill`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        body: formData,
+      });
+      if (!res.ok) throw new Error(await readErrorMessage(res, "AI 채우기에 실패했습니다."));
+      const data = await res.json();
+      setPreview((p) => ({
+        ...p,
+        tagline: data.tagline || "",
+        description: data.description || "",
+        mustHavePhoto: data.must_have_photo || "",
+        price: data.price || "",
+      }));
+      setAiFilledFields(new Set(["tagline", "description", "mustHavePhoto", "price"]));
+      setGeneratedResult(null);
+      setGenerateError("");
+    } catch (err) {
+      setAiFillError(err.message || "AI 채우기에 실패했습니다.");
+    } finally {
+      setAiFillingInfo(false);
+    }
+  };
+
+  // Shopee 입점 페이지의 "AI 적정가 추천"과 같은 백엔드(/price-suggestion)를 재사용한다 —
+  // target_market이 이미지 언어(en/vi/th)와 같은 코드 체계라 그대로 맞는다.
+  const handleSuggestPrice = async () => {
+    if (!preview.productName.trim()) {
+      setPriceSuggestError("상품명을 먼저 입력해주세요.");
+      return;
+    }
+    setSuggestingPrice(true);
+    setPriceSuggestError("");
+    setPriceSuggestion(null);
+    try {
+      const res = await fetch(`${BACKEND_URL}/price-suggestion`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          product_name: preview.productName,
+          description: preview.description,
+          krw_price: preview.price,
+          target_market: priceSuggestLang,
+        }),
+      });
+      if (!res.ok) throw new Error(await readErrorMessage(res, "가격 추천에 실패했습니다."));
+      const data = await res.json();
+      setPriceSuggestion(data);
+    } catch (err) {
+      setPriceSuggestError(err.message || "가격 추천에 실패했습니다.");
+    } finally {
+      setSuggestingPrice(false);
+    }
+  };
+
+  const applyPriceSuggestion = () => {
+    if (!priceSuggestion) return;
+    setPreview((p) => ({ ...p, price: `${priceSuggestion.suggestedPrice} ${priceSuggestion.currency}` }));
+    setAiFilledFields((prev) => new Set(prev).add("price"));
+    setPriceSuggestion(null);
   };
 
   const handleFileChange = (e) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    const room = MAX_PRODUCT_PHOTOS - uploadedFiles.length;
+    files.slice(0, room).forEach((file) => {
+      // blob URL 대신 dataURL을 쓴다 — blob URL은 새로고침/재방문 시 곧바로 무효가 되어
+      // 임시저장한 내용을 복원할 수 없기 때문이다.
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result;
+        setUploadedFiles((prev) => [...prev, file]);
+        setUploadedImages((prev) => [...prev, dataUrl]);
+        addImage(dataUrl, preview.productName || file.name);
+      };
+      reader.readAsDataURL(file);
+    });
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleRemoveImage = (index) => {
+    setUploadedFiles((prev) => prev.filter((_, i) => i !== index));
+    setUploadedImages((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleLogoChange = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const url = URL.createObjectURL(file);
-    setUploadedFile(file);
-    setUploadedImage(url);
-    addImage(url, preview.productName || file.name);
+    const reader = new FileReader();
+    reader.onload = () => {
+      setLogoFile(file);
+      setLogoImage(reader.result);
+    };
+    reader.readAsDataURL(file);
+    if (logoInputRef.current) logoInputRef.current.value = "";
+  };
+
+  const handleRemoveLogo = () => {
+    setLogoFile(null);
+    setLogoImage(null);
   };
 
   const handleTemplateSelect = (id) => {
@@ -431,39 +807,58 @@ export default function MarketingMaterialCreator() {
     setGenerateError("");
   };
 
-  const handleGenerate = async () => {
-    if (!uploadedFile) {
-      setGenerateError("상품 사진을 업로드해주세요.");
-      return;
-    }
-    if (!preview.productName.trim()) {
-      setGenerateError("상품명을 입력해주세요.");
-      return;
-    }
+  // 새 버전(최초 생성/재제작/프롬프트 수정)이 나올 때마다 목록 맨 앞에 얹는다. 문구(상품명/
+  // 태그라인 등)는 시점마다 다를 수 있어 버전별로 그 순간의 preview/spec도 같이 저장해둔다.
+  const pushVersion = (result, previewSnapshot, specSnapshot) => {
+    setVersionHistory((prev) => [
+      {
+        id: `v-${Date.now()}`,
+        label: `버전 ${prev.length + 1}`,
+        layout: result.layout,
+        templateId: result.template_id,
+        aspectRatio: posterAspectRatio,
+        images: result.images,
+        copy: result.copy,
+        preview: previewSnapshot,
+        spec: specSnapshot,
+      },
+      ...prev,
+    ]);
+  };
+
+  // langOverride를 안 주면 현재 activeLang을 쓴다. 언어가 정해져 있으면 생성 "전에" 먼저
+  // 번역해서 그 번역된 문구로 생성 요청을 보낸다 — 럭셔리&프리미엄처럼 AI가 문구를 이미지
+  // 안에 직접 그려 넣는 템플릿은 사후 번역으로는 이미지 속 글자를 바꿀 수 없어서, 반드시
+  // 생성 전에 번역까지 끝나 있어야 "정한 언어로" 이미지가 나온다.
+  const runGenerate = async (langOverride) => {
+    const lang = langOverride !== undefined ? langOverride : activeLang;
     setGenerating(true);
     setGenerateError("");
     try {
-      if (activeTemplate === "tpl-detail") {
-        await new Promise((resolve) => window.setTimeout(resolve, 5000));
-        const data = {
-          layout: "detail",
-          hardcodedImage: "/sangse.png",
-          images: [],
-          copy: null,
-        };
-        setGeneratedResult(data);
-        addImage(data.hardcodedImage, `${preview.productName} - 상세페이지`);
-        return;
+      const template = mc.templates.items.find((t) => t.id === activeTemplate);
+
+      let genPreview = preview;
+      if (lang) {
+        try {
+          const { nextPreview } = await applyTranslation(lang, preview, null, spec);
+          genPreview = nextPreview;
+        } catch (err) {
+          setTranslateError(err.message);
+        }
       }
 
       const formData = new FormData();
-      formData.append("layout", LAYOUT_BY_TEMPLATE[activeTemplate]);
-      formData.append("product_name", preview.productName);
-      formData.append("tagline", preview.tagline);
-      formData.append("description", preview.description);
+      formData.append("layout", template?.layout || "poster");
+      formData.append("product_name", genPreview.productName);
+      formData.append("tagline", genPreview.tagline);
+      formData.append("description", genPreview.description);
       formData.append("must_have_photo", preview.mustHavePhoto);
       formData.append("price", preview.price);
-      formData.append("product_image", uploadedFile);
+      uploadedFiles.forEach((file) => formData.append("product_images", file));
+      if (logoFile) formData.append("logo", logoFile);
+      formData.append("template_id", activeTemplate || "");
+      if (template?.layout === "poster") formData.append("aspect_ratio", posterAspectRatio);
+      if (template?.styleHint) formData.append("style_hint", template.styleHint);
 
       const res = await fetch(`${BACKEND_URL}/marketing/generate`, {
         method: "POST",
@@ -473,33 +868,94 @@ export default function MarketingMaterialCreator() {
       if (!res.ok) throw new Error(await readErrorMessage(res, "이미지 생성에 실패했습니다."));
       const data = await res.json();
 
-      // 생성 전에 언어를 미리 골라뒀다면, 갓 생성된(한국어) 문구를 바로 그 언어로 번역해서 얹는다.
-      if (activeLang) {
+      let finalResult = data;
+      let previewSnapshot = genPreview;
+      let specSnapshot = spec;
+
+      if (lang) {
         try {
-          const koreanPreview = preview;
-          const { nextPreview, nextCopy, nextSpec } = await applyTranslation(activeLang, koreanPreview, data.copy, spec);
-          setOriginalPreview(koreanPreview);
+          // preview는 이미 번역해서 생성 요청에 썼으니, 여기서는 copy(카드뉴스/상세설명 문구)만
+          // 같은 언어로 마저 번역한다.
+          const { nextCopy, nextSpec } = await applyTranslation(lang, genPreview, data.copy, spec);
+          if (!originalPreview) setOriginalPreview(preview);
           setOriginalCopy(data.copy);
-          setOriginalSpec(spec);
-          setPreview(nextPreview);
+          if (originalSpec === null) setOriginalSpec(spec);
+          setPreview(genPreview);
           setSpec(nextSpec);
-          setGeneratedResult({ ...data, copy: nextCopy });
+          finalResult = { ...data, copy: nextCopy };
+          specSnapshot = nextSpec;
+          setActiveLang(lang);
         } catch (err) {
           setTranslateError(err.message);
-          setActiveLang(null);
-          setOriginalPreview(null);
-          setOriginalCopy(null);
-          setOriginalSpec(null);
-          setGeneratedResult(data);
         }
       } else {
-        setGeneratedResult(data);
+        setActiveLang(null);
+        setOriginalPreview(null);
+        setOriginalCopy(null);
+        setOriginalSpec(null);
       }
-      (data.images || []).forEach((img) => addImage(img.url, `${preview.productName} - ${img.slot}`));
+
+      setGeneratedResult(finalResult);
+      pushVersion(finalResult, previewSnapshot, specSnapshot);
+      (finalResult.images || []).forEach((img) => addImage(img.url, `${genPreview.productName} - ${img.slot}`));
     } catch (err) {
       setGenerateError(err.message || "이미지 생성에 실패했습니다.");
     } finally {
       setGenerating(false);
+    }
+  };
+
+  // 1~3단계를 다 채운 뒤 "이미지 생성하기"를 누르면 즉시 결과 페이지로 넘어가고,
+  // 그 안에서 로딩 애니메이션을 보여주며 실제 생성을 진행한다.
+  const handleGenerateClick = () => {
+    if (uploadedFiles.length === 0) {
+      setGenerateError("상품 사진을 업로드해주세요.");
+      return;
+    }
+    if (!preview.productName.trim()) {
+      setGenerateError("상품명을 입력해주세요.");
+      return;
+    }
+    setStage("result");
+    runGenerate();
+  };
+
+  const handleRegenerate = () => {
+    if (generating || editing) return;
+    runGenerate();
+  };
+
+  // 결과 페이지의 "변경 프롬프트" — 지금 생성된 이미지들을 참고 이미지로 넘겨서
+  // 사용자가 쓴 지시문대로 다시 그려달라고 요청한다(새 상품 사진이 아니라 현재 이미지를 수정).
+  const handleApplyEditPrompt = async () => {
+    if (!editPrompt.trim()) {
+      setEditError("수정할 내용을 입력해주세요.");
+      return;
+    }
+    if (!generatedResult) return;
+    setEditing(true);
+    setEditError("");
+    try {
+      const res = await fetch(`${BACKEND_URL}/marketing/edit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token}` },
+        body: JSON.stringify({
+          layout: generatedResult.layout,
+          prompt: editPrompt,
+          images: (generatedResult.images || []).map((img) => ({ slot: img.slot, path: img.path })),
+        }),
+      });
+      if (!res.ok) throw new Error(await readErrorMessage(res, "이미지 수정에 실패했습니다."));
+      const data = await res.json();
+      const nextResult = { ...generatedResult, images: data.images };
+      setGeneratedResult(nextResult);
+      pushVersion(nextResult, preview, spec);
+      (data.images || []).forEach((img) => addImage(img.url, `${preview.productName} - ${img.slot} (수정)`));
+      setEditPrompt("");
+    } catch (err) {
+      setEditError(err.message || "이미지 수정에 실패했습니다.");
+    } finally {
+      setEditing(false);
     }
   };
 
@@ -589,6 +1045,15 @@ export default function MarketingMaterialCreator() {
   // 기억해뒀다가 handleGenerate에서 그 언어로 바로 생성하고, 이미 이미지가 있으면 지금
   // 바로 문구만 번역해서 바꿔친다.
   const runTranslate = async (langCode) => {
+    // 럭셔리&프리미엄은 AI가 문구를 이미지 안에 직접 그려 넣기 때문에, 언어를 바꾸거나 원래
+    // 언어(한국어)로 되돌릴 때 오버레이만 바꿔치기해서는 이미지 속 글자가 바뀌지 않는다 —
+    // 이미 생성된 이미지가 있으면 그 언어로 다시 생성해야 한다.
+    const isLuxuryPoster = activeTemplate === "tpl-poster-luxury";
+    if (generatedResult && isLuxuryPoster) {
+      await runGenerate(langCode === "ko" ? null : langCode);
+      return;
+    }
+
     if (langCode === "ko") {
       if (originalPreview) setPreview(originalPreview);
       if (originalCopy) setGeneratedResult((r) => (r ? { ...r, copy: originalCopy } : r));
@@ -600,7 +1065,7 @@ export default function MarketingMaterialCreator() {
       return;
     }
 
-    if (!hasMatchingResult) {
+    if (!generatedResult) {
       setActiveLang(langCode);
       return;
     }
@@ -629,8 +1094,9 @@ export default function MarketingMaterialCreator() {
   };
 
   const specLines = parseSpecLines(spec);
-  const layout = LAYOUT_BY_TEMPLATE[activeTemplate];
-  const hasMatchingResult = generatedResult && generatedResult.layout === layout;
+  const isBusy = generating || editing;
+  const activeTemplateItem = mc.templates.items.find((t) => t.id === activeTemplate);
+  const activeLayout = activeTemplateItem?.layout;
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-8 sm:px-8">
@@ -638,309 +1104,615 @@ export default function MarketingMaterialCreator() {
       <p className="mt-1 text-sm text-slate-500">{mc.subtitle}</p>
 
       {translateError && <p className="mt-4 text-xs font-medium text-red-500">{translateError}</p>}
-      {generateError && (
-        <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
-          {generateError}
-        </div>
-      )}
 
-      {/* 1행: 상품 사진 업로드 + 템플릿 선택 */}
-      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <div className="rounded-lg border border-slate-200 bg-white">
-          <SectionCardHeader title={mc.uploadLabel} />
-          <div className="p-6">
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className={`flex w-full flex-col items-center justify-center overflow-hidden rounded-md border-2 border-dashed bg-contain bg-center bg-no-repeat px-4 py-8 text-center hover:border-brand-300 hover:bg-brand-50 ${
-                uploadedImage ? "border-slate-200 bg-slate-50" : "border-brand-300 bg-brand-50/40"
-              }`}
-              style={uploadedImage ? { backgroundImage: `url(${uploadedImage})`, minHeight: "9rem" } : undefined}
-            >
-              {!uploadedImage && (
-                <>
-                  <Icon name="upload" className="mb-3 w-5 h-5 text-brand-500" />
-                  <p className="text-sm font-medium text-slate-700">{mc.uploadHint.title}</p>
-                  <p className="mt-1 text-xs text-slate-400">{mc.uploadHint.sub}</p>
-                </>
-              )}
-            </button>
-            <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
-            {uploadedImage && (
-              <Button variant="secondary" className="mt-3 w-full py-2" onClick={() => fileInputRef.current?.click()}>
-                <Icon name="upload" className="w-5 h-5" />
-                사진 변경하기
+      {stage === "setup" && (
+        <>
+          {generatedResult && (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-md border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-700">
+              <span>이미 생성해둔 이미지가 있어요.</span>
+              <Button variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => setStage("result")}>
+                <Icon name="eye" className="w-3.5 h-3.5" />
+                미리보기로 이동
               </Button>
-            )}
-          </div>
-        </div>
-
-        <div className="rounded-lg border border-slate-200 bg-white">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-6 py-4">
-            <h2 className="text-sm font-bold text-slate-900">{mc.templateSectionTitle}</h2>
-            <TranslateMenu
-              activeLang={activeLang}
-              translating={translating}
-              onTranslate={runTranslate}
-              disabled={!hasMatchingResult}
-            />
-          </div>
-          <div className="p-6">
-            <div className="mb-4 flex gap-2">
-              {mc.templates.categories.map((c) => (
-                <button
-                  key={c}
-                  onClick={() => setActiveCategory(c)}
-                  className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-medium ${
-                    activeCategory === c
-                      ? "bg-slate-900 text-white"
-                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                  }`}
-                >
-                  {c}
-                </button>
-              ))}
             </div>
-            <div className="grid grid-cols-3 gap-3">
-              {mc.templates.items
-                .filter((t) => activeCategory === "전체" || t.category === activeCategory)
-                .map((t) => (
+          )}
+
+          {generateError && (
+            <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+              {generateError}
+            </div>
+          )}
+
+          {/* 좌: 1단계 사진 업로드(작게) → 중: 2단계 상품 정보 → 우: 3단계 템플릿(넓게) — 세 단계 모두 처음부터 한 번에 보여준다. */}
+          <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[0.8fr_1fr_1.4fr]">
+            <div className="rounded-lg border border-slate-200 bg-white">
+              <SectionCardHeader step={1} title="생성할 이미지의 상품 사진을 넣으세요" />
+              <div className="p-4">
+                <p className="mb-2 text-xs font-semibold text-slate-500">1-1) 상품의 이미지를 넣으세요</p>
+                {uploadedImages.length === 0 ? (
                   <button
-                    key={t.id}
-                    onClick={() => handleTemplateSelect(t.id)}
-                    className={`overflow-hidden rounded-md border-2 text-left transition-all duration-300 ease-spring ${
-                      activeTemplate === t.id
-                        ? "border-brand-500 ring-4 ring-brand-100 scale-[1.02]"
-                        : "border-slate-200 hover:scale-[1.02] hover:border-brand-300 hover:ring-4 hover:ring-slate-100"
-                    }`}
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex w-full flex-col items-center justify-center overflow-hidden rounded-md border-2 border-dashed border-brand-300 bg-brand-50/40 px-3 py-5 text-center hover:border-brand-400 hover:bg-brand-50"
+                    style={{ minHeight: "6rem" }}
                   >
-                    <TemplateThumb id={t.id} />
-                    <div className="flex items-center justify-between px-3 py-2">
-                      <span className="text-xs font-semibold text-slate-700">{t.name}</span>
-                      {activeTemplate === t.id && <Icon name="checkCircle" className="w-5 h-5 text-brand-600" />}
-                    </div>
+                    <Icon name="upload" className="mb-2 w-4 h-4 text-brand-500" />
+                    <p className="text-xs font-medium text-slate-700">{mc.uploadHint.title}</p>
+                    <p className="mt-1 text-[11px] text-slate-400">{mc.uploadHint.sub}</p>
                   </button>
-                ))}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* 2행: 상품 정보 입력 + 미리보기 */}
-      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <div className="rounded-lg border border-slate-200 bg-white">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-6 py-4">
-            <h2 className="text-sm font-bold text-slate-900">상품 정보 입력</h2>
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="relative">
-                <Button
-                  type="button"
-                  variant="outlineBrand"
-                  className="px-3 py-1.5 text-xs"
-                  title="기입한 정보나 서류에서 정보를 가져옵니다."
-                  aria-expanded={showPreviousProducts}
-                  onClick={() => setShowPreviousProducts((open) => !open)}
-                >
-                  <Icon name="history" className="w-3.5 h-3.5" />
-                  기존 정보 불러오기
-                  <Icon
-                    name="chevronDown"
-                    className={`w-3.5 h-3.5 transition-transform ${showPreviousProducts ? "rotate-180" : ""}`}
-                  />
-                </Button>
-
-                {showPreviousProducts && (
-                  <div className="absolute left-0 top-full z-30 mt-2 w-80 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
-                    <div className="border-b border-slate-100 px-4 py-3">
-                      <p className="text-xs font-bold text-slate-800">불러올 제품 선택</p>
-                      <p className="mt-0.5 text-[11px] text-slate-400">저장된 제품을 선택하면 입력란에 자동으로 채워집니다.</p>
-                    </div>
-                    <div className="max-h-56 overflow-y-auto p-2">
-                      {PREVIOUS_PRODUCT_OPTIONS.map((product) => (
+                ) : (
+                  <div className="grid grid-cols-2 gap-2">
+                    {uploadedImages.map((img, i) => (
+                      <div key={i} className="relative aspect-square overflow-hidden rounded-md border border-slate-200 bg-slate-50">
+                        <img src={img} alt={`상품 사진 ${i + 1}`} className="h-full w-full object-cover" />
                         <button
-                          key={product.id}
                           type="button"
-                          onClick={() => handlePreviousProductSelect(product)}
-                          className="w-full rounded-lg px-3 py-3 text-left transition-colors hover:bg-slate-50"
+                          onClick={() => handleRemoveImage(i)}
+                          aria-label="사진 삭제"
+                          className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-slate-900/70 text-white hover:bg-slate-900"
                         >
-                          <p className="text-sm font-semibold text-slate-800">{product.name}</p>
-                          <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-500">
-                            {product.preview.description}
-                          </p>
+                          <Icon name="x" className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                    {uploadedImages.length < MAX_PRODUCT_PHOTOS && (
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="flex aspect-square flex-col items-center justify-center gap-1 rounded-md border-2 border-dashed border-brand-300 bg-brand-50/40 text-center hover:border-brand-400 hover:bg-brand-50"
+                      >
+                        <Icon name="upload" className="w-4 h-4 text-brand-500" />
+                        <span className="text-[11px] font-medium text-slate-600">사진 추가</span>
+                      </button>
+                    )}
+                  </div>
+                )}
+                {uploadedImages.length > 0 && (
+                  <p className="mt-2 text-[11px] text-slate-400">
+                    {uploadedImages.length}/{MAX_PRODUCT_PHOTOS}장 · 여러 각도의 사진을 추가하면 더 정확하게 생성돼요.
+                  </p>
+                )}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={handleFileChange}
+                />
+
+                <div className="my-4 border-t border-slate-100" />
+
+                <p className="mb-2 text-xs font-semibold text-slate-500">1-2) 기업의 로고를 넣으세요</p>
+                {!logoImage ? (
+                  <button
+                    type="button"
+                    onClick={() => logoInputRef.current?.click()}
+                    className="flex w-full flex-col items-center justify-center overflow-hidden rounded-md border-2 border-dashed border-brand-300 bg-brand-50/40 px-3 py-5 text-center hover:border-brand-400 hover:bg-brand-50"
+                    style={{ minHeight: "6rem" }}
+                  >
+                    <Icon name="upload" className="mb-2 w-4 h-4 text-brand-500" />
+                    <p className="text-xs font-medium text-slate-700">로고 이미지를 올려주세요</p>
+                    <p className="mt-1 text-[11px] text-slate-400">선택 사항이에요</p>
+                  </button>
+                ) : (
+                  <div className="relative aspect-square w-1/2 overflow-hidden rounded-md border border-slate-200 bg-slate-50">
+                    <img src={logoImage} alt="기업 로고" className="h-full w-full object-contain" />
+                    <button
+                      type="button"
+                      onClick={handleRemoveLogo}
+                      aria-label="로고 삭제"
+                      className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-slate-900/70 text-white hover:bg-slate-900"
+                    >
+                      <Icon name="x" className="w-3 h-3" />
+                    </button>
+                  </div>
+                )}
+                <input
+                  ref={logoInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleLogoChange}
+                />
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-slate-200 bg-white">
+                <SectionCardHeader step={2} title="상품정보를 입력하세요" />
+                  <div className="p-4 lg:max-h-[calc(100vh-260px)] lg:overflow-y-auto">
+                    <div className="space-y-3">
+                      <label className="block">
+                        <FieldLabel required>상품명</FieldLabel>
+                        <input
+                          className={`${emptyFieldClass(!preview.productName.trim())} h-10`}
+                          value={preview.productName}
+                          onChange={handlePreviewChange("productName")}
+                          placeholder={mc.preview.productName}
+                        />
+                      </label>
+                      <div>
+                        <Button
+                          type="button"
+                          variant="outlineBrand"
+                          className="w-full py-2 text-xs"
+                          title="업로드한 사진과 상품명을 보고 나머지 정보를 채워줍니다."
+                          onClick={handleAiFillInfo}
+                          disabled={aiFillingInfo}
+                        >
+                          <Icon name="sparkle" className="w-3.5 h-3.5" />
+                          {aiFillingInfo ? "채우는 중..." : "AI로 채우기"}
+                        </Button>
+                        <span className="mt-1 block text-[11px] text-slate-400">
+                          상품명을 먼저 입력해야 "AI로 채우기"를 쓸 수 있어요.
+                        </span>
+                        {aiFillError && <p className="mt-2 text-xs font-medium text-red-500">{aiFillError}</p>}
+                      </div>
+                      <label className="block">
+                        <FieldLabel>태그라인</FieldLabel>
+                        <input
+                          className={`${aiFilledFieldClass(aiFilledFields.has("tagline"))} h-10`}
+                          value={preview.tagline}
+                          onChange={handlePreviewChange("tagline")}
+                          placeholder={mc.preview.tagline}
+                        />
+                        {aiFilledFields.has("tagline") && <AiFilledHint />}
+                      </label>
+                      <label className="block">
+                        <FieldLabel>상품 설명</FieldLabel>
+                        <textarea
+                          className={`${aiFilledFieldClass(aiFilledFields.has("description"))} py-2.5`}
+                          rows={2}
+                          value={preview.description}
+                          onChange={handlePreviewChange("description")}
+                          placeholder={mc.preview.description}
+                        />
+                        {aiFilledFields.has("description") && <AiFilledHint />}
+                      </label>
+                      <label className="block">
+                        <FieldLabel>가격</FieldLabel>
+                        <input
+                          className={`${aiFilledFieldClass(aiFilledFields.has("price"))} h-10`}
+                          value={preview.price}
+                          onChange={handlePreviewChange("price")}
+                          placeholder={mc.preview.price}
+                        />
+                        {aiFilledFields.has("price") && <AiFilledHint />}
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <select
+                            value={priceSuggestLang}
+                            onChange={(e) => setPriceSuggestLang(e.target.value)}
+                            className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-700 focus:border-brand-600 focus:outline-none"
+                          >
+                            {TRANSLATE_LANGUAGES.map((lang) => (
+                              <option key={lang.code} value={lang.code}>
+                                {lang.label}
+                              </option>
+                            ))}
+                          </select>
+                          <Button
+                            type="button"
+                            variant="outlineBrand"
+                            className="px-3 py-1.5 text-xs"
+                            onClick={handleSuggestPrice}
+                            disabled={suggestingPrice}
+                          >
+                            <Icon name="sparkle" className="w-3.5 h-3.5" />
+                            {suggestingPrice ? "추천받는 중..." : "AI 가격 추천"}
+                          </Button>
+                        </div>
+                        {priceSuggestError && (
+                          <p className="mt-1.5 text-xs font-medium text-red-500">{priceSuggestError}</p>
+                        )}
+                        {priceSuggestion && (
+                          <div className="mt-2 rounded-md border border-brand-200 bg-brand-50 p-3">
+                            <p className="text-sm font-bold text-brand-700">
+                              {priceSuggestion.suggestedPrice} {priceSuggestion.currency}
+                            </p>
+                            <p className="mt-1 text-xs leading-relaxed text-slate-600">{priceSuggestion.reasoning}</p>
+                            <div className="mt-2 flex gap-2">
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                className="px-3 py-1.5 text-xs"
+                                onClick={applyPriceSuggestion}
+                              >
+                                이 가격 적용하기
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                className="px-3 py-1.5 text-xs"
+                                onClick={() => setPriceSuggestion(null)}
+                              >
+                                닫기
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                      </label>
+                      <label className="block">
+                        <FieldLabel>꼭 들어갔으면 하는 사진</FieldLabel>
+                        <textarea
+                          className={`${aiFilledFieldClass(aiFilledFields.has("mustHavePhoto"))} py-2.5 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400`}
+                          rows={2}
+                          value={preview.mustHavePhoto}
+                          onChange={handlePreviewChange("mustHavePhoto")}
+                          placeholder="예: 제품을 사용하는 모습"
+                          disabled={activeLayout === "poster"}
+                        />
+                        {activeLayout === "poster" ? (
+                          <p className="mt-1.5 text-xs text-slate-400">포스터 템플릿에서는 사용하지 않는 항목이에요.</p>
+                        ) : (
+                          aiFilledFields.has("mustHavePhoto") && <AiFilledHint />
+                        )}
+                      </label>
+                      {activeLayout === "detail" && (
+                        <label className="block">
+                          <FieldLabel>스펙 정보 (상세설명 전용)</FieldLabel>
+                          <textarea
+                            className={`${CONTROL_CLASS} py-2.5`}
+                            rows={4}
+                            value={spec}
+                            onChange={(e) => setSpec(e.target.value)}
+                            placeholder={"사이즈: 20 x 10 x 5cm\n무게: 320g\n소재: 스테인리스 스틸\n색상: 블랙, 화이트"}
+                          />
+                          <span className="mt-1 block text-xs text-slate-400">
+                            한 줄에 하나씩 라벨: 값 형식으로 입력해주세요.
+                          </span>
+                        </label>
+                      )}
+                    </div>
+                  </div>
+              </div>
+
+            <div className="rounded-lg border border-slate-200 bg-white">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-6 py-4">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold uppercase tracking-wide text-brand-600">Step 3</span>
+                      <h2 className="text-sm font-bold text-slate-900">템플릿을 선택하세요</h2>
+                    </div>
+                    <TranslateMenu
+                      activeLang={activeLang}
+                      translating={translating || generating}
+                      onTranslate={runTranslate}
+                    />
+                  </div>
+                  <div className="p-4 lg:max-h-[calc(100vh-260px)] lg:overflow-y-auto">
+                    <div className="mb-3 flex gap-2">
+                      {mc.templates.categories.map((c) => (
+                        <button
+                          key={c}
+                          onClick={() => setActiveCategory(c)}
+                          className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-medium ${
+                            activeCategory === c
+                              ? "bg-slate-900 text-white"
+                              : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                          }`}
+                        >
+                          {c}
                         </button>
                       ))}
                     </div>
+                    {activeLayout === "poster" && (
+                      <div className="mb-3 flex items-center gap-2">
+                        <span className="text-xs font-medium text-slate-500">이미지 비율</span>
+                        {["4:5", "9:16"].map((ratio) => (
+                          <button
+                            key={ratio}
+                            type="button"
+                            onClick={() => setPosterAspectRatio(ratio)}
+                            className={`rounded-full px-3 py-1.5 text-xs font-medium ${
+                              posterAspectRatio === ratio
+                                ? "bg-slate-900 text-white"
+                                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                            }`}
+                          >
+                            {ratio}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <div className="grid grid-cols-3 gap-3">
+                      {mc.templates.items
+                        .filter((t) => t.category === activeCategory)
+                        .map((t) => (
+                          <button
+                            key={t.id}
+                            onClick={() => handleTemplateSelect(t.id)}
+                            className={`overflow-hidden rounded-md border-2 text-left transition-all duration-300 ease-spring ${
+                              activeTemplate === t.id
+                                ? "border-brand-500 ring-4 ring-brand-100 scale-[1.02]"
+                                : "border-slate-200 hover:scale-[1.02] hover:border-brand-300 hover:ring-4 hover:ring-slate-100"
+                            }`}
+                          >
+                            <TemplateThumb layout={t.layout} templateId={t.id} />
+                            <div className="flex items-center justify-between gap-1 px-3 py-2">
+                              <span className="min-w-0 truncate text-xs font-semibold text-slate-700" title={t.name}>
+                                {t.name}
+                              </span>
+                              {activeTemplate === t.id && (
+                                <Icon name="checkCircle" className="w-5 h-5 shrink-0 text-brand-600" />
+                              )}
+                            </div>
+                          </button>
+                        ))}
+                    </div>
                   </div>
-                )}
+                  <div className="border-t border-slate-100 p-6 pt-4">
+                    <Button
+                      className="w-full justify-center py-3.5 text-base"
+                      onClick={handleGenerateClick}
+                      disabled={generating}
+                    >
+                      <Icon name="sparkle" className="w-5 h-5" />
+                      이미지 생성하기
+                    </Button>
+                  </div>
               </div>
+          </div>
+        </>
+      )}
+
+      {stage === "result" && (
+        <>
+          <div className="mt-6 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Button variant="secondary" className="px-4 py-2 text-sm" onClick={() => setStage("setup")}>
+                <Icon name="arrowLeft" className="w-4 h-4" />
+                이전 페이지로
+              </Button>
               <Button
-                type="button"
                 variant="outlineBrand"
-                className="px-3 py-1.5 text-xs"
-                onClick={handleAiFillInfo}
-                disabled={aiFillingInfo}
+                className="px-4 py-2 text-sm"
+                onClick={handleRegenerate}
+                disabled={isBusy}
               >
-                <Icon name="sparkle" className="w-3.5 h-3.5" />
-                {aiFillingInfo ? "채우는 중..." : "AI로 채우기"}
+                <Icon name="redo" className="w-4 h-4" />
+                재제작
+              </Button>
+              <Button
+                variant="secondary"
+                className="px-4 py-2 text-sm"
+                onClick={() => setShowPreviousContent(true)}
+              >
+                <Icon name="documents" className="w-4 h-4" />
+                이전내용보기
               </Button>
             </div>
+            <TranslateMenu activeLang={activeLang} translating={translating} onTranslate={runTranslate} />
           </div>
-          <div className="p-6">
-            {aiFillError && <p className="mb-3 text-xs font-medium text-red-500">{aiFillError}</p>}
-            <div className="space-y-4">
-              <label className="block">
-                <FieldLabel required>상품명</FieldLabel>
-                <input
-                  className={`${emptyFieldClass(!preview.productName.trim())} h-10`}
-                  value={preview.productName}
-                  onChange={handlePreviewChange("productName")}
-                  placeholder={mc.preview.productName}
-                />
-              </label>
-              <TextField
-                label="태그라인"
-                value={preview.tagline}
-                onChange={handlePreviewChange("tagline")}
-                placeholder={mc.preview.tagline}
-              />
-              <label className="block">
-                <FieldLabel>상품 설명</FieldLabel>
-                <textarea
-                  className={`${CONTROL_CLASS} py-2.5`}
-                  rows={3}
-                  value={preview.description}
-                  onChange={handlePreviewChange("description")}
-                  placeholder={mc.preview.description}
-                />
-              </label>
-              <TextField
-                label="가격"
-                value={preview.price}
-                onChange={handlePreviewChange("price")}
-                placeholder={mc.preview.price}
-              />
-              <label className="block">
-                <FieldLabel>꼭 들어갔으면 하는 사진</FieldLabel>
-                <textarea
-                  className={`${CONTROL_CLASS} py-2.5`}
-                  rows={3}
-                  value={preview.mustHavePhoto}
-                  onChange={handlePreviewChange("mustHavePhoto")}
-                  placeholder="예: 제품을 사용하는 모습"
-                />
-              </label>
-              {activeTemplate === "tpl-detail" && (
-                <label className="block">
-                  <FieldLabel>스펙 정보 (상세설명 전용)</FieldLabel>
+
+          {generateError && (
+            <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+              {generateError}
+            </div>
+          )}
+
+          <div className="mt-4 grid grid-cols-1 gap-6 lg:grid-cols-[360px_1fr] lg:items-start">
+            <div className="space-y-6">
+              <div className="rounded-lg border border-slate-200 bg-white">
+                <div className="border-b border-slate-200 px-5 py-3">
+                  <h2 className="text-sm font-bold text-slate-900">변경 프롬프트</h2>
+                  <p className="mt-0.5 text-xs text-slate-400">
+                    원하는 수정 사항을 직접 적어서 이미지를 바로 바꿔보세요.
+                  </p>
+                </div>
+                <div className="p-4">
                   <textarea
                     className={`${CONTROL_CLASS} py-2.5`}
-                    rows={4}
-                    value={spec}
-                    onChange={(e) => setSpec(e.target.value)}
-                    placeholder={"사이즈: 20 x 10 x 5cm\n무게: 320g\n소재: 스테인리스 스틸\n색상: 블랙, 화이트"}
+                    rows={3}
+                    value={editPrompt}
+                    onChange={(e) => setEditPrompt(e.target.value)}
+                    placeholder="예: 배경을 더 밝고 화사하게 바꿔줘"
+                    disabled={isBusy}
                   />
-                  <span className="mt-1 block text-xs text-slate-400">
-                    한 줄에 하나씩 라벨: 값 형식으로 입력해주세요.
-                  </span>
-                </label>
-              )}
-            </div>
-          </div>
-          <div className="border-t border-slate-100 p-6 pt-4">
-            <Button
-              className="w-full justify-center py-3.5 text-base"
-              onClick={handleGenerate}
-              disabled={generating}
-            >
-              <Icon name="sparkle" className="w-5 h-5" />
-              {generating ? "생성 중..." : "이미지 생성하기"}
-            </Button>
-          </div>
-        </div>
+                  {editError && <p className="mt-2 text-xs font-medium text-red-500">{editError}</p>}
+                  <Button
+                    className="mt-3 w-full justify-center py-2.5"
+                    onClick={handleApplyEditPrompt}
+                    disabled={isBusy || !editPrompt.trim()}
+                  >
+                    <Icon name="pencil" className="w-4 h-4" />
+                    {editing ? "수정하는 중..." : "프롬프트로 이미지 수정하기"}
+                  </Button>
+                </div>
+              </div>
 
-        <div className="rounded-lg border border-slate-200 bg-white">
-          <div className="flex items-center justify-between gap-2 border-b border-slate-200 px-6 py-4">
-            <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900">
-              <Icon name="eye" className="w-5 h-5" />
-              {mc.previewTitle}
-            </h2>
-            <Button
-              variant="secondary"
-              className="px-3 py-1.5 text-xs"
-              onClick={handleSaveImage}
-              disabled={savingImage || !hasMatchingResult}
-            >
-              <Icon name="download" className="w-3.5 h-3.5" />
-              {savingImage ? "저장 중..." : mc.actions.saveImage}
-            </Button>
-          </div>
-          <div className="p-6">
-            {generating && (
-              <div className="relative flex min-h-[320px] flex-col items-center justify-center gap-3 overflow-hidden rounded-md border border-slate-200 bg-slate-900 p-8 text-center">
-                {uploadedImage && (
-                  <div
-                    className="absolute inset-0 bg-cover bg-center opacity-25 blur-[2px]"
-                    style={{ backgroundImage: `url(${uploadedImage})` }}
+              <div className="rounded-lg border border-slate-200 bg-white">
+                <div className="border-b border-slate-200 px-5 py-3">
+                  <h2 className="text-sm font-bold text-slate-900">이전에 만든 이미지</h2>
+                </div>
+                <div className="p-4">
+                  {versionHistory.length === 0 ? (
+                    <p className="text-xs text-slate-400">아직 생성된 버전이 없어요.</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {versionHistory.map((v) => {
+                        const thumbUrl = findImage(v.images, MAIN_SLOT_BY_LAYOUT[v.layout]);
+                        return (
+                          <button
+                            key={v.id}
+                            type="button"
+                            onClick={() => setViewingVersion(v)}
+                            title={v.label}
+                            className="group relative h-16 w-16 shrink-0 overflow-hidden rounded-md border border-slate-200 hover:border-brand-400"
+                          >
+                            {thumbUrl ? (
+                              <img src={thumbUrl} alt={v.label} className="h-full w-full object-cover" />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center bg-slate-100">
+                                <Icon name="imageGenerate" className="w-4 h-4 text-slate-400" />
+                              </div>
+                            )}
+                            <span className="absolute inset-x-0 bottom-0 truncate bg-black/50 px-1 text-[9px] font-semibold text-white opacity-0 group-hover:opacity-100">
+                              {v.label}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-slate-200 bg-white lg:sticky lg:top-6">
+              <div className="flex items-center justify-between gap-2 border-b border-slate-200 px-6 py-4">
+                <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900">
+                  <Icon name="eye" className="w-5 h-5" />
+                  {mc.previewTitle}
+                </h2>
+                <Button
+                  variant="secondary"
+                  className="px-3 py-1.5 text-xs"
+                  onClick={handleSaveImage}
+                  disabled={savingImage || isBusy || !generatedResult}
+                >
+                  <Icon name="download" className="w-3.5 h-3.5" />
+                  {savingImage ? "저장 중..." : mc.actions.saveImage}
+                </Button>
+              </div>
+              <div className="p-6">
+                {isBusy && (
+                  <PencilDrawingLoader
+                    label={
+                      editing
+                        ? "AI가 이미지를 수정하고 있어요..."
+                        : activeLayout === "detail"
+                          ? "상세페이지를 생성하고 있어요..."
+                          : "AI가 이미지를 생성하고 있어요"
+                    }
                   />
                 )}
-                <div className="absolute inset-0 bg-gradient-to-b from-slate-900/70 via-slate-900/30 to-slate-900/70" />
-                {/* 위→아래로 스캔하는 브랜드 컬러 라인 + 은은한 쉬머 스윕. */}
-                <div className="pointer-events-none absolute inset-0 animate-shimmer bg-[length:200%_100%] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-                <div className="pointer-events-none absolute inset-x-0 top-0 h-24 animate-scan-line bg-gradient-to-b from-transparent via-brand-400/50 to-transparent" />
-                <div className="pointer-events-none absolute inset-x-0 top-0 h-px animate-scan-line bg-brand-300 shadow-[0_0_16px_2px_theme(colors.brand.400)]" />
 
-                <div className="relative flex flex-col items-center gap-3">
-                  <Icon name="sparkle" className="w-6 h-6 animate-pulse text-brand-300" />
-                  <p className="text-sm font-semibold text-white">
-                    {activeTemplate === "tpl-detail"
-                      ? "상세페이지를 생성하고 있어요..."
-                      : "AI가 이미지를 생성하고 있어요"}
-                  </p>
-                  <p className="text-xs text-white/60">최대 1~2분 정도 걸릴 수 있어요</p>
-                </div>
+                {!isBusy && generatedResult && (
+                  <div ref={previewRef} className="w-full">
+                    <LayoutPreview
+                      layout={generatedResult.layout}
+                      images={generatedResult.images}
+                      copy={generatedResult.copy}
+                      preview={preview}
+                      specLines={specLines}
+                      templateId={generatedResult.template_id}
+                      aspectRatio={posterAspectRatio}
+                    />
+                  </div>
+                )}
+
+                {!isBusy && !generatedResult && (
+                  <div className="flex min-h-[320px] items-center justify-center rounded-md border border-dashed border-slate-200 text-sm text-slate-400">
+                    아직 생성된 이미지가 없어요.
+                  </div>
+                )}
+
+                {saveError && <p className="mt-3 text-xs font-medium text-red-500">{saveError}</p>}
               </div>
-            )}
+            </div>
+          </div>
+        </>
+      )}
 
-            {!generating && (
-              <div
-                className={
-                  hasMatchingResult && layout === "detail"
-                    ? ""
-                    : "flex min-h-[320px] items-center justify-center rounded-md border border-dashed border-slate-200 bg-[radial-gradient(theme(colors.slate.300)_1px,transparent_1px)] bg-[size:16px_16px] p-6"
-                }
-              >
-                <div ref={previewRef} className="w-full">
-                  {!hasMatchingResult && <PlaceholderPreview uploadedImage={uploadedImage} />}
-                  {hasMatchingResult && layout === "poster" && (
-                    <PosterPreview images={generatedResult.images} preview={preview} />
-                  )}
-                  {hasMatchingResult && layout === "card-news" && (
-                    <CardNewsPreview images={generatedResult.images} copy={generatedResult.copy} preview={preview} />
-                  )}
-                  {hasMatchingResult && layout === "detail" && (
-                    generatedResult.hardcodedImage ? (
-                      <img
-                        src={generatedResult.hardcodedImage}
-                        alt="생성된 상세페이지"
-                        className="block h-auto w-full"
-                      />
-                    ) : (
-                      <DetailPreview
-                        images={generatedResult.images}
-                        copy={generatedResult.copy}
-                        preview={preview}
-                        specLines={specLines}
-                      />
-                    )
-                  )}
-                </div>
+      {viewingVersion && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 sm:p-8"
+          onClick={() => setViewingVersion(null)}
+        >
+          <div
+            className="relative flex max-h-[88vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+              <p className="text-sm font-bold text-slate-900">{viewingVersion.label}</p>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="secondary"
+                  className="px-3 py-1.5 text-xs"
+                  onClick={handleSaveVersionImage}
+                  disabled={savingVersionImage}
+                >
+                  <Icon name="download" className="w-3.5 h-3.5" />
+                  {savingVersionImage ? "저장 중..." : "저장"}
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => setViewingVersion(null)}
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                >
+                  <Icon name="x" className="w-4 h-4" />
+                </button>
               </div>
-            )}
-
-            {saveError && <p className="mt-3 text-xs font-medium text-red-500">{saveError}</p>}
+            </div>
+            <div className="overflow-y-auto p-5">
+              <div ref={historyPreviewRef} className="w-full">
+                <LayoutPreview
+                  layout={viewingVersion.layout}
+                  images={viewingVersion.images}
+                  copy={viewingVersion.copy}
+                  preview={viewingVersion.preview}
+                  specLines={parseSpecLines(viewingVersion.spec)}
+                  templateId={viewingVersion.templateId}
+                  aspectRatio={viewingVersion.aspectRatio}
+                />
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+      )}
+
+      {showPreviousContent && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 sm:p-8"
+          onClick={() => setShowPreviousContent(false)}
+        >
+          <div
+            className="relative flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+              <p className="text-sm font-bold text-slate-900">이전에 작성한 내용</p>
+              <button
+                type="button"
+                onClick={() => setShowPreviousContent(false)}
+                className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              >
+                <Icon name="x" className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="space-y-5 overflow-y-auto p-5">
+              {uploadedImages.length > 0 && (
+                <div className="grid grid-cols-3 gap-2">
+                  {uploadedImages.map((img, i) => (
+                    <div key={i} className="overflow-hidden rounded-lg border border-slate-200">
+                      <img
+                        src={img}
+                        alt={`업로드한 상품 사진 ${i + 1}`}
+                        className="aspect-square w-full object-cover bg-slate-50"
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+              <dl className="space-y-3">
+                {[
+                  ["템플릿", mc.templates.items.find((t) => t.id === activeTemplate)?.name || "-"],
+                  ["상품명", preview.productName || "-"],
+                  ["태그라인", preview.tagline || "-"],
+                  ["상품 설명", preview.description || "-"],
+                  ["가격", preview.price || "-"],
+                  ["꼭 들어갔으면 하는 사진", preview.mustHavePhoto || "-"],
+                  ...(activeLayout === "detail" ? [["스펙 정보", spec || "-"]] : []),
+                ].map(([label, value]) => (
+                  <div key={label}>
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-slate-400">{label}</dt>
+                    <dd className="mt-1 whitespace-pre-wrap text-sm text-slate-800">{value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

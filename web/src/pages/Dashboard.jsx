@@ -13,7 +13,7 @@ import {
   isDemoOngoingBusiness,
 } from "../lib/period";
 
-const footerLogoUrl = new URL("../../로고1-icon.png", import.meta.url).href;
+const footerLogoUrl = new URL("../../로고최종1.png", import.meta.url).href;
 
 function orgNameFor(business) {
   const detail = govAnnouncementDetails[business.id];
@@ -144,7 +144,7 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const { isLoggedIn, user } = useAuth();
   const [itemFilter, setItemFilter] = useState(dashboard.itemCategories[0].id);
-  const [hoverPreview, setHoverPreview] = useState(null);
+  const [selectedCase, setSelectedCase] = useState(null);
 
   const [statsRef, statsReplayKey] = useReplayOnView();
 
@@ -384,8 +384,8 @@ export default function Dashboard() {
               style={revealStyle(4)}
             >
               <p className="mb-4 text-[13px] font-bold text-white/80 sm:text-sm">
-                {dashboard.statsHeadline.replace("GLOBIZ", "")}
-                <span className="text-[#ff5a3d]">GLOBIZ</span>
+                {dashboard.statsHeadline.replace("GLOTIZ", "")}
+                <span className="text-[#ff5a3d]">GLOTIZ</span>
                 <span className="ml-2 font-normal text-white/50">({formatTodayKorean()} 기준)</span>
               </p>
               <div key={statsReplayKey} className="grid grid-cols-2 gap-y-4 divide-white/10 sm:grid-cols-4 sm:gap-y-0 sm:divide-x">
@@ -536,7 +536,7 @@ export default function Dashboard() {
           </div>
         </section>
 
-        {/* 3: JB-XPORT로 서류 작성/디자인 고민을 해결해보세요! */}
+        {/* 3: GLOTIZ로 서류 작성/디자인 고민을 해결해보세요! */}
         <section
           ref={featuresRef}
           className="flex h-[calc(100dvh-4rem)] w-full snap-start flex-col items-center justify-center overflow-hidden bg-slate-50 px-6 py-6 sm:py-8 lg:py-10"
@@ -592,14 +592,11 @@ export default function Dashboard() {
               >
                 <div className="flex w-max gap-3 animate-marquee hover:[animation-play-state:paused] sm:gap-4">
                   {[...row, ...row].map((c, idx) => (
-                    <div
+                    <button
+                      type="button"
                       key={`${c.id}-${idx}`}
-                      className="w-48 shrink-0 cursor-default transition-transform duration-300 ease-out hover:-translate-y-1 sm:w-56"
-                      onMouseEnter={() => {
-                        if (!c.image) return;
-                        setHoverPreview({ image: c.image, title: c.title });
-                      }}
-                      onMouseLeave={() => setHoverPreview(null)}
+                      onClick={() => c.image && setSelectedCase(c)}
+                      className="w-48 shrink-0 text-left transition-transform duration-300 ease-out hover:-translate-y-1 sm:w-56"
                     >
                       {c.image ? (
                         <img
@@ -616,21 +613,53 @@ export default function Dashboard() {
                       )}
                       <p className="mt-2 text-[11px] font-bold text-brand-100">{c.tag}</p>
                       <p className="mt-1 text-xs font-bold leading-snug text-white sm:text-sm">{c.title}</p>
-                    </div>
+                    </button>
                   ))}
                 </div>
               </div>
             ))}
           </div>
 
-          {hoverPreview && (
-            <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-8">
-              <img
-                src={hoverPreview.image}
-                alt={hoverPreview.title}
-                referrerPolicy="no-referrer"
-                className="max-h-[80vh] max-w-[90vw] rounded-xl border border-white/10 object-contain shadow-2xl sm:max-w-[480px]"
-              />
+          {selectedCase && (
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 sm:p-8"
+              onClick={() => setSelectedCase(null)}
+            >
+              <div
+                className="relative flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl sm:flex-row"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  onClick={() => setSelectedCase(null)}
+                  className="absolute right-3 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-slate-500 shadow hover:bg-white"
+                >
+                  <Icon name="x" className="w-4 h-4" />
+                </button>
+                <div className="flex shrink-0 items-center justify-center bg-slate-100 p-4 sm:max-w-md">
+                  <img
+                    src={selectedCase.image}
+                    alt={selectedCase.title}
+                    referrerPolicy="no-referrer"
+                    className="max-h-[70vh] w-auto max-w-full rounded-lg object-contain"
+                  />
+                </div>
+                <div className="flex flex-1 flex-col justify-center gap-3 overflow-y-auto p-6 sm:p-8">
+                  <p className="text-xs font-bold text-brand-600">{selectedCase.tag}</p>
+                  <h3 className="text-lg font-bold text-slate-900 sm:text-xl">{selectedCase.title}</h3>
+                  <p className="text-sm leading-relaxed text-slate-500">
+                    GLOTIZ AI가 상품 사진 한 장으로 완성한 {selectedCase.tag} 결과물입니다.
+                  </p>
+                  <Link
+                    to="/marketing"
+                    onClick={() => setSelectedCase(null)}
+                    className="mt-2 inline-flex w-fit items-center gap-2 rounded-full bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white shadow hover:bg-brand-700"
+                  >
+                    <Icon name="sparkle" className="w-4 h-4" />
+                    이런 스타일로 AI 이미지 생성하기
+                  </Link>
+                </div>
+              </div>
             </div>
           )}
         </section>

@@ -13,7 +13,7 @@ const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
 const aiReviewDraftKey = (userId, templateId) => `${draftKey(userId, templateId)}:ai-review`;
 const VIETNAM_EXPO_BUSINESS_ID = "5090843f-cf8e-4945-a51d-69e1aa8e61e6";
 const VIETNAM_APPLICATION_DEMO_VALUES = {
-  company_name_kr: "글로비즈",
+  company_name_kr: "글로티즈",
   ceo_name: "김글로",
   company_type: "법인",
   company_phone: "+82 - 63 - 000 - 0000",
@@ -23,7 +23,7 @@ const VIETNAM_APPLICATION_DEMO_VALUES = {
     "해피 코스메틱은 전북특별자치도에 소재한 가상의 화장품 제조·수출기업으로, 자연 유래 성분과 사용 편의성을 강조한 데일리 스킨케어 제품을 기획하는 MVP 테스트 기업입니다.",
   contact_name_kr: "김글로",
   contact_department: "해외사업팀",
-  contact_email: "globiz@gmail.com",
+  contact_email: "glotiz@gmail.com",
   contact_mobile: "+82 - 63 - 000 - 0000",
   business_reg_number: "418-81-00000",
   main_product: "해피 비타 카밍 선크림 SPF50+ PA++++",
@@ -44,7 +44,7 @@ const VIETNAM_APPLICATION_AI_VALUES = {
     note: "신청서 작성에 필요한 분량을 보완하기 위해 AI가 내용을 추가했습니다. 실제 사업 내용과 일치하는지 확인해주세요.",
   },
   company_name_en: {
-    value: "GLOBIZ",
+    value: "GLOTIZ",
     note: "국문 기업명을 바탕으로 영문 표기를 추정했습니다.",
   },
   founded_date: {
@@ -52,7 +52,7 @@ const VIETNAM_APPLICATION_AI_VALUES = {
     note: "정확한 설립일은 사업자등록증 등 증빙서류로 확인해야 합니다.",
   },
   website: {
-    value: "https://www.globiz.kr",
+    value: "https://www.glotiz.kr",
     note: "공식 홈페이지 주소인지 확인해야 합니다.",
   },
   contact_name_en: {

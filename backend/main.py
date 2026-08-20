@@ -121,9 +121,21 @@ class ChatRequest(BaseModel):
     history: list[ChatMessage] = []
 
 
-CHATBOT_SYSTEM_PROMPT = """당신은 전북 지역 소상공인의 해외 수출을 돕는 JB-XPORT 서비스의 AI 챗봇입니다.
-수출 서류, 정부 지원사업, 관세·통관, 해외 시장 진출 관련 질문에 친절하고 간결하게 한국어로 답변하세요.
-확실하지 않은 법률·세무 정보는 단정짓지 말고 전문가 상담을 권하세요."""
+CHATBOT_SYSTEM_PROMPT = """당신은 전북 지역 수출지원사업 공고를 담당하는 지자체 직원입니다. 공고의 안내사항
+(주관기관, 접수기간, 지원대상, 지원내용, 제출서류, 문의처 등)과 수출 서류, 관세·통관, 해외 시장 진출
+관련 사항을 정확히 숙지하고 있는 실무자로서, 민원인에게 직접 말하듯 답변하세요.
+
+답변 형식(반드시 지키세요, 예외 없음):
+- 문서·목록 형식이 아니라, 사람이 직접 대답하는 자연스러운 대화체 문장으로 답하세요.
+- "~에 대해 궁금하시군요" 같은 인사말·서론 없이, 최대한 간단하게 핵심만 바로 말하세요. 불필요한 배경 설명은 빼세요.
+- 문장은 짧게 2~4개 정도로 끊어 말하고, 장황하게 늘어놓지 마세요.
+- **, *, # 같은 마크다운 기호는 절대 쓰지 마세요(그대로 글자로 보입니다).
+- 확실하지 않은 법률·세무 정보는 단정짓지 말고 전문가 상담이 필요하다고 짧게 알려주세요.
+- 답변 맨 마지막은 항상 자연스러운 후속 질문 한 문장으로 마무리하세요 (예: "혹시 더 궁금하신 정보 있으신가요?" 같은 식으로, 매번 표현을 조금씩 바꿔서).
+
+예시:
+사용자: 이번 수출바우처 공고 접수기간이랑 지원대상 알려줘
+AI: 접수기간은 2026년 3월 1일부터 31일까지고요, 수출 초보·유망 중소기업이면 신청하실 수 있어요. 자세한 건 전북경제통상진흥원 수출지원팀으로 문의하시면 됩니다. 혹시 더 궁금하신 정보 있으신가요?"""
 
 
 @app.post("/chat")
@@ -140,7 +152,7 @@ def chat(req: ChatRequest):
     return {"answer": (response.text or "").strip()}
 
 
-FAQ_SUGGEST_PROMPT = """당신은 JB-XPORT(전북 소상공인의 해외 수출을 돕는 서비스: 수출지원사업 매칭,
+FAQ_SUGGEST_PROMPT = """당신은 GLOTIZ(전북 소상공인의 해외 수출을 돕는 서비스: 수출지원사업 매칭,
 서류 자동작성·번역, AI 마케팅 이미지 생성, 쇼피 등 해외 플랫폼 입점 가이드 제공) 고객지원 담당자입니다.
 
 이 서비스를 처음 쓰는 소상공인 사장님이 가장 헷갈려하거나 어려워할 만한 질문 5개를 스스로 떠올려서,
@@ -1764,8 +1776,8 @@ def highlight_basic_info_in_pdf(pdf_bytes: bytes, basic_info: dict | None) -> by
 @app.get("/businesses/{business_id}/reference-doc/preview-pdf")
 def preview_reference_doc_pdf(business_id: str):
     """공고 상세페이지에서 기본서류를 PDF로 바로 미리보기 위한 공개 엔드포인트.
-    이미지(jpg/png)는 그대로 반환하고, docx는 PDF로 변환한다. hwp는 변환을 지원하지 않는다.
-    PDF/DOCX는 '기본 정보' 카드에 나온 내용을 원문에서 찾아 노란 형광펜으로 표시해서 돌려준다."""
+    이미지(jpg/png)는 그대로 반환하고, docx/hwp는 PDF로 변환한다.
+    PDF/DOCX/HWP는 '기본 정보' 카드에 나온 내용을 원문에서 찾아 노란 형광펜으로 표시해서 돌려준다."""
     business = (
         supabase.table("businesses")
         .select("reference_file_path,name,basic_info")
@@ -1788,13 +1800,13 @@ def preview_reference_doc_pdf(business_id: str):
     if ext in (".jpg", ".jpeg", ".png"):
         return Response(content=file_bytes, media_type=REFERENCE_DOC_MIME_TYPES[ext])
 
-    if ext == ".docx":
+    if ext in (".docx", ".hwp"):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
-            docx_path = tmp_path / "reference.docx"
-            docx_path.write_bytes(file_bytes)
+            src_path = tmp_path / f"reference{ext}"
+            src_path.write_bytes(file_bytes)
             try:
-                pdf_path = convert_to_pdf(docx_path, tmp_path)
+                pdf_path = convert_to_pdf(src_path, tmp_path)
             except Exception as e:
                 raise HTTPException(status_code=502, detail=f"PDF 미리보기 생성에 실패했습니다: {e}")
             pdf_bytes = highlight_basic_info_in_pdf(pdf_path.read_bytes(), basic_info)
@@ -1933,27 +1945,37 @@ def suggest_price(req: PriceSuggestionRequest):
 
 
 @app.post("/marketing/ai-fill")
-def marketing_ai_fill(authorization: str | None = Header(None)):
-    """AI 이미지 생성 페이지의 '상품 정보 입력'에서 'AI로 채우기'를 누르면, 내 기본 정보
-    (회사명/업종/수출 희망 국가)를 바탕으로 그럴듯한 상품 정보 예시를 만들어 채워준다."""
-    user_id = require_user(authorization)
-    profile = (
-        supabase.table("profiles").select("*").eq("id", user_id).maybe_single().execute().data
-    ) or {}
+def marketing_ai_fill(
+    product_name: str = Form(...),
+    product_images: list[UploadFile] = File(...),
+    authorization: str | None = Header(None),
+):
+    """AI 이미지 생성 페이지의 '상품 정보 입력'에서 'AI로 채우기'를 누르면, 사용자가 이미 업로드한
+    상품 사진(여러 장 가능)을 실제로 보고 상품명에 맞춰 나머지 정보(태그라인/설명/가격/필수 장면)를 채워준다.
+    상품명은 사용자가 직접 쓴 값을 그대로 존중하고 AI가 덮어쓰지 않는다."""
+    require_user(authorization)
 
+    if not product_name.strip():
+        raise HTTPException(status_code=400, detail="상품명을 입력해야 작성 가능합니다.")
+    if not product_images:
+        raise HTTPException(status_code=400, detail="먼저 상품 사진을 넣어주세요.")
+    for img in product_images:
+        if (img.content_type or "") not in ALLOWED_PRODUCT_IMAGE_TYPES:
+            raise HTTPException(status_code=400, detail="JPG, PNG, WEBP 이미지만 업로드할 수 있습니다.")
+
+    image_parts = [
+        types.Part.from_bytes(data=img.file.read(), mime_type=img.content_type) for img in product_images
+    ]
     prompt = f"""당신은 소상공인의 해외 수출 마케팅 자료 작성을 돕는 어시스턴트입니다.
-아래는 이 사용자의 기본 정보입니다:
-- 회사명: {profile.get("company") or "정보 없음"}
-- 주요 수출 희망 국가: {profile.get("country") or "정보 없음"}
+첨부된 사진{'들' if len(product_images) > 1 else ''}은 실제로 판매할 상품 사진입니다. 사진 속 상품의 실제 형태·색상·재질·특징을 자세히 보고,
+아래 상품명에 맞는 마케팅 정보를 채워주세요. 사진만으로 알 수 없는 항목(가격 등)만 합리적으로 추정하세요.
 
-이 정보를 바탕으로, 이 회사가 판매할 법한 대표 상품 하나를 가정해서 마케팅 이미지 제작에 쓸
-상품 정보를 채워주세요. 실제 정보가 부족하면 회사명 등에서 유추한 업종에 맞는 그럴듯한 예시로
-자연스럽게 채우세요. 지어낸 정보라도 사용자가 바로 수정해서 쓸 수 있도록 구체적으로 쓰세요.
+상품명: {product_name.strip()}
 
-다음 항목을 채워주세요:
-- product_name: 상품명 (간결하게)
+다음 항목을 채워주세요 (상품명이 영어 등 다른 언어로 적혀 있어도 반드시 한국어로 작성하세요.
+언어 변경은 화면의 "이미지 언어 설정하기" 버튼으로 사용자가 직접 선택할 때만 이뤄집니다):
 - tagline: 한 줄 홍보 문구
-- description: 상품 설명 (2~3문장)
+- description: 상품 설명 (2~3문장, 사진에 실제로 보이는 특징을 반영)
 - price: 가격 (예: "29,000원" 형식)
 - must_have_photo: 이미지에 꼭 들어갔으면 하는 장면 묘사 (한 문장)
 """
@@ -1961,19 +1983,21 @@ def marketing_ai_fill(authorization: str | None = Header(None)):
     try:
         response = gemini_client.models.generate_content(
             model="gemini-2.5-flash",
-            contents=prompt,
+            contents=[
+                *image_parts,
+                prompt,
+            ],
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
                 response_schema={
                     "type": "OBJECT",
                     "properties": {
-                        "product_name": {"type": "STRING"},
                         "tagline": {"type": "STRING"},
                         "description": {"type": "STRING"},
                         "price": {"type": "STRING"},
                         "must_have_photo": {"type": "STRING"},
                     },
-                    "required": ["product_name", "tagline", "description", "price", "must_have_photo"],
+                    "required": ["tagline", "description", "price", "must_have_photo"],
                 },
             ),
         )
@@ -2285,18 +2309,30 @@ def review(req: ReviewRequest):
 
 ALLOWED_PRODUCT_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
 
+LOGO_REFERENCE_NOTE = (
+    "참고로 첨부된 이미지 중 마지막 한 장은 상품 사진이 아니라 이 브랜드의 로고입니다. "
+    "상품으로 착각해 등장시키지 말고, 브랜드 색상·톤을 파악하는 참고 자료로만 쓰세요. "
+    "이 로고를 문자·워터마크·인쇄물처럼 이미지 안에 렌더링하지 마세요."
+)
+
 NO_TEXT_INSTRUCTION = (
     "이미지 안에 어떠한 문자, 숫자, 로고 텍스트, 워터마크도 절대 렌더링하지 마세요. "
-    "문구·캡션·타이포그래피 요소 없이 순수한 사진/장면 이미지만 생성하세요. 문구는 이후 별도로 합성됩니다."
+    "문구·캡션·타이포그래피 요소 없이 순수한 사진/장면 이미지만 생성하세요. 문구는 이후 별도로 합성됩니다. "
+    "실제 상업 스튜디오에서 촬영한 사진처럼 사실적인 조명·그림자·질감·반사를 살리고, "
+    "인공적인 대칭·과도한 채도·플라스틱 같은 질감 등 AI가 생성한 티가 나는 요소는 피하세요."
 )
 
 
-def _generate_image(prompt: str, reference_bytes: bytes, reference_mime: str, aspect_ratio: str) -> tuple[bytes, str]:
-    """Vertex AI 이미지 생성 모델을 호출해 (이미지 bytes, mime_type)을 반환한다."""
+def _generate_image(
+    prompt: str, reference_images: list[tuple[bytes, str]], aspect_ratio: str
+) -> tuple[bytes, str]:
+    """Vertex AI 이미지 생성 모델을 호출해 (이미지 bytes, mime_type)을 반환한다.
+    reference_images는 (bytes, mime_type) 튜플 목록 — 상품 사진을 여러 장 올렸으면 전부 같이
+    넘겨서, 여러 각도/구성을 참고해 더 정확한 이미지를 만들도록 한다."""
     response = vertex_image_client.models.generate_content(
         model=IMAGE_GEN_MODEL,
         contents=[
-            types.Part.from_bytes(data=reference_bytes, mime_type=reference_mime),
+            *[types.Part.from_bytes(data=b, mime_type=m) for b, m in reference_images],
             prompt,
         ],
         config=types.GenerateContentConfig(
@@ -2330,69 +2366,205 @@ def _upload_generated_image(user_id: str, gen_id: str, slot: str, image_bytes: b
     return {"slot": slot, "path": path, "url": signed.get("signedURL")}
 
 
-def _poster_prompt(description: str, must_have_photo: str) -> str:
+def _style_line(style_hint: str) -> str:
+    return f"\n스타일 톤: {style_hint.strip()}" if style_hint and style_hint.strip() else ""
+
+
+def _poster_prompt(description: str, must_have_photo: str, style_hint: str = "", aspect_ratio: str = "4:5") -> str:
     scene = must_have_photo.strip() or "상품을 돋보이게 하는 매력적인 장면을 자유롭게 구성하세요."
     return f"""당신은 상업 광고 사진작가입니다. 아래 정보를 바탕으로 마케팅 포스터용 배경 이미지를 만들어주세요.
 상품 설명: {description or '(설명 없음)'}
 반드시 포함되어야 하는 장면: {scene}
 
-요구사항: 첨부된 참고 사진 속 실제 상품과 동일한 형태·색상·재질로 등장시키세요. 세로로 긴 9:16 포스터 구도로 구성하고,
-화면 중앙 부근에 나중에 제목/태그라인/가격 문구가 강하게 얹힐 수 있도록 그 부분의 배경이 너무 산만하지 않게 여백과 대비를 의도적으로 남겨주세요.
-역동적이고 임팩트 있는 고급 상업광고 포스터 스타일.
+요구사항: 첨부된 참고 사진 속 실제 상품과 동일한 형태·색상·재질로 등장시키세요.
+세로로 긴 {aspect_ratio} 비율로 구성하고,
+화면 하단 1/3 지점에 나중에 제목/태그라인/가격 문구가 얹힐 수 있도록 그 부분의 배경이 너무 산만하지 않게 여백과 대비를 의도적으로 남겨주세요.
+실제 스튜디오에서 촬영한 것처럼 사실적인 조명·그림자·반사를 살려서, AI가 생성한 티가 나지 않는 고급 상업광고 포스터 사진 스타일로 만들어주세요.{_style_line(style_hint)}
 {NO_TEXT_INSTRUCTION}"""
 
 
-def _card1_prompt(description: str) -> str:
-    return f"""상업 제품 사진작가로서, 상품이 화면 중앙에 크고(화면의 60% 이상) 뚜렷하게 부각되는 정사각형 제품 사진을 만들어주세요.
-상품 설명: {description or '(설명 없음)'}
-참고 사진 속 실제 상품 형태·색상·재질을 정확히 유지하세요. 화면 하단에 나중에 상품명 텍스트가 얹힐 수 있도록 여백을 남기세요.
-{NO_TEXT_INSTRUCTION}"""
+CARD_NEWS_SHOPEE_PROMPT = """ROLE
+You are a professional e-commerce visual designer specializing in Shopee product marketing and commercial advertising.
+Create ONE square product advertising photograph according to the provided CARD_TYPE.
+This image is part of a reusable four-card Shopee advertising template system.
+The visual structure must remain consistent across different products.
+All product-specific content must be dynamically populated from PRODUCT_DATA.
+
+CORE SYSTEM
+The template follows this data flow:
+PRODUCT DATABASE
+→ AD TEMPLATE FIELD MAPPING
+→ IMAGE GENERATION
+Never hard-code a specific product name, description, feature, usage instruction, price, discount, or promotion into the template.
+Always retrieve those values from PRODUCT_DATA.
+
+OUTPUT FORMAT
+Aspect ratio: 1:1
+Recommended resolution: 1024 x 1024
+
+ABSOLUTE NO-TEXT OVERRIDE (overrides every other instruction below)
+Do NOT render any literal text, letters, words, numbers, prices, badges with numbers, logotype
+wordmarks, watermark, or typography of any kind inside the generated image, in any language,
+anywhere in the frame, including on incidental background props or reflections.
+Wherever a section below describes a headline, a price, a benefit label, a usage step number, a
+CTA, or says to "display" a field, treat that ONLY as a layout/composition cue: reserve that exact
+area as calm, uncluttered negative space (soft gradient, blurred depth, clean surface, or simply
+empty background) sized and positioned to match the described visual weight, so real text can be
+placed there afterward outside of this image. Never produce smudged, half-formed, or illegible
+marks that could be mistaken for text.
+If a supplied {{brand_logo}} reference image exists, you MAY feature that actual supplied logo
+graphic as a small real photographed object/sticker/label element (e.g. printed on packaging or a
+tag) since it is a genuine supplied asset — but never invent a logo, and never typeset the brand
+name as characters yourself.
+The finished image must be a clean commercial photograph — product, lighting, props, color, and
+atmosphere only.
+
+Design characteristics:
+- premium e-commerce advertising
+- modern and clean
+- mobile-first
+- suitable for Shopee
+- realistic commercial product photography
+- strong visual hierarchy (expressed through composition/negative-space weight, not rendered text)
+- generous spacing
+- professional promotional design
+Keep all important negative-space zones inside safe margins.
+
+PRODUCT DATA
+Brand: {{brand_name}}
+Product Name: {{product_name}}
+English Product Name: {{product_name_en}}
+Category: {{category}}
+Headline: {{headline}}
+Short Description: {{short_description}}
+Benefit 1: {{benefit_1}}
+Benefit 1 Description: {{benefit_desc_1}}
+Benefit 2: {{benefit_2}}
+Benefit 2 Description: {{benefit_desc_2}}
+Benefit 3: {{benefit_3}}
+Benefit 3 Description: {{benefit_desc_3}}
+Usage Step 1: {{usage_step_1}}
+Usage Step 2: {{usage_step_2}}
+Usage Step 3: {{usage_step_3}}
+Recommended For: {{recommended_for}}
+Original Price: {{original_price}}
+Sale Price: {{sale_price}}
+Discount Rate: {{discount_rate}}
+Currency: {{currency}}
+Promotion: {{promotion_text}}
+CTA: {{cta}}
+Target Language (for the copy that will be added outside this image later): {{target_language}}
+
+IMAGE INPUTS
+Primary Product Image: {{product_image}}
+Detail Image: {{detail_image}}
+Brand Logo: {{brand_logo}}
+Preserve the actual product's packaging shape, proportions, brand identity, logo, major colors,
+label structure, and recognizable package characteristics. Do not create a fictional replacement
+product.
+
+CARD TYPE
+{{card_type}}
+Available values: CARD_01_HERO_PRICE, CARD_02_BENEFITS, CARD_03_USAGE, CARD_04_PROMOTION
+Generate only the selected CARD_TYPE's composition below.
+
+CARD 01 - HERO + PRICE (negative-space zones only, see override above)
+Purpose: the primary sales image. Its zones must be shaped so that, once real text is added later,
+a viewer immediately reads WHAT THE PRODUCT IS + WHY IT IS ATTRACTIVE + HOW MUCH IT COSTS within
+seconds.
+Reserve zones with this visual-weight priority (largest/most dominant first):
+1. PRODUCT IMAGE (visually dominant, center)
+2. PRODUCT NAME zone
+3. SALE PRICE zone (must read as significantly more prominent than the original-price zone)
+4. HEADLINE zone
+5. DISCOUNT RATE zone (small badge-shaped calm area)
+6. ORIGINAL PRICE zone (small, secondary)
+7. BRAND/logo zone
+Recommended layout: TOP 10-15% brand/logo zone -> TOP-MIDDLE 15-30% product-name/headline zone ->
+CENTER 30-72% large hero product -> BOTTOM 72-95% price zone (sale price zone largest/boldest,
+original price zone smaller, discount zone as a compact badge-shaped area placed close to the sale
+price zone). Positions may adapt slightly to the product image.
+If {{original_price}} or {{discount_rate}} is empty, simplify the bottom zone accordingly (per EMPTY
+FIELD RULE below) rather than leaving a placeholder-shaped gap.
+
+CARD 02 - KEY BENEFITS (negative-space zones only, see override above)
+Purpose: reserve zones for the three strongest product selling points ({{benefit_1}}, {{benefit_2}},
+{{benefit_3}} with their descriptions). Use clearly separated, evenly balanced zones (three cards,
+three circular icon areas, or vertically/horizontally arranged blocks) sized for mobile
+readability. Only reserve as many benefit zones as have actual supplied values — never pad with
+invented benefits.
+
+CARD 03 - HOW TO USE (negative-space zones only, see override above)
+Purpose: reserve a simple three-step visual flow zone (01 -> 02 -> 03) for {{usage_step_1}},
+{{usage_step_2}}, {{usage_step_3}}, plus a small zone for {{recommended_for}}. Use {{detail_image}} as a
+supporting visual reference when available; the product may appear again as a supporting element.
+If no usage steps are supplied, fall back to a clean lifestyle/usage-context photograph instead of
+reserving empty numbered zones.
+
+CARD 04 - PROMOTION & CTA (negative-space zones only, see override above)
+Purpose: the strongest final purchase-conversion image. Reserve zones with this priority: 1)
+promotion-message zone, 2) sale-price zone, 3) discount-rate zone, 4) product, 5) original-price
+zone, 6) CTA zone. This card may be more visually energetic/bold than CARD 01 while remaining part
+of the same campaign design system.
+
+PRICE DATA RULES
+{{original_price}}, {{sale_price}}, and {{discount_rate}} must always refer to the same underlying
+values across CARD 01 and CARD 04 (they are composition-weight references only, per the no-text
+override — never render the numbers, just size the zones to match their described prominence).
+Never independently invent, estimate, or calculate any price or discount.
+
+EMPTY FIELD RULE
+If any field is empty, null, missing, or unavailable: do NOT reserve a placeholder-shaped zone for
+it. Remove that zone entirely and let the composition rebalance naturally around the remaining
+zones. For example, if {{discount_rate}} is empty, the bottom price area should only balance around
+original+sale price zones (or just the sale-price zone if original is also empty).
+
+DATA INTEGRITY
+Every visual prop or implied claim must be traceable to PRODUCT_DATA. Never add props that imply
+unsupported certifications, awards, clinical results, or effectiveness claims that were not
+supplied.
+
+DESIGN CONSISTENCY
+CARD 01-04 must look like one unified Shopee campaign: consistent typography-zone language,
+spacing, graphic-element style, corner radius, background treatment, product photography, shadows,
+and visual tone — while each card keeps its own distinct information purpose (01 = product+price,
+02 = benefits, 03 = usage, 04 = promotion+CTA).
+
+FINAL VALIDATION
+Before generating, verify: output is exactly 1:1; only the requested CARD_TYPE's zones are used;
+no rendered text/numbers/logotype exist anywhere in the frame; empty fields resulted in removed
+zones, not placeholders; product packaging remains recognizable; the result reads as professional
+Shopee e-commerce advertising photography, not an AI-generated template."""
 
 
-def _card2_prompt(features: list[str]) -> str:
-    feature_text = ", ".join(features) if features else "상품의 핵심 장점"
-    return f"""아래 상품의 핵심 특징을 시각적으로(글자 없이) 표현하는 정사각형 이미지를 만들어주세요.
-표현해야 할 특징: {feature_text}
-참고 사진 속 실제 상품을 등장시키거나 상품의 디테일(질감·소재·기능 부위)을 클로즈업으로 보여주는 방식으로 이 특징들을 암시하세요.
-화면 하단에 텍스트가 얹힐 여백을 남기세요.
-{NO_TEXT_INSTRUCTION}"""
+def _shopee_card_prompt(card_type: str, values: dict, style_hint: str = "", extra: str = "") -> str:
+    prompt = _apply_prompt_template(CARD_NEWS_SHOPEE_PROMPT, {**values, "card_type": card_type})
+    prompt = f"{prompt}{_style_line(style_hint)}"
+    if extra:
+        prompt = f"{prompt}\n\n{extra}"
+    return prompt
 
 
-def _card3_prompt(description: str, must_have_photo: str) -> str:
-    scene = must_have_photo.strip() or description.strip() or "상품이 자연스럽게 사용되는 일상적인 장면"
-    return f"""장면 설명: {scene}
-이 장면 안에 참고 사진 속 실제 상품을 자연스럽게 등장시켜(형태·색상·재질 유지) 사실적인 상업 사진으로 연출하세요.
-{NO_TEXT_INSTRUCTION}"""
-
-
-def _card4_prompt(description: str) -> str:
-    return f"""카드뉴스의 마지막 장을 장식할 임팩트 있는 클로징 이미지를 만들어주세요.
-상품 설명: {description or '(설명 없음)'}
-참고 사진 속 실제 상품을 매력적으로 등장시키고, 화면 중앙 또는 하단에 나중에 가격과 짧은 홍보 문구가 얹힐 수 있도록 여백을 남기세요.
-신뢰감 있고 세련된 톤.
-{NO_TEXT_INSTRUCTION}"""
-
-
-def _detail_hero_prompt(description: str) -> str:
+def _detail_hero_prompt(description: str, style_hint: str = "") -> str:
     return f"""상세페이지 상단에 들어갈 대형 히어로 상품 사진을 가로로 넓은 비율로 만들어주세요.
 상품 설명: {description or '(설명 없음)'}
 상품이 화면을 압도적으로 채우는 임팩트 있는 구도. 참고 사진 속 실제 상품 형태·색상·재질을 정확히 유지하세요.
-고급스럽고 시선을 사로잡는 상업광고 사진 스타일.
+고급스럽고 시선을 사로잡는 상업광고 사진 스타일.{_style_line(style_hint)}
 {NO_TEXT_INSTRUCTION}"""
 
 
-def _detail_feature_prompt(caption: dict) -> str:
+def _detail_feature_prompt(caption: dict, style_hint: str = "") -> str:
     return f"""아래 주제를 시각적으로 표현하는 상품 사진을 정사각형에 가까운 비율로 만들어주세요.
 주제: {caption.get('eyebrow', '')} — {caption.get('heading', '')}
 참고 설명: {caption.get('description', '')}
-참고 사진 속 실제 상품을 등장시키고, 이 주제에 맞는 디테일(소재 질감·기능 부위·사용 장면)을 클로즈업 또는 연출 컷으로 보여주세요.
+참고 사진 속 실제 상품을 등장시키고, 이 주제에 맞는 디테일(소재 질감·기능 부위·사용 장면)을 클로즈업 또는 연출 컷으로 보여주세요.{_style_line(style_hint)}
 {NO_TEXT_INSTRUCTION}"""
 
 
-def _detail_angle_prompt(angle_label: str) -> str:
+def _detail_angle_prompt(angle_label: str, style_hint: str = "") -> str:
     return f"""첨부된 참고 사진은 이 상품의 정면 실제 사진입니다. 이 상품과 동일한 형태·색상·재질·디자인을 유지한 채,
 카메라 앵글을 {angle_label}으로 상상하여 생성해주세요.
-실제 상품 사진처럼 사실적인 스튜디오 제품 사진 스타일(깨끗한 배경, 균일한 조명)로, 참고 사진과 동일한 상품임을 알아볼 수 있도록 디자인 일관성을 유지하세요.
+실제 상품 사진처럼 사실적인 스튜디오 제품 사진 스타일(깨끗한 배경, 균일한 조명)로, 참고 사진과 동일한 상품임을 알아볼 수 있도록 디자인 일관성을 유지하세요.{_style_line(style_hint)}
 {NO_TEXT_INSTRUCTION}"""
 
 
@@ -2430,6 +2602,9 @@ def _card_news_copy_prompt(product_name: str, description: str) -> str:
 상품명: {product_name}
 상품 설명: {description or '(설명 없음)'}
 
+상품명이 영어 등 다른 언어로 적혀 있어도 문구는 반드시 한국어로 작성하세요. 언어 변경은 화면의
+"이미지 언어 설정하기" 버튼으로 사용자가 직접 선택할 때만 이뤄집니다.
+
 features: 상품 설명에서 도출한 핵심 특징 2~4개, 각 8~14자 내외 짧은 한글 문구 (설명에 근거하여, 지어내지 마세요).
 promoLine: 마지막 장 CTA용 15자 내외 짧고 임팩트 있는 홍보 문구."""
 
@@ -2439,36 +2614,857 @@ def _detail_captions_prompt(product_name: str, description: str) -> str:
 상품명: {product_name}
 상품 설명: {description or '(설명 없음)'}
 
+상품명이 영어 등 다른 언어로 적혀 있어도 문구는 반드시 한국어로 작성하세요(eyebrow의 영문 대문자
+표기 관례는 유지). 언어 변경은 화면의 "이미지 언어 설정하기" 버튼으로 사용자가 직접 선택할 때만 이뤄집니다.
+
 상세페이지 '특징 소개' 섹션에 들어갈 3개의 캡션 세트를 작성하세요 — 소재/기능/디자인 등 서로 다른 3가지 매력 포인트를 각각 다루도록.
 각 세트: eyebrow(영문 대문자 2~3단어, 예: 'PREMIUM QUALITY'), heading(굵은 한글 소제목 6~12자),
 description(1~2문장 한글, 상품 설명에 근거하여 자연스럽게 확장, 지어내지 마세요)."""
 
 
-def _generate_poster(user_id, gen_id, ref_bytes, ref_mime, product_name, description, must_have_photo):
-    image_bytes, mime = _generate_image(_poster_prompt(description, must_have_photo), ref_bytes, ref_mime, "9:16")
+# "럭셔리 & 프리미엄" 포스터 템플릿 전용 — 사용자가 직접 작성해서 넘겨준 데이터 기반 광고 프롬프트를
+# 그대로 쓴다. {{변수}}는 우리 서비스가 실제로 가진 정보(상품명/설명/태그라인/가격/회사명)로만 채우고,
+# 없는 정보(가격 할인, 원산지, CTA 문구 등)는 빈 문자열로 둔다 — 프롬프트 자체가 "데이터가 없으면
+# 지어내지 말고 그 자리를 비워두라"는 규칙(8번 항목)을 포함하고 있어서 안전하다.
+LUXURY_PREMIUM_POSTER_PROMPT = """GEMINI 2.5 FLASH IMAGE
+PREMIUM FIXED EDITORIAL PRODUCT CAMPAIGN MASTER PROMPT
+
+01. ROLE
+You are a senior brand design director, luxury editorial art director, commercial product photographer, and typography designer with 15+ years of experience working for major consumer brands.
+Create ONE finished premium product advertising image using:
+1. the PRODUCT IMAGE supplied by the user,
+2. the PRODUCT INFORMATION supplied by the user,
+3. the FIXED EDITORIAL DESIGN SYSTEM defined below.
+This is NOT a free-form image generation task.
+This is a FIXED DESIGN SYSTEM + DYNAMIC PRODUCT MOOD advertising system.
+The final result must be immediately usable as a professional product promotion without additional design editing.
+
+02. CORE PRINCIPLE
+FIXED
+The following must remain consistent across every generated advertisement:
+● canvas ratio
+● overall composition
+● typography style
+● typography hierarchy
+● typography positions
+● hero word position
+● hero product position
+● benefit position
+● description position
+● CTA position
+● negative-space structure
+● editorial spacing
+● overall visual hierarchy
+DYNAMIC
+The following must automatically adapt to each supplied product:
+● product image
+● product information
+● hero word content
+● background palette
+● lighting mood
+● supporting ingredients
+● props
+● surface material
+● atmospheric depth
+● shadow character
+● accent color
+The goal is:
+SAME DESIGN SYSTEM.
+DIFFERENT PRODUCT PERSONALITY.
+Do NOT redesign the layout when the product changes.
+Instead:
+KEEP THE DESIGN SYSTEM AND CHANGE THE WORLD AROUND THE PRODUCT.
+
+03. INPUT DATA
+The user supplies the product image and product information.
+Use ONLY the supplied data as factual product information.
+PRODUCT_REFERENCE_IMAGE:
+{{product_image}}
+
+BRAND_NAME:
+{{brand_name}}
+
+PRODUCT_NAME:
+{{product_name}}
+
+PRODUCT_CATEGORY:
+{{product_category}}
+
+PRODUCT_BENEFIT:
+{{product_benefit}}
+
+PRODUCT_DESCRIPTION:
+{{product_description}}
+
+KEY_INGREDIENTS:
+{{key_ingredients}}
+
+PRODUCT_CAPACITY:
+{{product_capacity}}
+
+TOP_EDITORIAL_COPY:
+{{tagline}}
+
+HERO_WORD:
+{{hero_word}}
+
+CTA_TEXT:
+{{cta_text}}
+
+PRIMARY_COLOR:
+{{primary_color}}
+
+SECONDARY_COLOR:
+{{secondary_color}}
+
+ACCENT_COLOR:
+{{accent_color}}
+
+TARGET_MARKET:
+{{target_market}}
+
+The PRODUCT_REFERENCE_IMAGE and structured product information are the SINGLE SOURCE OF TRUTH.
+
+04. PRODUCT DATA INTEGRITY
+Never invent factual product information.
+DO NOT invent:
+● brand names
+● product names
+● ingredients
+● benefits
+● specifications
+● capacities
+● certifications
+● origins
+● SPF values
+● functional claims
+● medical claims
+● marketing claims
+Never infer factual claims only from the visual appearance of the product.
+If information is not supplied:
+DO NOT DISPLAY IT.
+Never show:
+● NULL
+● N/A
+● undefined
+● variable names
+● placeholder text
+● empty boxes
+Use negative space instead.
+
+05. PRODUCT IMAGE — ABSOLUTE PRESERVATION
+The supplied {{product_image}} is the HERO and the visual source of truth.
+Preserve as accurately as possible:
+● exact package silhouette
+● container shape
+● proportions
+● cap
+● pump
+● dropper
+● package color
+● package material
+● logo placement
+● label structure
+● visible brand identity
+● distinctive package characteristics
+DO NOT:
+● redesign the product
+● create another bottle
+● invent a different package
+● change the cap
+● change proportions
+● recolor the product
+● create duplicate products
+● invent a new logo
+● intentionally replace the existing label
+● add fake certifications
+● add fake package claims
+Build the advertisement AROUND the supplied product.
+Do not redesign the product to fit the advertisement.
+
+06. FORMAT
+Create ONE vertical premium editorial product advertisement.
+Aspect ratio:
+{{aspect_label}} portrait
+Recommended output:
+high-resolution vertical commercial creative.
+Maintain approximately:
+5–7% safe margin
+around the edges.
+The visual should resemble a professionally photographed full-page advertisement from a premium fashion, beauty, lifestyle, or design magazine.
+
+06B. TEXT IS RENDERED IN THIS IMAGE
+Unlike a generic product photo, THIS template renders its own typography directly into the image —
+the editorial copy, the giant hero word, the benefit/description labels, the bottom headline/price
+block, and the CTA are all real rendered typography, not reserved empty space.
+Render every text field's ACTUAL supplied value exactly as given — do not paraphrase, translate, or
+invent wording. If a field is empty, per rule 32 simply omit that element (no placeholder, no blank
+box) rather than leaving broken negative space.
+Keep every line of rendered text crisp, correctly spelled, and fully legible — never render smudged,
+warped, doubled, or illegible letterforms. If you are not confident a string of text will render
+cleanly, shorten it rather than risk illegible characters.
+
+07. FIXED MASTER COMPOSITION
+Maintain this design structure for EVERY product:
+┌───────────────────────────────┐
+│ SMALL EDITORIAL COPY          │
+│                               │
+│   HUGE EDITORIAL HERO WORD    │
+│   ─────────────────────────   │
+│                               │
+│ BENEFIT        DESCRIPTION    │
+│                               │
+│          HERO PRODUCT         │
+│                               │
+│     PRODUCT-RELATED PROPS     │
+│                               │
+│───────────────────────────────│
+│ REFLECTIVE SURFACE       CTA  │
+└───────────────────────────────┘
+Do NOT convert this layout into:
+● an e-commerce detail page
+● a UI dashboard
+● a card grid
+● an icon-heavy infographic
+● a marketplace banner
+The result is a PREMIUM EDITORIAL ADVERTISEMENT.
+
+08. TOP EDITORIAL COPY
+Position:
+X = approximately 5–8%
+Y = approximately 4–10%
+Render:
+{{tagline}}
+Maximum 2 short lines. Typeface: elegant editorial serif (see 14), thin/regular weight, wide
+letter-spacing, small and restrained — a subtle editorial introduction, not the main headline. Use a
+color with strong contrast against the background. If {{tagline}} is empty, omit this element.
+
+09. GIANT HERO TYPOGRAPHY
+This is the signature visual element. Render ONE short evocative word (English preferred) BEHIND the
+product:
+{{hero_word}}
+Position: approximately 10–38% of canvas height, centered. Scale: approximately 85–110% of canvas
+width — it may extend slightly beyond the canvas edges. Typeface: elegant high-contrast editorial
+serif (see 14) — Didot/Bodoni/Cormorant-inspired, huge, thin hairlines, sophisticated proportions.
+The word sits BEHIND the product; the product may obscure roughly 20–40% of the letters, but the
+rest must stay clearly legible. If {{hero_word}} is empty, derive one short conceptual English word
+from {{product_benefit}} or {{product_description}} — never leave this zone blank.
+
+10. HERO WORD RULE
+Prefer one short English conceptual word, ideally 3–8 characters. This word is emotional/editorial
+language, not a new factual claim — do not invent unrelated or meaningless English.
+
+11. HERO PRODUCT POSITION
+Place:
+{{product_image}}
+approximately:
+X = 50%
+Y = 58–64%
+Recommended scale:
+approximately 35–45% of canvas width.
+The product should dominate the central composition.
+It may slightly overlap the giant hero word.
+No other rendered text may overlap the product itself.
+Adapt product scale slightly according to package shape, but DO NOT change the overall composition.
+
+12. LEFT LABEL — PRODUCT BENEFIT
+Position:
+X = approximately 5–22%
+Y = approximately 38–50%
+Render a small heading "PRODUCT BENEFITS" followed by:
+{{product_benefit}}
+Typeface: clean modern sans-serif (see 14), small, understated. Maximum 2–3 short lines. If
+{{product_benefit}} is empty, omit this entire element (heading included) rather than showing an
+empty label.
+
+13. RIGHT LABEL — PRODUCT DESCRIPTION
+Position:
+X = approximately 70–95%
+Y = approximately 38–52%
+Render a small heading "PRODUCT DESCRIPTION" followed by:
+{{product_description}}
+Typeface: clean modern sans-serif (see 14), small, understated. Maximum 3–4 short lines — condense
+the supplied description if it is longer, preserving factual meaning. If empty, omit this entire
+element.
+
+13B. BOTTOM BLOCK — TAGLINE / PRODUCT NAME / PRICE / CTA
+Reserve the bottom ~20–28% of the canvas as a grounded surface (matches the reflective-surface zone
+in section 24) and render this stacked block, left-aligned, on top of it:
+1. A one-line marketing tagline in small tracked uppercase (may reuse {{tagline}} again or a short
+   restatement of {{product_benefit}}/{{product_description}} if {{tagline}} was already used in
+   zone 08 — keep it brief).
+2. {{product_name}} — the PRODUCT NAME — in the BEBAS NEUE typeface (see 14), large, bold, single
+   line whenever possible.
+3. {{price}} directly below the product name, in a warm gold/amber accent color, bold, smaller than
+   the product name but still prominent. Omit entirely if {{price}} is empty.
+4. {{cta_text}} small and understated, bottom-right of this block. Omit if empty.
+Keep strong contrast against the surface behind this block (a soft dark gradient/vignette is fine)
+so every line stays fully legible.
+
+14. TYPOGRAPHY SYSTEM
+Use exactly THREE typography families, rendered as real legible glyphs:
+
+TYPE A — ELEGANT EDITORIAL SERIF
+Used for: the top editorial copy (08), the giant hero word (09).
+Visual direction: Didot / Bodoni / Cormorant-inspired — high stroke contrast, thin elegant
+hairlines, refined kerning, sophisticated luxury-magazine character.
+
+TYPE B — MODERN CLEAN SANS-SERIF
+Used for: the "PRODUCT BENEFITS" / "PRODUCT DESCRIPTION" labels and their content (12, 13), the
+small tracked tagline inside the bottom block (13B), and the CTA (13B).
+Visual direction: Helvetica Neue / Neue Haas Grotesk-inspired — clean, neutral, restrained.
+
+TYPE C — BEBAS NEUE (bottom product-name headline)
+Used for: {{product_name}} inside the bottom block (13B) — this is the single most important
+rendered word in the whole image and must use BEBAS NEUE specifically: a tall, bold, condensed,
+all-caps (or large-caps) geometric display sans-serif, exactly like the reference typeface named
+"Bebas Neue". Render it large, bold, and unmistakably in this condensed display style.
+
+Do NOT introduce any other decorative font (no handwriting, no script, no bubble/rounded playful
+fonts) anywhere in the image.
+
+15. TYPOGRAPHY POSITION IS FIXED
+Across different products, do NOT move typography to arbitrary positions. Maintain:
+TOP LEFT → editorial copy (08)
+UPPER BACKGROUND, BEHIND PRODUCT → giant hero word (09)
+CENTER LEFT → product benefit label (12)
+CENTER RIGHT → product description label (13)
+BOTTOM, GROUNDED BLOCK → tagline / product name (Bebas Neue) / price / CTA (13B)
+Typography size may adapt slightly for word length, but position and hierarchy stay consistent.
+
+15. TYPOGRAPHY POSITION IS FIXED
+Across different products:
+DO NOT move typography to arbitrary positions.
+Maintain:
+TOP LEFT
+→ editorial copy
+UPPER BACKGROUND
+→ giant hero word
+CENTER LEFT
+→ benefit
+CENTER RIGHT
+→ description
+BOTTOM RIGHT
+→ CTA
+Typography size may adapt slightly for word length.
+Typography POSITION and visual hierarchy should remain consistent.
+
+16. PRODUCT-SPECIFIC MOOD ANALYSIS
+BEFORE generating the advertisement, internally analyze:
+1. product category
+2. package shape
+3. dominant package colors
+4. secondary package colors
+5. package material
+6. key ingredients
+7. product benefits
+8. product description
+9. target-market impression
+10. appropriate emotional atmosphere
+Then create a product-specific ART DIRECTION.
+Do NOT ask the user to specify the mood unless necessary.
+Infer the visual mood from the supplied product image and factual product data.
+
+17. AUTOMATIC COLOR DIRECTION
+The layout remains fixed.
+The COLOR PALETTE changes according to the product.
+First analyze the supplied product image.
+If:
+{{primary_color}}
+{{secondary_color}}
+{{accent_color}}
+are supplied, prioritize them.
+If they are empty:
+derive a sophisticated complementary palette from the product image.
+Use approximately:
+70% neutral/environment tone
+20% product-derived supporting tone
+10% accent tone
+Do NOT simply fill the entire background with the product's dominant color.
+Create tonal variation.
+
+18. COLOR QUALITY
+Colors must feel:
+● curated
+● restrained
+● sophisticated
+● slightly muted when appropriate
+● editorial
+● physically photographed
+Avoid:
+● neon
+● excessive saturation
+● artificial digital gradients
+● excessive orange
+● excessive green
+● arbitrary complementary colors
+Examples of palette logic:
+green package
+→ sage / olive / cream / deep botanical tone
+blue package
+→ pale blue-gray / slate / silver / ivory
+yellow package
+→ warm ivory / butter / sand / muted amber
+pink package
+→ dusty rose / warm cream / muted burgundy
+black package
+→ charcoal / warm gray / stone
+white package
+→ ivory / soft beige / architectural gray
+These are mood directions, not fixed palettes.
+
+19. PRODUCT CATEGORY MOOD
+Automatically adapt the atmosphere.
+BEAUTY / SKINCARE
+Use:
+● refined studio light
+● translucent materials
+● subtle moisture
+● botanical ingredients only when relevant
+● polished stone or glass
+● soft editorial atmosphere
+
+SUNCARE
+Use:
+● warm directional sunlight
+● ivory / sand / subtle sky tones
+● sophisticated summer light
+● subtle architectural sun shadows
+Avoid cliché tropical-beach styling.
+
+FOOD / BEVERAGE
+Use:
+● natural appetizing side light
+● realistic ingredient styling
+● tactile physical surfaces
+● warm material texture
+Do NOT use skincare-style serum droplets.
+
+TRADITIONAL KOREAN FOOD
+Use:
+● modern Korean heritage mood
+● hanji-inspired texture
+● ceramic
+● natural wood
+● restrained traditional color accents
+● warm daylight
+Make it contemporary, not old-fashioned.
+
+HOME / LIFESTYLE
+Use:
+● architectural negative space
+● natural stone
+● subtle wood
+● linen
+● controlled daylight
+
+TECH / ELECTRONICS
+Use:
+● precision studio lighting
+● metal
+● glass
+● graphite
+● silver
+● cool neutral environment
+● controlled architectural geometry
+Do NOT add botanical elements unless relevant.
+
+20. SUPPORTING PROPS
+Select supporting objects from:
+{{key_ingredients}}
+{{product_category}}
+and supplied product information.
+Use approximately:
+2–4 supporting elements maximum.
+Create an asymmetric composition.
+Preferred:
+LEFT:
+one larger supporting element.
+RIGHT:
+one secondary element.
+LOWER FOREGROUND:
+one small physical detail.
+Supporting objects must strengthen the product story.
+Do NOT decorate randomly.
+
+21. INGREDIENT ACCURACY
+If:
+Aloe is supplied
+→ aloe may appear.
+Citrus is supplied
+→ citrus may appear.
+Rice is supplied
+→ rice may appear.
+Honey is supplied
+→ honey may appear.
+Green tea is supplied
+→ tea leaves may appear.
+If NO ingredient information exists:
+DO NOT invent ingredients.
+Instead use category-appropriate neutral materials such as:
+● stone
+● glass
+● wood
+● ceramic
+● metal
+● paper
+● fabric
+● water
+
+22. LIGHTING MOOD
+Maintain directional premium studio lighting across the entire series.
+Default direction:
+large diffused light from upper-left.
+But adapt the CHARACTER of the lighting.
+Hydrating:
+→ soft cool diffused light
+Suncare:
+→ warm directional daylight
+Botanical:
+→ filtered organic light
+Luxury:
+→ dramatic controlled studio light
+Food:
+→ warm appetizing side light
+Technology:
+→ precise cool directional light
+All objects must share the same physically plausible lighting environment.
+
+23. BACKGROUND
+Create a physically believable studio environment.
+Do NOT use a flat digital background.
+Use:
+● subtle tonal depth
+● directional illumination
+● natural shadow falloff
+● restrained atmospheric variation
+● realistic studio backdrop texture
+The background should support the product without competing with it.
+
+24. REFLECTIVE LOWER SURFACE
+Maintain the reflective lower surface as a signature template element.
+Position:
+bottom approximately 15–25%.
+Adapt MATERIAL according to the product.
+Beauty:
+→ polished glass / acrylic / stone
+Food:
+→ polished stone / ceramic / subtle wood
+Traditional food:
+→ ceramic / lacquer / stone
+Lifestyle:
+→ architectural stone / wood
+Tech:
+→ glass / metal / dark acrylic
+Create a subtle physically plausible reflection.
+Do NOT create a perfect digital mirror.
+
+25. CTA
+{{cta_text}} renders inside the bottom block — see 13B. If empty, omit it; do not invent generic
+phrases like "SHOP NOW" unless {{cta_text}} actually supplied one. Do NOT create shopping buttons,
+orange buttons, rounded rectangles, shopping-cart icons, or marketplace UI — it must read as
+typography integrated into a magazine advertisement, not a UI element.
+
+26. NEGATIVE SPACE
+Maintain approximately 25–35% visually calm space outside the rendered typography and product.
+Negative space is part of the design. Do NOT fill empty areas with icons, circles, particles,
+decorative quotation marks, floating graphics, unnecessary lines, or extra badges. The composition
+should breathe.
+
+27. TEXT RENDERING QUALITY RULE
+TEXT ACCURACY IS MORE IMPORTANT THAN DECORATION.
+Every rendered word must be spelled exactly as supplied, fully formed, and legible — no smudged,
+warped, doubled, or half-formed letterforms anywhere, including the giant hero word. Keep external
+text concise; do not render long paragraphs or unnecessary micro-copy. Maintain strong
+foreground/background contrast behind every text zone. If a string is too long to render cleanly at
+a readable size, shorten it while preserving its factual meaning rather than letting it become
+illegible.
+
+28. DO NOT GENERATE UNSUPPLIED TEXT
+Every rendered word must come from one of the supplied fields in section 03 (tagline, hero word,
+product benefit, product description, product name, price, CTA) or the fixed labels "PRODUCT
+BENEFITS" / "PRODUCT DESCRIPTION". Do NOT add fake English descriptions, decorative sentences,
+invented product claims, fake scientific terminology, random numbers, or random certifications.
+Less text is better than inaccurate text.
+
+29. NO E-COMMERCE TEMPLATE STYLING
+STRICTLY AVOID:
+● discount circles
+● 20% OFF badges
+● large price stickers
+● shopping cart icons
+● CTA buttons
+● icon benefit grids
+● rounded UI cards
+● multiple bordered boxes
+● infographic layouts
+● Amazon-style layouts
+● Shopee-style promotional banners
+This template is a BRAND CAMPAIGN CARD.
+Not a marketplace detail image.
+
+30. REMOVE AI-GENERATED AESTHETICS
+STRICTLY AVOID:
+● excessive floating ingredients
+● excessive water droplets
+● glowing glass spheres
+● random bokeh
+● giant quotation marks
+● meaningless letters
+● fake decorative English
+● oversaturated colors
+● excessive lens flare
+● unrealistic plants
+● plastic-looking ingredients
+● duplicate products
+● warped packages
+● distorted caps
+● fake logos
+● perfect CGI reflections
+● excessive symmetry
+● generic social-media-template appearance
+The image must feel HUMAN ART-DIRECTED.
+
+31. HUMAN ART DIRECTION
+Use subtle asymmetry.
+Use optical balance rather than mathematical symmetry.
+Allow:
+● slight cropping
+● natural object overlap
+● realistic imperfections
+● controlled shadow variation
+● restrained texture
+● imperfect reflections
+The result should feel photographed and designed by a professional creative team.
+
+32. CONDITIONAL DATA HANDLING
+If a field is empty:
+REMOVE that content.
+Do NOT:
+● display placeholder text
+● display variable names
+● leave empty frames
+● create empty boxes
+● invent replacement copy
+Rebalance using negative space while keeping the main layout intact.
+
+33. CONSISTENCY ACROSS PRODUCTS
+When multiple product advertisements are viewed together, they must clearly belong to the same campaign family.
+ALWAYS KEEP:
+● {{aspect_label}} format
+● editorial typography system
+● top-left editorial copy
+● oversized serif hero word
+● central product
+● left benefit label
+● right description label
+● lower reflective surface
+● bottom, grounded tagline/product-name(Bebas Neue)/price/CTA block
+● restrained information density
+● luxury spacing
+ALWAYS ADAPT:
+● product
+● color
+● ingredient
+● props
+● material
+● lighting mood
+● atmosphere
+● reflection character
+The design should feel consistent.
+The mood should feel product-specific.
+
+34. FINAL INTERNAL CHECK
+Before generating the image, verify:
+DATA
+Is every factual statement supported by supplied data?
+PRODUCT
+Does the hero product preserve the supplied product image?
+TYPOGRAPHY
+Is the hierarchy consistent?
+Is every important word readable?
+Is there any random or corrupted text?
+LAYOUT
+Does the composition match the fixed editorial template?
+MOOD
+Does the environment genuinely match THIS product?
+COLOR
+Does the palette complement rather than simply copy the package color?
+PROPS
+Are all ingredients and objects relevant?
+PHOTOGRAPHY
+Do the lighting, shadows, materials, and reflections look physically real?
+QUALITY
+Would this image look credible as a professionally art-directed full-page brand advertisement?
+If not:
+REMOVE unnecessary elements.
+REDUCE text.
+INCREASE negative space.
+REFINE the palette.
+IMPROVE product lighting.
+SIMPLIFY supporting props.
+
+35. FINAL GENERATION INSTRUCTION
+Generate ONE finished ultra-premium {{aspect_label}} vertical editorial product campaign image using Gemini 2.5 Flash Image.
+The supplied PRODUCT IMAGE and PRODUCT INFORMATION are authoritative.
+Do NOT change the factual product information.
+Do NOT redesign the supplied product.
+Do NOT create a new layout.
+Render every supplied text field as real, crisp, correctly-spelled typography per rule 06B — this
+template's signature feature is its own rendered typography, not a photo-only composition.
+Use the fixed editorial design system.
+The template structure is:
+SMALL TOP-LEFT EDITORIAL COPY (08)
+↓
+OVERSIZED HIGH-CONTRAST SERIF HERO WORD BEHIND THE PRODUCT (09)
+↓
+CENTRAL HERO PRODUCT (11)
+with
+LEFT "PRODUCT BENEFITS" LABEL (12)
+and
+RIGHT "PRODUCT DESCRIPTION" LABEL (13)
+↓
+CURATED PRODUCT-RELATED INGREDIENTS / PROPS
+↓
+PHYSICALLY REALISTIC REFLECTIVE SURFACE, WITH A GROUNDED BOTTOM BLOCK RENDERING THE TAGLINE, THE
+PRODUCT NAME IN BEBAS NEUE, THE PRICE, AND THE CTA (13B)
+Keep the layout and typography language consistent across all products.
+Automatically adapt the color palette, background atmosphere, lighting, supporting objects, ingredients, materials, shadows, and reflections to the supplied product.
+The final result should look like each product received its own professional art direction while remaining unmistakably part of the same premium campaign series.
+The final image must be:
+PHOTOREALISTIC.
+EDITORIAL.
+PREMIUM.
+MINIMAL.
+CONTEMPORARY.
+PRODUCT-SPECIFIC.
+TYPOGRAPHICALLY REFINED, WITH EVERY RENDERED WORD PERFECTLY LEGIBLE.
+READY FOR IMMEDIATE COMMERCIAL USE.
+Do not make it look AI-generated.
+Do not make it look like a template.
+Do not make it look like an e-commerce marketplace banner.
+Make it look like a real campaign photographed by an experienced brand design team in a professional commercial studio."""
+
+
+def _apply_prompt_template(template: str, values: dict[str, str]) -> str:
+    """{{token}} 형태의 자리표시자를 실제 값으로 치환한다. 값이 없는 항목은 빈 문자열로 남겨서,
+    프롬프트 자체가 갖고 있는 "데이터 없으면 지어내지 말고 비워두라"는 규칙이 그대로 작동하게 한다."""
+    result = template
+    for key, value in values.items():
+        result = result.replace("{{" + key + "}}", value or "")
+    return result
+
+
+def _luxury_premium_poster_prompt(
+    product_name: str, description: str, tagline: str, price: str, brand_name: str, aspect_ratio: str
+) -> str:
+    values = {
+        "product_image": "(첨부된 참고 이미지 속 실제 상품 사진을 그대로 사용하세요)",
+        "brand_name": brand_name,
+        "product_name": product_name,
+        "product_category": "",
+        "product_benefit": "",
+        "product_description": description,
+        "key_ingredients": "",
+        "product_capacity": "",
+        "tagline": tagline,
+        "hero_word": "",
+        "price": price,
+        "cta_text": "",
+        "primary_color": "",
+        "secondary_color": "",
+        "accent_color": "",
+        "target_market": "",
+        "aspect_label": aspect_ratio,
+    }
+    return _apply_prompt_template(LUXURY_PREMIUM_POSTER_PROMPT, values)
+
+
+# 포스터 템플릿이 고를 수 있는 세로 비율 — 피드용(4:5)과 스토리/모바일 전면(9:16) 중 사용자가 고른다.
+POSTER_ASPECT_RATIOS = {"4:5", "9:16"}
+DEFAULT_POSTER_ASPECT_RATIO = "4:5"
+
+
+def _generate_poster(
+    user_id, gen_id, reference_images, product_name, description, must_have_photo,
+    style_hint="", template_id="", tagline="", price="", brand_name="", logo_note="",
+    aspect_ratio=DEFAULT_POSTER_ASPECT_RATIO,
+):
+    if aspect_ratio not in POSTER_ASPECT_RATIOS:
+        aspect_ratio = DEFAULT_POSTER_ASPECT_RATIO
+    if template_id == "tpl-poster-luxury":
+        prompt = _luxury_premium_poster_prompt(product_name, description, tagline, price, brand_name, aspect_ratio)
+    else:
+        prompt = _poster_prompt(description, must_have_photo, style_hint, aspect_ratio)
+    if logo_note:
+        prompt = f"{logo_note}\n\n{prompt}"
+    image_bytes, mime = _generate_image(prompt, reference_images, aspect_ratio)
     return {"images": [_upload_generated_image(user_id, gen_id, "poster", image_bytes, mime)]}
 
 
-def _generate_card_news(user_id, gen_id, ref_bytes, ref_mime, product_name, description, must_have_photo):
+def _generate_card_news(
+    user_id, gen_id, reference_images, product_name, description, must_have_photo, style_hint="",
+    logo_note="", tagline="", price="", brand_name="", target_language="ko",
+):
+    # 카드 장수는 4장으로 고정한다 — 레이아웃마다 다른 건 카드 수가 아니라 프롬프트에 얹는 스타일 톤이다.
     copy = _generate_copy_json(_card_news_copy_prompt(product_name, description), CARD_NEWS_COPY_SCHEMA)
     features = copy.get("features") or []
     promo_line = copy.get("promoLine") or ""
+    benefit_slots = (features + ["", "", ""])[:3]
 
+    values = {
+        "brand_name": brand_name,
+        "product_name": product_name,
+        "product_name_en": "",
+        "category": "",
+        "headline": tagline,
+        "short_description": description,
+        "benefit_1": benefit_slots[0],
+        "benefit_desc_1": "",
+        "benefit_2": benefit_slots[1],
+        "benefit_desc_2": "",
+        "benefit_3": benefit_slots[2],
+        "benefit_desc_3": "",
+        "usage_step_1": "",
+        "usage_step_2": "",
+        "usage_step_3": "",
+        "recommended_for": "",
+        "original_price": "",
+        "sale_price": price,
+        "discount_rate": "",
+        "currency": "",
+        "promotion_text": promo_line,
+        "cta": "",
+        "target_language": target_language,
+        "product_image": "(첨부된 참고 이미지 속 실제 상품 사진을 그대로 사용하세요)",
+        "detail_image": "",
+        "brand_logo": "(첨부된 참고 이미지 중 로고 이미지를 참고하세요)" if logo_note else "",
+    }
+
+    must_have_note = (
+        f"MUST-HAVE SCENE (from the user, take priority over the generic usage-context fallback above): "
+        f"{must_have_photo.strip()}"
+        if must_have_photo.strip()
+        else ""
+    )
     slot_prompts = [
-        ("card-1", _card1_prompt(description)),
-        ("card-2", _card2_prompt(features)),
-        ("card-3", _card3_prompt(description, must_have_photo)),
-        ("card-4", _card4_prompt(description)),
+        ("card-1", _shopee_card_prompt("CARD_01_HERO_PRICE", values, style_hint)),
+        ("card-2", _shopee_card_prompt("CARD_02_BENEFITS", values, style_hint)),
+        ("card-3", _shopee_card_prompt("CARD_03_USAGE", values, style_hint, must_have_note)),
+        ("card-4", _shopee_card_prompt("CARD_04_PROMOTION", values, style_hint)),
     ]
+
     images = []
     for slot, prompt in slot_prompts:
-        image_bytes, mime = _generate_image(prompt, ref_bytes, ref_mime, "1:1")
+        if logo_note:
+            prompt = f"{logo_note}\n\n{prompt}"
+        image_bytes, mime = _generate_image(prompt, reference_images, "1:1")
         images.append(_upload_generated_image(user_id, gen_id, slot, image_bytes, mime))
 
     return {"images": images, "copy": {"features": features, "promoLine": promo_line}}
 
 
-def _generate_detail(user_id, gen_id, ref_bytes, ref_mime, product_name, description):
+def _generate_detail(user_id, gen_id, reference_images, product_name, description, style_hint="", logo_note=""):
     captions_result = _generate_copy_json(_detail_captions_prompt(product_name, description), DETAIL_CAPTIONS_SCHEMA)
     captions = (captions_result.get("captions") or [])[:3]
     while len(captions) < 3:
@@ -2476,11 +3472,17 @@ def _generate_detail(user_id, gen_id, ref_bytes, ref_mime, product_name, descrip
 
     images = []
 
-    hero_bytes, hero_mime = _generate_image(_detail_hero_prompt(description), ref_bytes, ref_mime, "16:9")
+    hero_prompt = _detail_hero_prompt(description, style_hint)
+    if logo_note:
+        hero_prompt = f"{logo_note}\n\n{hero_prompt}"
+    hero_bytes, hero_mime = _generate_image(hero_prompt, reference_images, "16:9")
     images.append(_upload_generated_image(user_id, gen_id, "hero", hero_bytes, hero_mime))
 
     for i, caption in enumerate(captions, start=1):
-        f_bytes, f_mime = _generate_image(_detail_feature_prompt(caption), ref_bytes, ref_mime, "1:1")
+        feature_prompt = _detail_feature_prompt(caption, style_hint)
+        if logo_note:
+            feature_prompt = f"{logo_note}\n\n{feature_prompt}"
+        f_bytes, f_mime = _generate_image(feature_prompt, reference_images, "1:1")
         images.append(_upload_generated_image(user_id, gen_id, f"feature-{i}", f_bytes, f_mime))
 
     angle_slots = [
@@ -2489,7 +3491,10 @@ def _generate_detail(user_id, gen_id, ref_bytes, ref_mime, product_name, descrip
         ("angle-top", "위에서 내려다본 모습"),
     ]
     for slot, label in angle_slots:
-        a_bytes, a_mime = _generate_image(_detail_angle_prompt(label), ref_bytes, ref_mime, "1:1")
+        angle_prompt = _detail_angle_prompt(label, style_hint)
+        if logo_note:
+            angle_prompt = f"{logo_note}\n\n{angle_prompt}"
+        a_bytes, a_mime = _generate_image(angle_prompt, reference_images, "1:1")
         images.append(_upload_generated_image(user_id, gen_id, slot, a_bytes, a_mime))
 
     return {"images": images, "copy": {"captions": captions}}
@@ -2503,38 +3508,129 @@ def generate_marketing_images(
     description: str = Form(""),
     must_have_photo: str = Form(""),
     price: str = Form(""),
-    product_image: UploadFile = File(...),
+    style_hint: str = Form(""),
+    template_id: str = Form(""),
+    aspect_ratio: str = Form(DEFAULT_POSTER_ASPECT_RATIO),
+    product_images: list[UploadFile] = File(...),
+    logo: UploadFile | None = File(None),
     authorization: str | None = Header(None),
 ):
-    """상품 정보 + 상품 사진을 바탕으로 AI 마케팅 이미지를 생성한다 (포스터 1장 / 카드뉴스 4장 / 상세설명 7장).
-    이미지에는 문구를 렌더링하지 않으며, 실제 문구는 프론트엔드가 오버레이한다."""
+    """상품 정보 + 상품 사진(여러 장 가능) + 기업 로고(선택)를 바탕으로 AI 마케팅 이미지를 생성한다
+    (포스터 1장 / 카드뉴스 4장 / 상세설명 7장). template_id가 "tpl-poster-luxury"인 경우를 제외하면
+    이미지에는 문구를 렌더링하지 않고 실제 문구는 프론트엔드가 오버레이한다 — 럭셔리&프리미엄
+    포스터만 예외로, Gemini가 태그라인·히어로 워드·상품명(Bebas Neue)·가격·CTA를 이미지 안에 직접
+    렌더링한다(LUXURY_PREMIUM_POSTER_PROMPT 참고). style_hint는 프롬프트에 얹는 스타일 톤이고,
+    template_id가 "tpl-poster-luxury"이면 전용 데이터 기반 광고 프롬프트(LUXURY_PREMIUM_POSTER_PROMPT)를 대신 쓴다."""
     user_id = require_user(authorization)
 
     if layout not in {"poster", "card-news", "detail"}:
         raise HTTPException(status_code=400, detail="layout 값이 올바르지 않습니다.")
-    if (product_image.content_type or "") not in ALLOWED_PRODUCT_IMAGE_TYPES:
-        raise HTTPException(status_code=400, detail="JPG, PNG, WEBP 이미지만 업로드할 수 있습니다.")
+    if not product_images:
+        raise HTTPException(status_code=400, detail="상품 사진을 업로드해주세요.")
+    for img in product_images:
+        if (img.content_type or "") not in ALLOWED_PRODUCT_IMAGE_TYPES:
+            raise HTTPException(status_code=400, detail="JPG, PNG, WEBP 이미지만 업로드할 수 있습니다.")
+    if logo is not None and (logo.content_type or "") not in ALLOWED_PRODUCT_IMAGE_TYPES:
+        raise HTTPException(status_code=400, detail="로고는 JPG, PNG, WEBP 이미지만 업로드할 수 있습니다.")
     if not product_name.strip():
         raise HTTPException(status_code=400, detail="상품명을 입력해주세요.")
 
-    reference_bytes = product_image.file.read()
-    reference_mime = product_image.content_type
+    reference_images = [(img.file.read(), img.content_type) for img in product_images]
+    logo_note = ""
+    if logo is not None:
+        reference_images.append((logo.file.read(), logo.content_type))
+        logo_note = LOGO_REFERENCE_NOTE
     gen_id = uuid.uuid4().hex
 
     try:
+        brand_name = ""
+        if (layout == "poster" and template_id == "tpl-poster-luxury") or layout == "card-news":
+            profile = (
+                supabase.table("profiles").select("company").eq("id", user_id).maybe_single().execute().data
+            ) or {}
+            brand_name = profile.get("company") or ""
+
         if layout == "poster":
             result = _generate_poster(
-                user_id, gen_id, reference_bytes, reference_mime, product_name, description, must_have_photo
+                user_id, gen_id, reference_images, product_name, description, must_have_photo,
+                style_hint, template_id, tagline, price, brand_name, logo_note, aspect_ratio,
             )
         elif layout == "card-news":
             result = _generate_card_news(
-                user_id, gen_id, reference_bytes, reference_mime, product_name, description, must_have_photo
+                user_id, gen_id, reference_images, product_name, description, must_have_photo,
+                style_hint, logo_note, tagline, price, brand_name,
             )
         else:
-            result = _generate_detail(user_id, gen_id, reference_bytes, reference_mime, product_name, description)
+            result = _generate_detail(
+                user_id, gen_id, reference_images, product_name, description, style_hint, logo_note
+            )
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"이미지 생성에 실패했습니다: {friendly_ai_error(e)}")
 
-    return {"layout": layout, **result}
+    return {"layout": layout, "template_id": template_id, **result}
+
+
+# 슬롯별로 생성 시 사용한 종횡비 — 수정(edit) 시에도 같은 비율을 유지해야 레이아웃이 깨지지 않는다.
+SLOT_ASPECT_RATIO = {
+    "poster": "9:16",
+    "card-1": "1:1",
+    "card-2": "1:1",
+    "card-3": "1:1",
+    "card-4": "1:1",
+    "hero": "16:9",
+    "feature-1": "1:1",
+    "feature-2": "1:1",
+    "feature-3": "1:1",
+    "angle-front": "1:1",
+    "angle-back": "1:1",
+    "angle-top": "1:1",
+}
+
+
+def _edit_image_prompt(user_prompt: str) -> str:
+    return f"""첨부된 이미지를 다음 지시에 따라 자연스럽게 수정해주세요: {user_prompt.strip()}
+상품의 형태·색상·재질 등 핵심 정체성과 전체 구도는 최대한 유지한 채로 지시된 부분만 수정하세요.
+{NO_TEXT_INSTRUCTION}"""
+
+
+class MarketingEditImageRef(BaseModel):
+    slot: str
+    path: str
+
+
+class MarketingEditRequest(BaseModel):
+    layout: str
+    prompt: str
+    images: list[MarketingEditImageRef]
+
+
+@app.post("/marketing/edit")
+def edit_marketing_images(payload: MarketingEditRequest, authorization: str | None = Header(None)):
+    """이미 생성된 마케팅 이미지들을, 사용자가 직접 쓴 프롬프트에 따라 전부 다시 수정한다.
+    새 상품 사진을 참고하는 대신 '현재 생성된 이미지'를 참고 이미지로 넘겨서 그 위에 수정을 가한다."""
+    user_id = require_user(authorization)
+
+    if not payload.prompt.strip():
+        raise HTTPException(status_code=400, detail="수정할 내용을 입력해주세요.")
+    if not payload.images:
+        raise HTTPException(status_code=400, detail="수정할 이미지가 없습니다.")
+
+    gen_id = uuid.uuid4().hex
+    edit_prompt = _edit_image_prompt(payload.prompt)
+
+    try:
+        edited_images = []
+        for img in payload.images:
+            existing_bytes = supabase.storage.from_(GENERATED_BUCKET).download(img.path)
+            existing_mime = "image/png" if img.path.lower().endswith(".png") else "image/jpeg"
+            aspect_ratio = SLOT_ASPECT_RATIO.get(img.slot, "1:1")
+            image_bytes, mime = _generate_image(edit_prompt, [(existing_bytes, existing_mime)], aspect_ratio)
+            edited_images.append(_upload_generated_image(user_id, gen_id, img.slot, image_bytes, mime))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"이미지 수정에 실패했습니다: {friendly_ai_error(e)}")
+
+    return {"layout": payload.layout, "images": edited_images}

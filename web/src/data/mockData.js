@@ -1,4 +1,4 @@
-const logoUrl = new URL("../../로고1-icon.png", import.meta.url).href;
+const logoUrl = new URL("../../로고최종1.png", import.meta.url).href;
 const profileGreenLiving = new URL("../../profile/그린리빙.png", import.meta.url).href;
 const profileMisoFood = new URL("../../profile/미소식품.png", import.meta.url).href;
 const profileOurHangwa = new URL("../../profile/우리한과.png", import.meta.url).href;
@@ -8,7 +8,7 @@ const profileHappyCosmetic = new URL("../../profile/해피코스메틱.png", imp
 
 // UI 전용 더미 데이터 (백엔드/AI 연동 없음)
 export const brand = {
-  name: "GLOBIZ",
+  name: "GLOTIZ",
   tagline: "GLOBAL BUSINESS SOLUTION",
   logo: logoUrl,
 };
@@ -160,7 +160,7 @@ export const dashboard = {
   heroLines: [
     "수출 지원사업 신청부터",
     "해외 판매·마케팅까지,",
-    "GLOBIZ가",
+    "GLOTIZ가",
     "글로벌 비즈니스의 시작을 함께합니다.",
   ],
   availablePrograms: 128,
@@ -172,7 +172,7 @@ export const dashboard = {
   ],
   cardNewsLabel: "지원사업 카드뉴스",
 
-  statsHeadline: "전북 수출기업이 가장 많이 찾는 파트너, GLOBIZ",
+  statsHeadline: "전북 수출기업이 가장 많이 찾는 파트너, GLOTIZ",
   stats: [
     { label: "총 진행건수", value: 1842, suffix: "건" },
     { label: "매칭기업수", value: 356, suffix: "개사" },
@@ -183,7 +183,7 @@ export const dashboard = {
   ongoingProgramsTitle: "진행 중인 지원사업",
   ongoingProgramsMoreLabel: "진행중인 지원사업 더보기",
 
-  featuresTitle: "GLOBIZ로 서류 작성/디자인 고민을 해결해보세요!",
+  featuresTitle: "GLOTIZ로 서류 작성/디자인 고민을 해결해보세요!",
   features: [
     {
       icon: "projects",
@@ -212,7 +212,7 @@ export const dashboard = {
   ],
 
   caseStudiesTitle: "AI · 디자인 진행 사례",
-  caseStudiesDescription: "JB-XPORT AI가 함께 완성한 서류와 디자인 결과물을 만나보세요.",
+  caseStudiesDescription: "GLOTIZ AI가 함께 완성한 서류와 디자인 결과물을 만나보세요.",
   caseStudies: [
     { id: "case-01", title: "AURELIA 워터 에센스 세럼 디자인 포스터", tag: "패키지 디자인", tone: "sunrise", icon: "sparkle", image: "/case-studies/case-01.jpg" },
     { id: "case-02", title: "전통 발효 고추장 세트 브랜드 포스터", tag: "브랜드 무드보드", tone: "forest", icon: "formulation", image: "/case-studies/case-02.jpg" },
@@ -753,11 +753,103 @@ export const marketingMaterialCreator = {
   uploadHint: { title: "클릭하거나 파일을 끌어다 놓으세요", sub: "SVG, PNG, JPG, GIF (최대 800x400px)" },
   templateSectionTitle: "템플릿 선택",
   templates: {
-    categories: ["전체", "포스터", "카드뉴스", "상세설명"],
+    categories: ["카드뉴스", "포스터", "상세설명"],
     items: [
-      { id: "tpl-poster", name: "포스터", category: "포스터", selected: true },
-      { id: "tpl-card-news", name: "카드뉴스", category: "카드뉴스", selected: false },
-      { id: "tpl-detail", name: "상세설명", category: "상세설명", selected: false },
+      // 포스터 5종 - 이미지 1장 구성은 동일하고, 프롬프트에 얹는 스타일 톤만 다르다.
+      // "럭셔리 & 프리미엄"만 예외로, 백엔드의 전용 데이터 기반 광고 프롬프트(LUXURY_PREMIUM_POSTER_PROMPT)를 쓴다.
+      {
+        id: "tpl-poster-minimal",
+        name: "미니멀 & 클린",
+        category: "포스터",
+        layout: "poster",
+        selected: true,
+        styleHint: "미니멀하고 깨끗한 톤, 여백을 살린 절제된 구성, 차분한 파스텔 계열 배경",
+      },
+      {
+        id: "tpl-poster-luxury",
+        name: "럭셔리 & 프리미엄",
+        category: "포스터",
+        layout: "poster",
+      },
+      {
+        id: "tpl-poster-pop",
+        name: "팝 & 컬러풀",
+        category: "포스터",
+        layout: "poster",
+        styleHint: "팝하고 컬러풀한 톤, 밝고 경쾌한 원색 대비, 발랄한 분위기",
+      },
+      {
+        id: "tpl-poster-emotional",
+        name: "감성 & 무드",
+        category: "포스터",
+        layout: "poster",
+        styleHint: "감성적이고 무드 있는 톤, 부드러운 자연광과 따뜻한 색감",
+      },
+      {
+        id: "tpl-poster-modern",
+        name: "모던 & 대담",
+        category: "포스터",
+        layout: "poster",
+        styleHint: "모던하고 대담한 톤, 강한 명암 대비와 기하학적인 구도",
+      },
+      // 카드뉴스 4종 - 장수는 4장으로 고정하고, 프롬프트에 얹는 스타일 톤만 다르다.
+      {
+        id: "tpl-cardnews-minimal",
+        name: "미니멀 & 클린",
+        category: "카드뉴스",
+        layout: "card-news",
+        styleHint: "미니멀하고 깨끗한 톤, 여백을 살린 절제된 구성",
+      },
+      {
+        id: "tpl-cardnews-luxury",
+        name: "럭셔리 & 프리미엄",
+        category: "카드뉴스",
+        layout: "card-news",
+        styleHint: "럭셔리하고 고급스러운 톤, 짙은 색감과 고급 소재 질감 강조",
+      },
+      {
+        id: "tpl-cardnews-pop",
+        name: "팝 & 컬러풀",
+        category: "카드뉴스",
+        layout: "card-news",
+        styleHint: "팝하고 컬러풀한 톤, 밝고 경쾌한 원색 대비",
+      },
+      {
+        id: "tpl-cardnews-emotional",
+        name: "감성 & 무드",
+        category: "카드뉴스",
+        layout: "card-news",
+        styleHint: "감성적이고 무드 있는 톤, 부드러운 자연광과 따뜻한 색감",
+      },
+      // 상세설명 4종 - 구성(히어로+특징3+각도3)은 동일하고, 스타일 톤만 다르다.
+      {
+        id: "tpl-detail-classic",
+        name: "클래식 화이트",
+        category: "상세설명",
+        layout: "detail",
+        styleHint: "깨끗한 화이트 배경의 클래식하고 정갈한 스튜디오 톤",
+      },
+      {
+        id: "tpl-detail-premium",
+        name: "프리미엄 다크",
+        category: "상세설명",
+        layout: "detail",
+        styleHint: "짙은 다크 배경에 은은한 조명을 살린 프리미엄 톤",
+      },
+      {
+        id: "tpl-detail-natural",
+        name: "내추럴 & 오가닉",
+        category: "상세설명",
+        layout: "detail",
+        styleHint: "자연광과 우드·식물 소품을 활용한 내추럴하고 오가닉한 톤",
+      },
+      {
+        id: "tpl-detail-trendy",
+        name: "트렌디 & 팝",
+        category: "상세설명",
+        layout: "detail",
+        styleHint: "선명한 색감과 대담한 구도의 트렌디하고 팝한 톤",
+      },
     ],
   },
   previewTitle: "미리보기",
@@ -769,8 +861,8 @@ export const marketingMaterialCreator = {
       { icon: "temperature", label: "보온 유지", value: "24시간" },
       { icon: "weight", label: "무게", value: "320g" },
     ],
-    brand: "JB-XPORT",
-    website: "www.jbxport.kr",
+    brand: "GLOTIZ",
+    website: "www.glotiz.kr",
     price: "29,000원",
   },
 };
@@ -786,16 +878,17 @@ export const helpAndFaq = {
   faqSectionTitle: "자주 묻는 질문",
   faqs: [
     {
-      question: "저한테 맞는 지원사업을 찾아볼 수 있나요?",
-      answer: "네, 수출지원사업 페이지에서 지역·품목·진행상황으로 필터를 걸어 조건에 맞는 공고만 골라볼 수 있어요.",
+      question: "필요서류는 어디서 다운받나요?",
+      answer:
+        "직접 발급받아야 하는 서류는 '수출 서류 제출' 페이지에서 '발급 바로가기'를 누르면 발급 사이트로 바로 이동해요. 나머지 서류는 다운로드할 필요 없이 그 자리에서 AI가 자동으로 채워드립니다.",
     },
     {
-      question: "마케팅이나 상세페이지에 쓸 이미지도 만들어 줄 수 있나요?",
-      answer: "네, AI 이미지 생성에서 상품 정보를 입력하면 AI가 홍보용 이미지를 자동으로 만들어드립니다.",
+      question: "작성하다가 저장 안 하고 나가면 처음부터 다시 써야 하나요?",
+      answer: "아니요, 입력 중인 내용은 자동으로 임시저장돼서 다시 들어오면 이어서 작성하실 수 있어요.",
     },
     {
-      question: "AI가 상업 서류를 번역해줄 수 있나요?",
-      answer: "네, 서류 제출 화면에서 언어쌍을 선택한 뒤 'AI 채우기' 기능으로 상업송장 등 서류를 번역할 수 있습니다.",
+      question: "서류 심사에서 '보완 필요'가 뜨면 어떻게 하나요?",
+      answer: "해당 서류를 다시 열어 지적된 부분을 수정한 뒤 재제출하시면 담당자가 다시 확인합니다.",
     },
   ],
   floatingChatbot: {
@@ -897,10 +990,10 @@ export const shopeeListing = {
   },
 
   supportSteps: {
-    badge: "GLOBIZ SUPPORT",
-    title: "GLOBIZ로 Shopee 상품 등록 정보를 준비해 보세요.",
+    badge: "GLOTIZ SUPPORT",
+    title: "GLOTIZ로 Shopee 상품 등록 정보를 준비해 보세요.",
     subtitle: "상품 정보를 입력하면 AI가 Shopee 상품 등록에 필요한 정보 작성과 번역을 도와드려요.",
-    note: "GLOBIZ는 상품 등록에 필요한 정보 작성과 번역을 지원합니다. 최종 등록 및 검수는 Shopee Seller Centre에서 진행됩니다.",
+    note: "GLOTIZ는 상품 등록에 필요한 정보 작성과 번역을 지원합니다. 최종 등록 및 검수는 Shopee Seller Centre에서 진행됩니다.",
     steps: [
       {
         icon: "pencil",
@@ -1017,6 +1110,8 @@ export const adminPanel = {
     deleteTemplateButtonLabel: "삭제",
     templateListEmptyMessage: "등록된 서류 양식이 없습니다.",
     userUploadBadgeLabel: "사용자 업로드형",
+    userUploadGroupLabel: "사용자 업로드형",
+    formTemplateGroupLabel: "제출 서식 (서식 번호순)",
 
     businessForm: {
       title: "새 사업 등록",

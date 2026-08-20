@@ -7,6 +7,7 @@ import RequireAuth from "./components/RequireAuth";
 import RequireAdmin from "./components/RequireAdmin";
 import Layout from "./components/Layout";
 import NotificationAlert from "./components/NotificationAlert";
+import CustomCursor from "./components/CustomCursor";
 import Dashboard from "./pages/Dashboard";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
@@ -31,6 +32,7 @@ export default function App() {
         <MarketingImagesProvider>
           <ExportItemsProvider>
             <ChatbotProvider>
+              <CustomCursor />
               <NotificationAlert />
               <Routes>
                 <Route path="/login" element={<Login />} />

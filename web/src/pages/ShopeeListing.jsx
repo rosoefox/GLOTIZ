@@ -536,7 +536,7 @@ export default function ShopeeListing() {
         </div>
       </Card>
 
-      {/* GLOBIZ 지원 4단계 */}
+      {/* GLOTIZ 지원 4단계 */}
       <Card className="mb-6 bg-slate-50/60 p-6">
         <span className="mb-2 inline-block rounded-full bg-brand-50 px-2.5 py-1 text-[11px] font-bold tracking-wide text-brand-700">
           {sl.supportSteps.badge}

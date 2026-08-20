@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, Button } from "../components/ui";
 import Icon from "../components/Icon";
@@ -409,6 +409,29 @@ export default function GovSupport() {
       JSON.stringify({ regions: wizardRegions, categories: wizardCategories })
     );
   }, [user?.id, wizardRegions, wizardCategories]);
+
+  // 위 복원 effect는 지역/품목 "선택값"만 되돌려놓을 뿐, 실제 맞춤 공고 하이라이트(matchedIds)는
+  // 계산해두지 않는다. 공고 목록(announcements)이 비동기로 늦게 로딩되기 때문에, 둘 다 준비되면
+  // 한 번만 자동으로 매칭을 계산해서 "맞춤 공고" 화면이 새로고침/재방문 후에도 그대로 보이게 한다.
+  // (사용자가 "전체 공고 보기"로 matchedIds를 직접 지운 뒤에는 다시 끼어들지 않도록 최초 1회만 동작.)
+  const restoredMatchRef = useRef(false);
+  useEffect(() => {
+    if (restoredMatchRef.current) return;
+    if (announcements.length === 0) return;
+    if (wizardRegions.length === 0 || wizardCategories.length === 0) return;
+    if (matchedIds !== null) return;
+    restoredMatchRef.current = true;
+    const ids = new Set(
+      announcements
+        .filter(
+          (b) =>
+            wizardRegions.some((r) => matchesRegion(b, r)) &&
+            wizardCategories.some((c) => matchesCategory(b, c))
+        )
+        .map((b) => b.id)
+    );
+    setMatchedIds(ids);
+  }, [announcements, wizardRegions, wizardCategories, matchedIds]);
 
   useEffect(() => {
     async function loadAnnouncements() {
