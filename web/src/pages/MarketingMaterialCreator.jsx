@@ -12,17 +12,42 @@ import thumbLuxury from "../../럭셔리.jpg";
 import thumbPop from "../../팝.jpg";
 import thumbEmotional from "../../감성 무드.jpg";
 import thumbModern from "../../모던.jpg";
+import cardnewsThumbMinimal from "../../cardnews-minimal.png";
+import cardnewsThumbLuxury from "../../cardnews-luxury.png";
+import cardnewsThumbPop from "../../cardnews-pop.png";
+import cardnewsThumbEmotional from "../../cardnews-emotional.png";
+import detailThumbClassic from "../../detail-classic.png";
+import detailThumbPremium from "../../detail-premium.png";
+import detailThumbNatural from "../../detail-natural.png";
+import detailThumbTrendy from "../../detail-trendy.png";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
 
-// Step 3 템플릿 카드에 쓰는 실제 예시 이미지 — 해당하는 포스터 템플릿에만 있고, 없는 템플릿은
-// TemplateThumb의 기존 도형 플레이스홀더로 자연히 대체된다.
-const POSTER_TEMPLATE_THUMBS = {
+// Step 3 템플릿 카드에 쓰는 실제 예시 이미지 — 포스터/카드뉴스는 같은 스타일 이름(미니멀·럭셔리·팝·
+// 감성)끼리 같은 사진을 재사용한다. 매칭되는 템플릿이 없으면 TemplateThumb의 기존 도형
+// 플레이스홀더로 자연히 대체된다.
+const TEMPLATE_THUMBS = {
   "tpl-poster-minimal": thumbMinimal,
   "tpl-poster-luxury": thumbLuxury,
   "tpl-poster-pop": thumbPop,
   "tpl-poster-emotional": thumbEmotional,
   "tpl-poster-modern": thumbModern,
+  "tpl-cardnews-minimal": cardnewsThumbMinimal,
+  "tpl-cardnews-luxury": cardnewsThumbLuxury,
+  "tpl-cardnews-pop": cardnewsThumbPop,
+  "tpl-cardnews-emotional": cardnewsThumbEmotional,
+  "tpl-detail-classic": detailThumbClassic,
+  "tpl-detail-premium": detailThumbPremium,
+  "tpl-detail-natural": detailThumbNatural,
+  "tpl-detail-trendy": detailThumbTrendy,
+};
+
+// 레이아웃별로 몇 장이 생성되는지 — Step 3 안내 배지/박스에 쓴다. 사용자가 고를 수 있는 값이
+// 아니라 레이아웃 구조 자체가 고정하는 값이다(포스터 1장, 카드뉴스 4장, 상세설명 히어로+특징3+각도3=7장).
+const LAYOUT_INFO = {
+  poster: { noun: "포스터", count: 1 },
+  "card-news": { noun: "카드뉴스", count: 4 },
+  detail: { noun: "상세페이지", count: 7 },
 };
 
 // 상품 사진은 최대 이만큼 올릴 수 있다 — 여러 각도의 사진을 같이 넘기면 AI가 더 정확하게 생성한다.
@@ -77,18 +102,46 @@ function AiFilledHint() {
 
 // 아직 실제 생성 결과가 없는 템플릿 카드에 형태를 미리 보여주는 예시 썸네일 —
 // 실사 이미지 대신 각 레이아웃의 구조(세로 포스터/가로 카드뉴스/세로 상세페이지)를 축소해 그린다.
-function TemplateThumb({ layout, templateId }) {
-  const realThumb = POSTER_TEMPLATE_THUMBS[templateId];
+// "4:5" 같은 W:H 문자열을 Tailwind aspect-ratio 클래스로 바꾼다 — Step 3 템플릿 썸네일이
+// 실제로 그 템플릿이 생성할 이미지 비율과 같은 모양으로 보이게 하는 데 쓴다.
+function aspectClassFor(ratio) {
+  const map = {
+    "4:5": "aspect-[4/5]",
+    "9:16": "aspect-[9/16]",
+    "4:3": "aspect-[4/3]",
+    "1:2": "aspect-[1/2]",
+  };
+  return map[ratio] || "aspect-[3/4]";
+}
+
+function TemplateThumb({ layout, templateId, aspectRatio }) {
+  const aspectClass = aspectClassFor(aspectRatio);
+  const realThumb = TEMPLATE_THUMBS[templateId];
+  if (realThumb && layout === "detail") {
+    // 상세페이지 참고 사진은 스크롤이 긴 상세페이지 전체 스크린샷이라 세로로 아주 길다 —
+    // 그대로 자르면 위쪽 일부만 남으므로, 위쪽 절반과 아래쪽 절반을 각각 크롭해서 위아래로
+    // 이어 붙여 1:2 박스 안에 상단(히어로)과 하단(리뷰) 분위기가 같이 보이게 한다.
+    return (
+      <div className={`flex ${aspectClass} w-full flex-col overflow-hidden bg-slate-100`}>
+        <div className="relative h-1/2 w-full overflow-hidden">
+          <img src={realThumb} alt="" className="absolute inset-0 h-full w-full object-cover object-top" />
+        </div>
+        <div className="relative h-1/2 w-full overflow-hidden border-t border-white/40">
+          <img src={realThumb} alt="" className="absolute inset-0 h-full w-full object-cover object-bottom" />
+        </div>
+      </div>
+    );
+  }
   if (realThumb) {
     return (
-      <div className="relative aspect-[3/4] w-full overflow-hidden bg-slate-100">
+      <div className={`relative ${aspectClass} w-full overflow-hidden bg-slate-100`}>
         <img src={realThumb} alt="" className="h-full w-full object-cover" />
       </div>
     );
   }
   if (layout === "poster") {
     return (
-      <div className="relative aspect-[3/4] w-full overflow-hidden bg-gradient-to-b from-rose-200 via-orange-100 to-amber-50">
+      <div className={`relative ${aspectClass} w-full overflow-hidden bg-gradient-to-b from-rose-200 via-orange-100 to-amber-50`}>
         <div className="absolute inset-x-4 top-3 h-1 rounded-full bg-white/80" />
         <div className="absolute inset-x-6 top-1/2 h-2.5 -translate-y-1/2 rounded bg-white/90" />
         <div className="absolute inset-x-9 bottom-4 h-1 rounded-full bg-white/70" />
@@ -97,7 +150,7 @@ function TemplateThumb({ layout, templateId }) {
   }
   if (layout === "card-news") {
     return (
-      <div className="flex aspect-[3/4] w-full items-stretch gap-1 bg-slate-100 p-2.5">
+      <div className={`flex ${aspectClass} w-full items-stretch gap-1 bg-slate-100 p-2.5`}>
         <div className="flex-1 rounded bg-sky-200" />
         <div className="flex-1 rounded bg-violet-200" />
         <div className="flex-1 rounded bg-teal-200" />
@@ -105,7 +158,7 @@ function TemplateThumb({ layout, templateId }) {
     );
   }
   return (
-    <div className="flex aspect-[3/4] w-full flex-col gap-1 bg-slate-100 p-2.5">
+    <div className={`flex ${aspectClass} w-full flex-col gap-1 bg-slate-100 p-2.5`}>
       <div className="h-2/5 rounded bg-slate-300" />
       <div className="flex flex-1 gap-1">
         <div className="flex-1 rounded bg-slate-200" />
@@ -206,100 +259,22 @@ function PosterPreview({ images, preview, templateId, aspectRatio = "4:5" }) {
   );
 }
 
-function CardNewsPreview({ images, copy, preview, templateId }) {
-  // 카드뉴스는 4장 고정 레이아웃이다. 생성된 이미지 개수를 그대로 썸네일에 반영한다.
-  const fonts = MOOD_FONTS[moodForTemplateId(templateId)];
+// 카드뉴스는 럭셔리 포스터와 마찬가지로 Gemini가 문구를 이미지 안에 직접 그려 넣기 때문에,
+// 프론트는 오버레이 없이 생성된 사진을 그대로 보여주기만 한다.
+function CardNewsPreview({ images }) {
   const cardCount = images?.length || 4;
-  const cards = Array.from({ length: cardCount }, (_, i) => {
-    const index = i + 1;
-    const slot = `card-${index}`;
-    if (index === 1) {
-      return {
-        slot,
-        // CARD_01_HERO_PRICE — 상품명과 가격을 함께 보여준다 (가격은 마지막 카드에도 한 번 더 나온다).
-        overlay: (
-          <div className="space-y-[1cqw]">
-            <p
-              className="line-clamp-3 overflow-hidden text-[clamp(1.1rem,8cqw,2.2rem)] leading-tight tracking-tight text-white"
-              style={{ textShadow: "0 3px 12px rgba(0,0,0,0.7)", fontFamily: fonts.headline }}
-            >
-              {preview.productName}
-            </p>
-            {preview.price && (
-              <p
-                className="line-clamp-1 overflow-hidden text-[clamp(1rem,7cqw,1.9rem)] font-bold text-amber-300"
-                style={{ textShadow: "0 3px 12px rgba(0,0,0,0.7)", fontFamily: fonts.price }}
-              >
-                {preview.price}
-              </p>
-            )}
-          </div>
-        ),
-      };
-    }
-    if (index === 2) {
-      return {
-        slot,
-        overlay: (
-          <div className="flex flex-wrap gap-[1.5cqw]">
-            {(copy?.features || []).map((f) => (
-              <span
-                key={f}
-                className="rounded-full bg-white/95 px-[3cqw] py-[1.5cqw] text-[clamp(0.6rem,3.2cqw,0.9rem)] text-slate-800"
-                style={{ fontFamily: fonts.subhead, fontWeight: fonts.subheadWeight }}
-              >
-                {f}
-              </span>
-            ))}
-          </div>
-        ),
-      };
-    }
-    if (index === cardCount) {
-      return {
-        slot,
-        overlay: (
-          <div className="space-y-[1cqw]">
-            {preview.price && (
-              <p
-                className="line-clamp-1 overflow-hidden text-[clamp(1rem,7cqw,1.9rem)] font-bold text-amber-300"
-                style={{ textShadow: "0 3px 12px rgba(0,0,0,0.7)", fontFamily: fonts.price }}
-              >
-                {preview.price}
-              </p>
-            )}
-            {copy?.promoLine && (
-              <p
-                className="line-clamp-2 overflow-hidden font-sans text-[clamp(0.6rem,3.2cqw,0.9rem)] font-medium text-white/95"
-                style={{ textShadow: "0 2px 6px rgba(0,0,0,0.6)" }}
-              >
-                {copy.promoLine}
-              </p>
-            )}
-          </div>
-        ),
-      };
-    }
-    return { slot, overlay: null };
-  });
+  const cards = Array.from({ length: cardCount }, (_, i) => `card-${i + 1}`);
 
   return (
     <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2">
-      {cards.map(({ slot, overlay }) => {
+      {cards.map((slot) => {
         const url = findImage(images, slot);
         return (
           <div
             key={slot}
             className="relative aspect-square w-full max-w-sm shrink-0 snap-center overflow-hidden rounded-2xl shadow-lg"
-            style={{ containerType: "inline-size" }}
           >
             {url && <img src={url} alt={slot} className="absolute inset-0 h-full w-full object-cover" />}
-            {overlay && (
-              <>
-                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/5 to-transparent" />
-                <div className="absolute bottom-0 left-0 right-0 p-[4cqw]">{overlay}</div>
-              </>
-            )}
           </div>
         );
       })}
@@ -394,7 +369,7 @@ function LayoutPreview({ layout, images, copy, preview, specLines, templateId, a
   if (layout === "poster")
     return <PosterPreview images={images} preview={preview} templateId={templateId} aspectRatio={aspectRatio} />;
   if (layout === "card-news")
-    return <CardNewsPreview images={images} copy={copy} preview={preview} templateId={templateId} />;
+    return <CardNewsPreview images={images} />;
   if (layout === "detail") return <DetailPreview images={images} copy={copy} preview={preview} specLines={specLines} />;
   return null;
 }
@@ -525,6 +500,7 @@ export default function MarketingMaterialCreator() {
   );
   const [activeCategory, setActiveCategory] = useState(mc.templates.categories[0]);
   const [posterAspectRatio, setPosterAspectRatio] = useState("4:5");
+  const [useAiModel, setUseAiModel] = useState(false);
   const [preview, setPreview] = useState({
     productName: "",
     tagline: "",
@@ -583,6 +559,7 @@ export default function MarketingMaterialCreator() {
       if (saved.activeTemplate) setActiveTemplate(saved.activeTemplate);
       if (saved.activeCategory) setActiveCategory(saved.activeCategory);
       if (saved.posterAspectRatio) setPosterAspectRatio(saved.posterAspectRatio);
+      if (typeof saved.useAiModel === "boolean") setUseAiModel(saved.useAiModel);
       if (Array.isArray(saved.uploadedPhotos) && saved.uploadedPhotos.length) {
         const files = [];
         const images = [];
@@ -618,6 +595,7 @@ export default function MarketingMaterialCreator() {
       activeTemplate,
       activeCategory,
       posterAspectRatio,
+      useAiModel,
       uploadedPhotos: uploadedFiles.map((file, i) => ({
         dataUrl: uploadedImages[i],
         name: file.name,
@@ -631,7 +609,7 @@ export default function MarketingMaterialCreator() {
       // 저장 공간이 부족하면(용량 큰 사진 등) 조용히 건너뛴다 — 화면 동작에는 영향 없다.
     }
   }, [
-    user?.id, preview, spec, activeTemplate, activeCategory, posterAspectRatio,
+    user?.id, preview, spec, activeTemplate, activeCategory, posterAspectRatio, useAiModel,
     uploadedFiles, uploadedImages, logoFile, logoImage,
   ]);
 
@@ -858,6 +836,7 @@ export default function MarketingMaterialCreator() {
       if (logoFile) formData.append("logo", logoFile);
       formData.append("template_id", activeTemplate || "");
       if (template?.layout === "poster") formData.append("aspect_ratio", posterAspectRatio);
+      formData.append("use_ai_model", String(useAiModel));
       if (template?.styleHint) formData.append("style_hint", template.styleHint);
 
       const res = await fetch(`${BACKEND_URL}/marketing/generate`, {
@@ -1097,6 +1076,17 @@ export default function MarketingMaterialCreator() {
   const isBusy = generating || editing;
   const activeTemplateItem = mc.templates.items.find((t) => t.id === activeTemplate);
   const activeLayout = activeTemplateItem?.layout;
+  // Step 3에서 지금 "보고 있는" 카테고리 탭의 레이아웃 — activeLayout(실제 선택된 템플릿의
+  // 레이아웃)과 달리, 탭만 바꾸고 아직 그 탭의 템플릿을 클릭하지 않은 상태에서도 지금 보이는
+  // 탭에 맞는 안내(수량/비율/AI 모델 박스)를 보여줘야 하므로 카테고리 기준으로 따로 구한다.
+  const activeCategoryLayout = mc.templates.items.find((t) => t.category === activeCategory)?.layout;
+  // 안내 박스의 "예) OOO 선택 시" 예시 이름 — 실제 선택된 템플릿이 지금 보고 있는 탭과 같은
+  // 카테고리일 때만 그 이름을 쓰고, 아니면(다른 탭 템플릿이 선택된 채 탭만 바꾼 경우) 그 탭의
+  // 첫 번째 템플릿 이름으로 대체한다.
+  const exampleTemplateName =
+    (activeTemplateItem?.category === activeCategory ? activeTemplateItem.name : null) ||
+    mc.templates.items.find((t) => t.category === activeCategory)?.name ||
+    "-";
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-8 sm:px-8">
@@ -1349,7 +1339,7 @@ export default function MarketingMaterialCreator() {
                       </label>
                       {activeLayout === "detail" && (
                         <label className="block">
-                          <FieldLabel>스펙 정보 (상세설명 전용)</FieldLabel>
+                          <FieldLabel>스펙 정보 (상세페이지 전용)</FieldLabel>
                           <textarea
                             className={`${CONTROL_CLASS} py-2.5`}
                             rows={4}
@@ -1394,26 +1384,75 @@ export default function MarketingMaterialCreator() {
                         </button>
                       ))}
                     </div>
-                    {activeLayout === "poster" && (
-                      <div className="mb-3 flex items-center gap-2">
+                    {activeCategoryLayout && (
+                      <div className="mb-3 flex flex-wrap items-center gap-2">
                         <span className="text-xs font-medium text-slate-500">이미지 비율</span>
-                        {["4:5", "9:16"].map((ratio) => (
-                          <button
-                            key={ratio}
-                            type="button"
-                            onClick={() => setPosterAspectRatio(ratio)}
-                            className={`rounded-full px-3 py-1.5 text-xs font-medium ${
-                              posterAspectRatio === ratio
-                                ? "bg-slate-900 text-white"
-                                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                            }`}
-                          >
-                            {ratio}
-                          </button>
-                        ))}
+                        {activeCategoryLayout === "poster" &&
+                          ["4:5", "9:16"].map((ratio) => (
+                            <button
+                              key={ratio}
+                              type="button"
+                              onClick={() => setPosterAspectRatio(ratio)}
+                              className={`rounded-full px-3 py-1.5 text-xs font-medium ${
+                                posterAspectRatio === ratio
+                                  ? "bg-slate-900 text-white"
+                                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                              }`}
+                            >
+                              {ratio}
+                            </button>
+                          ))}
+                        {activeCategoryLayout === "card-news" && (
+                          <span className="rounded-full bg-slate-900 px-3 py-1.5 text-xs font-medium text-white">1:1</span>
+                        )}
+                        {activeCategoryLayout === "detail" && (
+                          <span className="rounded-full bg-slate-900 px-3 py-1.5 text-xs font-medium text-white">1:2</span>
+                        )}
+                        {activeCategoryLayout === "card-news" && (
+                          <>
+                            <span className="ml-2 text-xs font-medium text-slate-500">이미지 수량</span>
+                            <span className="rounded-full bg-slate-900 px-3 py-1.5 text-xs font-medium text-white">
+                              {LAYOUT_INFO["card-news"].count}장
+                            </span>
+                          </>
+                        )}
                       </div>
                     )}
-                    <div className="grid grid-cols-3 gap-3">
+                    {activeCategoryLayout && LAYOUT_INFO[activeCategoryLayout] && (
+                      <>
+                        <div className="mb-3 flex items-start gap-2 rounded-md border border-brand-100 bg-brand-50 px-3 py-2.5 text-xs text-brand-800">
+                          <Icon name="info" className="mt-0.5 w-3.5 h-3.5 shrink-0 text-brand-500" />
+                          <p>
+                            선택한 컨셉으로 {LAYOUT_INFO[activeCategoryLayout].noun}가 생성됩니다.
+                            <br />
+                            예) {exampleTemplateName} 선택 시 → {exampleTemplateName} 스타일의{" "}
+                            {LAYOUT_INFO[activeCategoryLayout].noun} {LAYOUT_INFO[activeCategoryLayout].count}장 생성
+                          </p>
+                        </div>
+                        <div className="mb-3 flex items-center justify-between gap-2 rounded-md border border-slate-200 px-3 py-2.5">
+                          <span className="text-xs font-medium text-slate-600">
+                            AI 모델 적용
+                            <span className="ml-1 font-normal text-slate-400">(사람이 상품을 사용하는 장면으로 연출)</span>
+                          </span>
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={useAiModel}
+                            onClick={() => setUseAiModel((v) => !v)}
+                            className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${
+                              useAiModel ? "bg-brand-600" : "bg-slate-200"
+                            }`}
+                          >
+                            <span
+                              className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                                useAiModel ? "translate-x-4" : "translate-x-0.5"
+                              }`}
+                            />
+                          </button>
+                        </div>
+                      </>
+                    )}
+                    <div className="grid grid-cols-2 gap-3">
                       {mc.templates.items
                         .filter((t) => t.category === activeCategory)
                         .map((t) => (
@@ -1426,14 +1465,29 @@ export default function MarketingMaterialCreator() {
                                 : "border-slate-200 hover:scale-[1.02] hover:border-brand-300 hover:ring-4 hover:ring-slate-100"
                             }`}
                           >
-                            <TemplateThumb layout={t.layout} templateId={t.id} />
-                            <div className="flex items-center justify-between gap-1 px-3 py-2">
-                              <span className="min-w-0 truncate text-xs font-semibold text-slate-700" title={t.name}>
-                                {t.name}
+                            <TemplateThumb
+                              layout={t.layout}
+                              templateId={t.id}
+                              aspectRatio={t.layout === "poster" ? posterAspectRatio : t.layout === "card-news" ? "4:3" : "1:2"}
+                            />
+                            <div className="flex items-start justify-between gap-2 px-3 py-2.5">
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-semibold text-slate-800" title={t.name}>
+                                  {t.name}
+                                </p>
+                                {t.description && (
+                                  <p className="mt-0.5 text-xs leading-relaxed text-slate-500">{t.description}</p>
+                                )}
+                              </div>
+                              <span
+                                className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${
+                                  activeTemplate === t.id ? "" : "border-2 border-slate-200"
+                                }`}
+                              >
+                                {activeTemplate === t.id && (
+                                  <Icon name="checkCircle" className="w-5 h-5 text-brand-600" />
+                                )}
                               </span>
-                              {activeTemplate === t.id && (
-                                <Icon name="checkCircle" className="w-5 h-5 shrink-0 text-brand-600" />
-                              )}
                             </div>
                           </button>
                         ))}

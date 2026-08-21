@@ -753,7 +753,7 @@ export const marketingMaterialCreator = {
   uploadHint: { title: "클릭하거나 파일을 끌어다 놓으세요", sub: "SVG, PNG, JPG, GIF (최대 800x400px)" },
   templateSectionTitle: "템플릿 선택",
   templates: {
-    categories: ["카드뉴스", "포스터", "상세설명"],
+    categories: ["카드뉴스", "포스터", "상세페이지"],
     items: [
       // 포스터 5종 - 이미지 1장 구성은 동일하고, 프롬프트에 얹는 스타일 톤만 다르다.
       // "럭셔리 & 프리미엄"만 예외로, 백엔드의 전용 데이터 기반 광고 프롬프트(LUXURY_PREMIUM_POSTER_PROMPT)를 쓴다.
@@ -763,6 +763,7 @@ export const marketingMaterialCreator = {
         category: "포스터",
         layout: "poster",
         selected: true,
+        description: "깔끔하고 정돈된 레이아웃으로 제품이 돋보이는 디자인",
         styleHint: "미니멀하고 깨끗한 톤, 여백을 살린 절제된 구성, 차분한 파스텔 계열 배경",
       },
       {
@@ -770,12 +771,14 @@ export const marketingMaterialCreator = {
         name: "럭셔리 & 프리미엄",
         category: "포스터",
         layout: "poster",
+        description: "고급스러운 감성과 깊이감으로 브랜드 가치를 높이는 디자인",
       },
       {
         id: "tpl-poster-pop",
         name: "팝 & 컬러풀",
         category: "포스터",
         layout: "poster",
+        description: "강렬한 컬러와 트렌디한 레이아웃으로 시선을 사로잡는 디자인",
         styleHint: "팝하고 컬러풀한 톤, 밝고 경쾌한 원색 대비, 발랄한 분위기",
       },
       {
@@ -783,6 +786,7 @@ export const marketingMaterialCreator = {
         name: "감성 & 무드",
         category: "포스터",
         layout: "poster",
+        description: "따뜻한 톤과 감각적인 분위기로 감성을 자극하는 디자인",
         styleHint: "감성적이고 무드 있는 톤, 부드러운 자연광과 따뜻한 색감",
       },
       {
@@ -790,64 +794,73 @@ export const marketingMaterialCreator = {
         name: "모던 & 대담",
         category: "포스터",
         layout: "poster",
+        description: "강한 명암 대비와 기하학적 구도로 대담한 인상을 주는 디자인",
         styleHint: "모던하고 대담한 톤, 강한 명암 대비와 기하학적인 구도",
       },
       // 카드뉴스 4종 - 장수는 4장으로 고정하고, 프롬프트에 얹는 스타일 톤만 다르다.
       {
         id: "tpl-cardnews-minimal",
-        name: "미니멀 & 클린",
+        name: "클린 & 에디토리얼",
         category: "카드뉴스",
         layout: "card-news",
+        description: "여백과 정돈된 구성으로 제품과 핵심 메시지를 깔끔하게 전달하는 디자인",
         styleHint: "미니멀하고 깨끗한 톤, 여백을 살린 절제된 구성",
       },
       {
         id: "tpl-cardnews-luxury",
-        name: "럭셔리 & 프리미엄",
+        name: "브랜드 & 매거진",
         category: "카드뉴스",
         layout: "card-news",
+        description: "감각적인 타이포와 제품 중심 구도로 브랜드 이미지를 강조하는 매거진형 디자인",
         styleHint: "럭셔리하고 고급스러운 톤, 짙은 색감과 고급 소재 질감 강조",
       },
       {
         id: "tpl-cardnews-pop",
-        name: "팝 & 컬러풀",
+        name: "비비드 & 임팩트",
         category: "카드뉴스",
         layout: "card-news",
+        description: "선명한 컬러와 과감한 그래픽으로 상품의 특징과 메시지를 직관적으로 강조하는 디자인",
         styleHint: "팝하고 컬러풀한 톤, 밝고 경쾌한 원색 대비",
       },
       {
         id: "tpl-cardnews-emotional",
-        name: "감성 & 무드",
+        name: "라이프스타일 & 스토리",
         category: "카드뉴스",
         layout: "card-news",
+        description: "제품이 사용되는 분위기와 감성적인 비주얼로 브랜드 스토리를 자연스럽게 전달하는 디자인",
         styleHint: "감성적이고 무드 있는 톤, 부드러운 자연광과 따뜻한 색감",
       },
-      // 상세설명 4종 - 구성(히어로+특징3+각도3)은 동일하고, 스타일 톤만 다르다.
+      // 상세페이지 4종 - 구성(히어로+특징3+각도3)은 동일하고, 스타일 톤만 다르다.
       {
         id: "tpl-detail-classic",
         name: "클래식 화이트",
-        category: "상세설명",
+        category: "상세페이지",
         layout: "detail",
+        description: "깨끗한 화이트 배경의 클래식하고 정갈한 스튜디오 룩",
         styleHint: "깨끗한 화이트 배경의 클래식하고 정갈한 스튜디오 톤",
       },
       {
         id: "tpl-detail-premium",
         name: "프리미엄 다크",
-        category: "상세설명",
+        category: "상세페이지",
         layout: "detail",
+        description: "짙은 다크 배경과 은은한 조명이 만드는 프리미엄한 룩",
         styleHint: "짙은 다크 배경에 은은한 조명을 살린 프리미엄 톤",
       },
       {
         id: "tpl-detail-natural",
         name: "내추럴 & 오가닉",
-        category: "상세설명",
+        category: "상세페이지",
         layout: "detail",
+        description: "자연광과 우드·식물 소품이 어우러진 내추럴한 룩",
         styleHint: "자연광과 우드·식물 소품을 활용한 내추럴하고 오가닉한 톤",
       },
       {
         id: "tpl-detail-trendy",
         name: "트렌디 & 팝",
-        category: "상세설명",
+        category: "상세페이지",
         layout: "detail",
+        description: "선명한 색감과 대담한 구도가 돋보이는 트렌디한 룩",
         styleHint: "선명한 색감과 대담한 구도의 트렌디하고 팝한 톤",
       },
     ],

@@ -2309,6 +2309,13 @@ def review(req: ReviewRequest):
 
 ALLOWED_PRODUCT_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
 
+AI_MODEL_ON_NOTE = (
+    "장면에 자연스러운 포토리얼리스틱 AI 인물 모델을 등장시켜, 상품을 사용하거나 손에 들고 있는 "
+    "모습으로 자연스럽게 연출하세요. 인물의 얼굴·손·신체 비율과 자세가 사실적으로 보이도록 하고, "
+    "과도하게 눈에 띄어 상품보다 시선을 빼앗지 않게 하세요."
+)
+AI_MODEL_OFF_NOTE = "사람 모델 없이, 상품 자체가 화면의 중심이 되는 순수 제품 사진으로 구성하세요."
+
 LOGO_REFERENCE_NOTE = (
     "참고로 첨부된 이미지 중 마지막 한 장은 상품 사진이 아니라 이 브랜드의 로고입니다. "
     "상품으로 착각해 등장시키지 말고, 브랜드 색상·톤을 파악하는 참고 자료로만 쓰세요. "
@@ -2402,22 +2409,23 @@ OUTPUT FORMAT
 Aspect ratio: 1:1
 Recommended resolution: 1024 x 1024
 
-ABSOLUTE NO-TEXT OVERRIDE (overrides every other instruction below)
-Do NOT render any literal text, letters, words, numbers, prices, badges with numbers, logotype
-wordmarks, watermark, or typography of any kind inside the generated image, in any language,
-anywhere in the frame, including on incidental background props or reflections.
-Wherever a section below describes a headline, a price, a benefit label, a usage step number, a
-CTA, or says to "display" a field, treat that ONLY as a layout/composition cue: reserve that exact
-area as calm, uncluttered negative space (soft gradient, blurred depth, clean surface, or simply
-empty background) sized and positioned to match the described visual weight, so real text can be
-placed there afterward outside of this image. Never produce smudged, half-formed, or illegible
-marks that could be mistaken for text.
-If a supplied {{brand_logo}} reference image exists, you MAY feature that actual supplied logo
-graphic as a small real photographed object/sticker/label element (e.g. printed on packaging or a
-tag) since it is a genuine supplied asset — but never invent a logo, and never typeset the brand
-name as characters yourself.
-The finished image must be a clean commercial photograph — product, lighting, props, color, and
-atmosphere only.
+TEXT IS RENDERED IN THIS IMAGE
+Unlike a generic product photo, this template renders its own typography directly into the image —
+the headline, benefit labels, usage steps, prices, and CTA are all real rendered text, not reserved
+empty space. Render every text field's ACTUAL supplied value exactly as given — do not paraphrase,
+translate, or invent wording. If a field is empty, per the EMPTY FIELD RULE below simply omit that
+element (no placeholder, no blank box) rather than leaving a broken gap.
+Keep every line of rendered text crisp, correctly spelled, and fully legible — never render smudged,
+warped, doubled, or illegible letterforms. If a supplied {{brand_logo}} reference image exists, you
+may feature that actual supplied logo graphic as a real photographed object/sticker/label element —
+but never invent a logo, and never typeset the brand name yourself unless {{brand_name}} is the field
+being rendered.
+
+TYPOGRAPHY SYSTEM
+Use a clean modern sans-serif (Inter / Manrope / Helvetica-inspired) for headlines, benefit labels,
+usage steps, and CTA. Use SemiBold/Bold weight for prices, making the sale price significantly larger
+and bolder than the original price. Keep typography mobile-readable, high-contrast against the
+background, and never decorative/script.
 
 Design characteristics:
 - premium e-commerce advertising
@@ -2425,10 +2433,11 @@ Design characteristics:
 - mobile-first
 - suitable for Shopee
 - realistic commercial product photography
-- strong visual hierarchy (expressed through composition/negative-space weight, not rendered text)
+- strong visual hierarchy
+- readable typography
 - generous spacing
 - professional promotional design
-Keep all important negative-space zones inside safe margins.
+Keep all important content inside safe margins.
 
 PRODUCT DATA
 Brand: {{brand_name}}
@@ -2468,77 +2477,257 @@ CARD TYPE
 Available values: CARD_01_HERO_PRICE, CARD_02_BENEFITS, CARD_03_USAGE, CARD_04_PROMOTION
 Generate only the selected CARD_TYPE's composition below.
 
-CARD 01 - HERO + PRICE (negative-space zones only, see override above)
-Purpose: the primary sales image. Its zones must be shaped so that, once real text is added later,
-a viewer immediately reads WHAT THE PRODUCT IS + WHY IT IS ATTRACTIVE + HOW MUCH IT COSTS within
-seconds.
-Reserve zones with this visual-weight priority (largest/most dominant first):
+CARD 01 - HERO + PRICE
+Purpose: the primary sales image. A viewer must immediately read WHAT THE PRODUCT IS + WHY IT IS
+ATTRACTIVE + HOW MUCH IT COSTS within seconds.
+Render with this visual-weight priority (largest/most dominant first):
 1. PRODUCT IMAGE (visually dominant, center)
-2. PRODUCT NAME zone
-3. SALE PRICE zone (must read as significantly more prominent than the original-price zone)
-4. HEADLINE zone
-5. DISCOUNT RATE zone (small badge-shaped calm area)
-6. ORIGINAL PRICE zone (small, secondary)
-7. BRAND/logo zone
-Recommended layout: TOP 10-15% brand/logo zone -> TOP-MIDDLE 15-30% product-name/headline zone ->
-CENTER 30-72% large hero product -> BOTTOM 72-95% price zone (sale price zone largest/boldest,
-original price zone smaller, discount zone as a compact badge-shaped area placed close to the sale
-price zone). Positions may adapt slightly to the product image.
-If {{original_price}} or {{discount_rate}} is empty, simplify the bottom zone accordingly (per EMPTY
-FIELD RULE below) rather than leaving a placeholder-shaped gap.
+2. PRODUCT NAME: {{product_name_en}}
+3. SALE PRICE: {{sale_price}} {{currency}} (must read as significantly more prominent than the original price)
+4. HEADLINE: {{headline}}
+5. DISCOUNT RATE: {{discount_rate}} (small badge)
+6. ORIGINAL PRICE: {{original_price}} {{currency}} (small, secondary, may use a strikethrough)
+7. BRAND: {{brand_name}} (small logo/wordmark area)
+Recommended layout: TOP 10-15% brand/logo -> TOP-MIDDLE 15-30% product-name/headline -> CENTER 30-72%
+large hero product -> BOTTOM 72-95% price area (sale price largest/boldest, original price smaller,
+discount as a compact badge placed close to the sale price). Positions may adapt slightly to the
+product image.
+If {{original_price}} or {{discount_rate}} is empty, per the EMPTY FIELD RULE simplify the bottom area
+accordingly rather than leaving a placeholder.
 
-CARD 02 - KEY BENEFITS (negative-space zones only, see override above)
-Purpose: reserve zones for the three strongest product selling points ({{benefit_1}}, {{benefit_2}},
-{{benefit_3}} with their descriptions). Use clearly separated, evenly balanced zones (three cards,
-three circular icon areas, or vertically/horizontally arranged blocks) sized for mobile
-readability. Only reserve as many benefit zones as have actual supplied values — never pad with
-invented benefits.
+CARD 02 - KEY BENEFITS
+Purpose: communicate the three strongest product selling points.
+Headline: WHY YOU'LL LOVE IT
+Render exactly: {{benefit_1}} / {{benefit_desc_1}}, {{benefit_2}} / {{benefit_desc_2}}, {{benefit_3}} /
+{{benefit_desc_3}}. Display using clearly separated visual sections (three cards, three icons, three
+circular elements, or vertically/horizontally arranged blocks) sized for mobile readability. Only
+render as many benefit items as have actual supplied values — never invent additional benefits.
 
-CARD 03 - HOW TO USE (negative-space zones only, see override above)
-Purpose: reserve a simple three-step visual flow zone (01 -> 02 -> 03) for {{usage_step_1}},
-{{usage_step_2}}, {{usage_step_3}}, plus a small zone for {{recommended_for}}. Use {{detail_image}} as a
-supporting visual reference when available; the product may appear again as a supporting element.
-If no usage steps are supplied, fall back to a clean lifestyle/usage-context photograph instead of
-reserving empty numbered zones.
+CARD 03 - HOW TO USE
+Purpose: explain how the customer should use the product.
+Headline: HOW TO USE
+Render: 01 {{usage_step_1}}, 02 {{usage_step_2}}, 03 {{usage_step_3}}, and Recommended For:
+{{recommended_for}}. Use a simple visual flow 01 -> 02 -> 03. Use {{detail_image}} as a supporting
+visual reference when available; the product may appear again as a supporting element. If no usage
+steps are supplied, fall back to a clean lifestyle/usage-context photograph instead of rendering
+empty numbered steps — never invent usage instructions.
 
-CARD 04 - PROMOTION & CTA (negative-space zones only, see override above)
-Purpose: the strongest final purchase-conversion image. Reserve zones with this priority: 1)
-promotion-message zone, 2) sale-price zone, 3) discount-rate zone, 4) product, 5) original-price
-zone, 6) CTA zone. This card may be more visually energetic/bold than CARD 01 while remaining part
-of the same campaign design system.
+CARD 04 - PROMOTION & CTA
+Purpose: the strongest final purchase-conversion image.
+Render with this priority: 1) Promotion: {{promotion_text}}, 2) Sale price: {{sale_price}} {{currency}},
+3) Discount: {{discount_rate}}, 4) Product, 5) Original price: {{original_price}} {{currency}}, 6) CTA:
+{{cta}}. This card may be more visually energetic/bold than CARD 01 while remaining part of the same
+campaign design system.
 
 PRICE DATA RULES
-{{original_price}}, {{sale_price}}, and {{discount_rate}} must always refer to the same underlying
-values across CARD 01 and CARD 04 (they are composition-weight references only, per the no-text
-override — never render the numbers, just size the zones to match their described prominence).
-Never independently invent, estimate, or calculate any price or discount.
+{{original_price}}, {{sale_price}}, and {{discount_rate}} must always reference the same underlying
+values across CARD 01 and CARD 04. Never independently invent, estimate, or calculate any price or
+discount that was not supplied.
 
 EMPTY FIELD RULE
-If any field is empty, null, missing, or unavailable: do NOT reserve a placeholder-shaped zone for
-it. Remove that zone entirely and let the composition rebalance naturally around the remaining
-zones. For example, if {{discount_rate}} is empty, the bottom price area should only balance around
-original+sale price zones (or just the sale-price zone if original is also empty).
+If any field is empty, null, missing, or unavailable: DO NOT invent content, and never render "N/A",
+"NULL", or a placeholder. Remove that visual element and let the layout rebalance naturally. For
+example, if {{discount_rate}} is empty, show original+sale price only (or just the sale price if the
+original is also empty).
 
 DATA INTEGRITY
-Every visual prop or implied claim must be traceable to PRODUCT_DATA. Never add props that imply
-unsupported certifications, awards, clinical results, or effectiveness claims that were not
-supplied.
+Every rendered fact must be traceable to PRODUCT_DATA. Never invent prices, discounts, ingredients,
+certifications, awards, clinical results, or effectiveness claims that were not supplied.
 
 DESIGN CONSISTENCY
-CARD 01-04 must look like one unified Shopee campaign: consistent typography-zone language,
-spacing, graphic-element style, corner radius, background treatment, product photography, shadows,
-and visual tone — while each card keeps its own distinct information purpose (01 = product+price,
-02 = benefits, 03 = usage, 04 = promotion+CTA).
+CARD 01-04 must look like one unified Shopee campaign: consistent typography, spacing, graphic-element
+style, corner radius, background treatment, product photography, shadows, and visual tone — while
+each card keeps its own distinct information purpose (01 = product+price, 02 = benefits, 03 = usage,
+04 = promotion+CTA).
 
 FINAL VALIDATION
-Before generating, verify: output is exactly 1:1; only the requested CARD_TYPE's zones are used;
-no rendered text/numbers/logotype exist anywhere in the frame; empty fields resulted in removed
-zones, not placeholders; product packaging remains recognizable; the result reads as professional
-Shopee e-commerce advertising photography, not an AI-generated template."""
+Before generating, verify: output is exactly 1:1; only the requested CARD_TYPE is rendered; every
+rendered word is spelled correctly and fully legible; empty fields were omitted, not shown as
+placeholders; product packaging remains recognizable; text is readable on mobile; the result reads as
+professional Shopee e-commerce advertising, not a generic AI template."""
 
 
 def _shopee_card_prompt(card_type: str, values: dict, style_hint: str = "", extra: str = "") -> str:
     prompt = _apply_prompt_template(CARD_NEWS_SHOPEE_PROMPT, {**values, "card_type": card_type})
+    prompt = f"{prompt}{_style_line(style_hint)}"
+    if extra:
+        prompt = f"{prompt}\n\n{extra}"
+    return prompt
+
+
+# "클린 & 에디토리얼" 카드뉴스 전용 프롬프트 — 다른 카드뉴스 스타일과 달리 전용 4페이지 캠페인
+# 구조(히어로/성분·인증/사용법/브랜드 클로징)를 쓴다. 다른 프롬프트들과 동일하게, 실제 문자는
+# AI가 이미지 안에 그리지 않고 프론트엔드가 오버레이하므로, 타이포그래피/문구 관련 지시는 전부
+# "이 자리를 이만큼 비중 있게 비워둬라"는 구도 지시로 다시 썼다.
+CLEAN_EDITORIAL_CARD_NEWS_PROMPT = """ROLE
+You are a senior commercial art director and editorial product photographer specializing in premium e-commerce campaigns, beauty advertising, lifestyle products, and clean editorial design.
+Create ONE square page (the requested PAGE_NUMBER) from a cohesive 4-page square product card-news campaign, based on the product data and reference assets provided below.
+The campaign concept is CLEAN & EDITORIAL. The four pages must feel like one professionally art-directed advertising campaign while each page serves a different communication purpose.
+
+IMPORTANT SYSTEM RULE
+Gemini renders the actual typography directly into the image — the headline, product name, tagline,
+description excerpt, and price are real rendered text, not reserved empty space.
+Render every supplied field's ACTUAL value exactly as given — do not paraphrase, translate, or invent
+wording. Do not invent headlines, slogans, prices, product descriptions, promotional messages, ingredient
+claims, certification claims, CTA text, website addresses, social media handles, or decorative pseudo-text.
+If a field is empty, omit that element (no placeholder, no blank box) rather than leaving a broken gap.
+Keep every line of rendered text crisp, correctly spelled, and fully legible — never render smudged,
+warped, doubled, or half-formed letterforms.
+
+INPUT DATA
+The application may provide:
+Company name: {{company_name}}
+Company logo: {{company_logo}}
+Company slogan / tagline: {{company_slogan}}
+Product name: {{product_name}}
+Product description: {{product_description}}
+Product image: {{product_images}}
+Regular price: {{regular_price}}
+Promotion price: {{promotion_price}}
+Product category: {{product_category}}
+Use only available information. If a field is missing, do not invent information.
+
+PRODUCT PRESERVATION — CRITICAL
+When a reference product image is provided, preserve the real product identity as accurately as possible:
+packaging shape, package proportions, container type, cap shape, bottle or tube structure, packaging
+color, recognizable graphic elements, existing label appearance, brand identity, distinctive product
+characteristics. Do NOT redesign the packaging, change the product color, replace it with another product,
+create a fictional brand, add new packaging claims, change the container, or create additional product
+variants unless requested. The generated campaign must clearly feature the same product supplied.
+
+GLOBAL VISUAL DIRECTION
+Create a sophisticated premium editorial advertising aesthetic: clean, refined, spacious, calm, premium,
+contemporary, sophisticated, trustworthy, editorial, naturally luxurious. Think premium skincare
+editorials, modern lifestyle magazines, minimalist product photography, high-end commercial campaigns.
+Avoid the appearance of a generic marketplace banner.
+
+COLOR ADAPTATION
+Analyze the supplied product image, packaging color, company logo, and existing brand identity to
+dynamically create a harmonious campaign palette: dominant product color, supporting brand color, neutral
+background color, subtle contrasting accent. Recommended balance: 70% neutral tones / 20% product-derived
+tones / 10% accent tones. Preferred neutral backgrounds: warm white, ivory, cream, soft beige, light
+stone, very pale gray, subtle warm neutral. Example directions (adapt dynamically, do not copy blindly):
+green product -> ivory + sage + deep green; blue -> warm white + slate blue + navy; pink -> cream + dusty
+pink + muted burgundy; orange -> ivory + muted orange + deep brown; black -> warm white + charcoal +
+subtle gold. Avoid excessive saturation unless the product identity strongly requires it.
+
+PHOTOGRAPHIC STYLE
+Use premium commercial product photography. Possible supporting materials: stone, marble, ceramic, linen,
+matte paper, subtle fabric, natural wood, minimal botanical elements, soft organic forms. Use soft natural
+daylight, diffused studio lighting, realistic shadows, subtle depth, realistic materials, sophisticated
+composition. Decorative elements must never overpower the product. Avoid excessive props.
+
+TYPOGRAPHY SYSTEM
+Render headline/product-name/tagline text in an elegant high-contrast editorial serif (Didot / Bodoni /
+Cormorant Garamond / DM Serif Display / Playfair Display feeling). Render supporting-information text
+(description excerpts, prices) in a clean modern sans-serif (Inter / Manrope / Noto Sans / Pretendard /
+Helvetica feeling), SemiBold/Bold for prices. Do not place complex objects, faces, hands, bright
+highlights, or strong patterns behind rendered text — maintain strong foreground/background contrast so
+every word stays legible.
+
+SAFE AREA & GRID
+Each output is 1:1 square format. Maintain approximately 6-8% safe margin from every edge. Use a
+sophisticated editorial grid: asymmetric composition, a clear visual anchor, generous negative space,
+strong alignment, balanced proportions. Avoid centering everything or filling every corner. Whitespace is
+an intentional design element.
+
+PAGE_NUMBER
+{{page_number}}
+Available values: PAGE_01_PRODUCT_HERO, PAGE_02_PRODUCT_EXPERIENCE, PAGE_03_PRODUCT_DETAIL, PAGE_04_BRAND_CLOSING
+Generate only the composition for the requested page below.
+
+PAGE_01_PRODUCT_HERO
+Purpose: immediately introduce the product and establish the brand. Render directly in the image: company
+name/logo ({{company_name}}), product name ({{product_name}}), tagline ({{company_slogan}}), regular price
+({{regular_price}}), promotional price ({{promotion_price}}). Visual priority: 1) product, 2) product
+presentation, 3) rendered typography, 4) supporting environment. The actual product image should be the
+hero visual, occupying approximately 40-60% of the visual attention. Use a premium editorial still-life
+composition: warm neutral studio, stone pedestal, marble slab, soft linen, subtle botanical accent, soft
+natural shadows. Do not overcrowd the scene. Render the product name, tagline, price, and promotional
+price in approximately 30-40% of the composition, plus a small clean area for the company logo/name. Omit
+any field that is empty rather than showing a placeholder.
+
+PAGE_02_PRODUCT_EXPERIENCE
+Purpose: visually communicate the first major part of {{product_description}} through a realistic usage
+experience. Analyze {{product_description}}, {{product_category}}, and the product image to determine a
+realistic usage situation. If the product is naturally used by a person, generate a realistic human model
+using the actual product (e.g. skincare -> naturally applying to face/hand/skin; sunscreen -> applying
+before going outside or during a bright lifestyle scene; haircare -> naturally applying or using with
+hair; food or beverage -> naturally eating, drinking, serving, or enjoying; lifestyle goods -> naturally
+using in an appropriate real-life environment; fashion/accessories -> naturally wearing or interacting).
+Do not force a human model if human usage is inappropriate — instead show the product in its natural use
+environment.
+HUMAN MODEL QUALITY (when a human model is generated): create a photorealistic commercial lifestyle
+photograph. The person should appear natural, contemporary, approachable, professionally photographed,
+realistically posed, not overly glamorous, not artificial. Pay particular attention to realistic hands,
+correct fingers, realistic skin, natural facial proportions, realistic interaction with the product, and
+correct product scale. Avoid uncanny faces, plastic-looking skin, excessive beauty retouching, impossible
+poses, malformed hands, distorted product packaging, or exaggerated advertising poses. The result should
+resemble a real commercial photoshoot rather than an obvious AI image.
+Text: render the first key portion of {{product_description}} directly in the image, in approximately
+35-45% of the composition. A preferred composition is text on one side / human or usage scene on the
+other side — dynamically choose left or right depending on the product and scene. Condense the text if
+needed to keep it short and fully legible; never render a long unbroken paragraph.
+
+PAGE_03_PRODUCT_DETAIL
+Purpose: communicate the second major part of {{product_description}}. Page 02 focused on experience; this
+page focuses on the product itself and its characteristics. Return the product to the main visual focus.
+Create a premium editorial product shot emphasizing appropriate details such as packaging, material,
+texture, product form, product components, usage environment, or other relevant visual characteristics
+that support {{product_description}}. Do not invent ingredients, materials, benefits, or characteristics
+not present in the supplied data. Examples: beauty product -> close product composition, subtle texture,
+sophisticated studio environment; food -> product plus realistic food texture or serving context;
+lifestyle product -> product plus relevant material or usage environment; fashion -> material detail,
+product detail, or restrained styling.
+Text: render the second portion of {{product_description}} directly in the image, in approximately 35-45%
+of the composition. Page 02 and Page 03 should not use exactly the same layout — create visual rhythm
+(e.g. Page 02: text left / lifestyle visual right; Page 03: product visual left / text right — a
+recommendation, not an absolute rule; choose what best fits the actual product). If {{product_description}}
+is too short to support two distinct concepts, Page 02 should prioritize realistic product usage and Page
+03 should prioritize premium product photography with a shorter rendered text excerpt — never fabricate
+additional benefits merely to differentiate the pages.
+
+PAGE_04_BRAND_CLOSING
+Purpose: end the campaign with a memorable, sophisticated brand impression. Render directly in the image:
+the tagline ({{company_slogan}}), the company name/logo ({{company_name}}), and optionally a restrained
+product image. This should be the most minimal page in the campaign. Create maximum breathing room: subtle
+brand colors, soft lighting, simple background, minimal product presence, refined composition. Render the
+tagline as a large uninterrupted editorial headline and the company name/logo in a separate clean area.
+The product may appear subtly but should not dominate as strongly as Page 01. Omit the tagline entirely if
+{{company_slogan}} is empty — never invent one. Do not add a CTA, URL, social handle, promotional badge,
+or any other rendered text beyond the tagline and company name.
+
+4-PAGE CAMPAIGN FLOW
+PAGE 01 - PRODUCT: what is the product? Hero product introduction.
+PAGE 02 - EXPERIENCE: how does the product fit into real life? Human usage or realistic lifestyle
+experience.
+PAGE 03 - DETAIL: what should the customer know about the product? Product-focused editorial detail.
+PAGE 04 - BRAND: what should the customer remember? Tagline and brand impression.
+
+CAMPAIGN CONSISTENCY
+All four pages must share the same visual identity, color palette, lighting philosophy, photography
+quality, editorial aesthetic, spacing logic, margin system, and overall mood. Do NOT duplicate the exact
+same composition four times — each page should feel distinct while clearly belonging to the same
+campaign, progressing Product -> Experience -> Detail -> Brand.
+
+VISUAL RESTRICTIONS
+Do NOT create: generic marketplace banners, fake promotional text, fake logos, meaningless letters,
+excessive gradients, neon effects, excessive drop shadows, random stickers, cartoon graphics, excessive
+icons, promotional badges, fake certifications, fake ingredients, fake product claims, fake discounts,
+excessive decorative props, unrelated products, or visual clutter. Avoid obvious AI-generated aesthetics.
+The result should resemble a professionally art-directed commercial campaign.
+
+FINAL QUALITY CHECK
+Before generating each page, verify: the output is 1:1 square; the actual supplied product remains
+recognizable; every rendered word is spelled correctly and fully legible; no product facts have been
+invented; empty fields were omitted, not shown as placeholders; the composition follows Clean & Editorial
+aesthetics; the palette harmonizes with the actual product; the scene is photorealistic; Page 02 represents
+real product usage when appropriate; Page 03 focuses on product details; Page 04 remains intentionally
+minimal; all four pages visually belong to the same campaign."""
+
+
+def _clean_editorial_card_prompt(page_number: str, values: dict, style_hint: str = "", extra: str = "") -> str:
+    prompt = _apply_prompt_template(CLEAN_EDITORIAL_CARD_NEWS_PROMPT, {**values, "page_number": page_number})
     prompt = f"{prompt}{_style_line(style_hint)}"
     if extra:
         prompt = f"{prompt}\n\n{extra}"
@@ -3385,10 +3574,17 @@ POSTER_ASPECT_RATIOS = {"4:5", "9:16"}
 DEFAULT_POSTER_ASPECT_RATIO = "4:5"
 
 
+def _with_notes(prompt: str, *notes: str) -> str:
+    """logo_note/model_note처럼 프롬프트 앞에 덧붙이는 부가 지시문들을 안전하게 이어붙인다
+    (빈 문자열은 건너뛴다)."""
+    parts = [n for n in notes if n] + [prompt]
+    return "\n\n".join(parts)
+
+
 def _generate_poster(
     user_id, gen_id, reference_images, product_name, description, must_have_photo,
     style_hint="", template_id="", tagline="", price="", brand_name="", logo_note="",
-    aspect_ratio=DEFAULT_POSTER_ASPECT_RATIO,
+    aspect_ratio=DEFAULT_POSTER_ASPECT_RATIO, model_note="",
 ):
     if aspect_ratio not in POSTER_ASPECT_RATIOS:
         aspect_ratio = DEFAULT_POSTER_ASPECT_RATIO
@@ -3396,21 +3592,45 @@ def _generate_poster(
         prompt = _luxury_premium_poster_prompt(product_name, description, tagline, price, brand_name, aspect_ratio)
     else:
         prompt = _poster_prompt(description, must_have_photo, style_hint, aspect_ratio)
-    if logo_note:
-        prompt = f"{logo_note}\n\n{prompt}"
+    prompt = _with_notes(prompt, logo_note, model_note)
     image_bytes, mime = _generate_image(prompt, reference_images, aspect_ratio)
     return {"images": [_upload_generated_image(user_id, gen_id, "poster", image_bytes, mime)]}
 
 
 def _generate_card_news(
     user_id, gen_id, reference_images, product_name, description, must_have_photo, style_hint="",
-    logo_note="", tagline="", price="", brand_name="", target_language="ko",
+    logo_note="", tagline="", price="", brand_name="", target_language="ko", template_id="",
 ):
     # 카드 장수는 4장으로 고정한다 — 레이아웃마다 다른 건 카드 수가 아니라 프롬프트에 얹는 스타일 톤이다.
     copy = _generate_copy_json(_card_news_copy_prompt(product_name, description), CARD_NEWS_COPY_SCHEMA)
     features = copy.get("features") or []
     promo_line = copy.get("promoLine") or ""
     benefit_slots = (features + ["", "", ""])[:3]
+
+    if template_id == "tpl-cardnews-minimal":
+        # "클린 & 에디토리얼"만 예외로, 전용 4페이지 캠페인 프롬프트(CLEAN_EDITORIAL_CARD_NEWS_PROMPT)를 쓴다.
+        clean_values = {
+            "company_name": brand_name,
+            "company_logo": "(첨부된 참고 이미지 중 로고 이미지를 참고하세요)" if logo_note else "",
+            "company_slogan": tagline,
+            "product_name": product_name,
+            "product_description": description,
+            "product_category": "",
+            "regular_price": "",
+            "promotion_price": price,
+            "product_images": "(첨부된 참고 이미지 속 실제 상품 사진을 그대로 사용하세요)",
+        }
+        slot_prompts = [
+            ("card-1", _clean_editorial_card_prompt("PAGE_01_PRODUCT_HERO", clean_values, style_hint)),
+            ("card-2", _clean_editorial_card_prompt("PAGE_02_PRODUCT_EXPERIENCE", clean_values, style_hint)),
+            ("card-3", _clean_editorial_card_prompt("PAGE_03_PRODUCT_DETAIL", clean_values, style_hint)),
+            ("card-4", _clean_editorial_card_prompt("PAGE_04_BRAND_CLOSING", clean_values, style_hint)),
+        ]
+        images = []
+        for slot, prompt in slot_prompts:
+            image_bytes, mime = _generate_image(prompt, reference_images, "1:1")
+            images.append(_upload_generated_image(user_id, gen_id, slot, image_bytes, mime))
+        return {"images": images, "copy": {"features": features, "promoLine": promo_line}}
 
     values = {
         "brand_name": brand_name,
@@ -3456,15 +3676,15 @@ def _generate_card_news(
 
     images = []
     for slot, prompt in slot_prompts:
-        if logo_note:
-            prompt = f"{logo_note}\n\n{prompt}"
         image_bytes, mime = _generate_image(prompt, reference_images, "1:1")
         images.append(_upload_generated_image(user_id, gen_id, slot, image_bytes, mime))
 
     return {"images": images, "copy": {"features": features, "promoLine": promo_line}}
 
 
-def _generate_detail(user_id, gen_id, reference_images, product_name, description, style_hint="", logo_note=""):
+def _generate_detail(
+    user_id, gen_id, reference_images, product_name, description, style_hint="", logo_note="", model_note="",
+):
     captions_result = _generate_copy_json(_detail_captions_prompt(product_name, description), DETAIL_CAPTIONS_SCHEMA)
     captions = (captions_result.get("captions") or [])[:3]
     while len(captions) < 3:
@@ -3472,16 +3692,12 @@ def _generate_detail(user_id, gen_id, reference_images, product_name, descriptio
 
     images = []
 
-    hero_prompt = _detail_hero_prompt(description, style_hint)
-    if logo_note:
-        hero_prompt = f"{logo_note}\n\n{hero_prompt}"
+    hero_prompt = _with_notes(_detail_hero_prompt(description, style_hint), logo_note, model_note)
     hero_bytes, hero_mime = _generate_image(hero_prompt, reference_images, "16:9")
     images.append(_upload_generated_image(user_id, gen_id, "hero", hero_bytes, hero_mime))
 
     for i, caption in enumerate(captions, start=1):
-        feature_prompt = _detail_feature_prompt(caption, style_hint)
-        if logo_note:
-            feature_prompt = f"{logo_note}\n\n{feature_prompt}"
+        feature_prompt = _with_notes(_detail_feature_prompt(caption, style_hint), logo_note, model_note)
         f_bytes, f_mime = _generate_image(feature_prompt, reference_images, "1:1")
         images.append(_upload_generated_image(user_id, gen_id, f"feature-{i}", f_bytes, f_mime))
 
@@ -3491,9 +3707,7 @@ def _generate_detail(user_id, gen_id, reference_images, product_name, descriptio
         ("angle-top", "위에서 내려다본 모습"),
     ]
     for slot, label in angle_slots:
-        angle_prompt = _detail_angle_prompt(label, style_hint)
-        if logo_note:
-            angle_prompt = f"{logo_note}\n\n{angle_prompt}"
+        angle_prompt = _with_notes(_detail_angle_prompt(label, style_hint), logo_note, model_note)
         a_bytes, a_mime = _generate_image(angle_prompt, reference_images, "1:1")
         images.append(_upload_generated_image(user_id, gen_id, slot, a_bytes, a_mime))
 
@@ -3511,6 +3725,7 @@ def generate_marketing_images(
     style_hint: str = Form(""),
     template_id: str = Form(""),
     aspect_ratio: str = Form(DEFAULT_POSTER_ASPECT_RATIO),
+    use_ai_model: bool = Form(False),
     product_images: list[UploadFile] = File(...),
     logo: UploadFile | None = File(None),
     authorization: str | None = Header(None),
@@ -3540,6 +3755,7 @@ def generate_marketing_images(
     if logo is not None:
         reference_images.append((logo.file.read(), logo.content_type))
         logo_note = LOGO_REFERENCE_NOTE
+    model_note = AI_MODEL_ON_NOTE if use_ai_model else AI_MODEL_OFF_NOTE
     gen_id = uuid.uuid4().hex
 
     try:
@@ -3553,16 +3769,16 @@ def generate_marketing_images(
         if layout == "poster":
             result = _generate_poster(
                 user_id, gen_id, reference_images, product_name, description, must_have_photo,
-                style_hint, template_id, tagline, price, brand_name, logo_note, aspect_ratio,
+                style_hint, template_id, tagline, price, brand_name, logo_note, aspect_ratio, model_note,
             )
         elif layout == "card-news":
             result = _generate_card_news(
                 user_id, gen_id, reference_images, product_name, description, must_have_photo,
-                style_hint, logo_note, tagline, price, brand_name,
+                style_hint, logo_note, tagline, price, brand_name, "ko", template_id,
             )
         else:
             result = _generate_detail(
-                user_id, gen_id, reference_images, product_name, description, style_hint, logo_note
+                user_id, gen_id, reference_images, product_name, description, style_hint, logo_note, model_note
             )
     except HTTPException:
         raise

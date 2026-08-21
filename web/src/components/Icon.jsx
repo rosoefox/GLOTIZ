@@ -1,4 +1,5 @@
 import {
+  Info,
   LayoutDashboard,
   ChartColumn,
   Briefcase,
@@ -55,6 +56,7 @@ import {
 } from "lucide-react";
 
 const icons = {
+  info: Info,
   dashboard: LayoutDashboard,
   analysis: ChartColumn,
   projects: Briefcase,
