@@ -17,3 +17,10 @@ dist-ssr/
 .env
 .env.local
 *.local
+
+.claude/settings.local.json
+
+# GCP 서비스 계정 키 (실제 비밀키, 절대 커밋 금지)
+backend/*.json
+!backend/package.json
+!backend/package-lock.json

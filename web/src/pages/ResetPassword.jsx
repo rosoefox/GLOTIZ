@@ -1,60 +1,13 @@
-import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import Icon from "../components/Icon";
-import { Button, TextField } from "../components/ui";
-import { brand, resetPassword as r } from "../data/mockData";
-import { supabase } from "../lib/supabase";
+import { Button } from "../components/ui";
+import { brand } from "../data/mockData";
 
+// 로그인/계정을 Cloud SQL + 자체 JWT로 옮기면서, Supabase Auth가 무료로 제공하던 "재설정
+// 링크 이메일 발송"을 대체할 이메일 발송 서비스(SMTP 등)가 아직 이 프로젝트에 없다.
+// 본인 확인 없이 이메일만으로 비밀번호를 바꿔주는 건 계정 탈취로 이어질 수 있는 보안
+// 문제라 그렇게 구현하지 않고, 이메일 발송 인프라가 붙기 전까지는 안내만 보여준다.
 export default function ResetPassword() {
-  const [mode, setMode] = useState("request"); // request | update
-  const [email, setEmail] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [newPasswordConfirm, setNewPasswordConfirm] = useState("");
-  const [error, setError] = useState("");
-  const [done, setDone] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-
-  useEffect(() => {
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "PASSWORD_RECOVERY") setMode("update");
-    });
-    return () => subscription.unsubscribe();
-  }, []);
-
-  const handleRequest = async (e) => {
-    e.preventDefault();
-    setError("");
-    setSubmitting(true);
-    const { error: reqError } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
-    });
-    setSubmitting(false);
-    if (reqError) {
-      setError(reqError.message);
-      return;
-    }
-    setDone(true);
-  };
-
-  const handleUpdate = async (e) => {
-    e.preventDefault();
-    if (newPassword !== newPasswordConfirm) {
-      setError(r.mismatchError);
-      return;
-    }
-    setError("");
-    setSubmitting(true);
-    const { error: updateError } = await supabase.auth.updateUser({ password: newPassword });
-    setSubmitting(false);
-    if (updateError) {
-      setError(updateError.message);
-      return;
-    }
-    setDone(true);
-  };
-
   return (
     <div className="relative flex min-h-screen items-center justify-center bg-gradient-to-br from-brand-50 via-white to-amber-50 px-4">
       <Link
@@ -70,67 +23,15 @@ export default function ResetPassword() {
           <img src={brand.logo} alt={brand.name} className="mx-auto h-12 w-auto object-contain" />
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
-          {done ? (
-            <div className="py-4 text-center">
-              <Icon name="checkCircle" className="mx-auto mb-4 w-5 h-5 text-slate-500" />
-              <h2 className="mb-1.5 text-lg font-bold text-slate-900">
-                {mode === "update" ? r.successTitle : r.requestSuccessTitle}
-              </h2>
-              <p className="mb-6 text-sm text-slate-500">
-                {mode === "update" ? r.successMessage : r.requestSuccessMessage}
-              </p>
-              <Link to="/login">
-                <Button className="w-full py-3">{r.backToLoginLabel}</Button>
-              </Link>
-            </div>
-          ) : mode === "update" ? (
-            <>
-              <h2 className="mb-1.5 text-lg font-bold text-slate-900">{r.updateTitle}</h2>
-              <p className="mb-5 text-sm text-slate-500">{r.updateSubtitle}</p>
-              <form className="space-y-4" onSubmit={handleUpdate}>
-                <TextField
-                  label={r.fields.newPasswordLabel}
-                  required
-                  type="password"
-                  placeholder={r.fields.newPasswordPlaceholder}
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                />
-                <TextField
-                  label={r.fields.newPasswordConfirmLabel}
-                  required
-                  type="password"
-                  placeholder={r.fields.newPasswordConfirmPlaceholder}
-                  value={newPasswordConfirm}
-                  onChange={(e) => setNewPasswordConfirm(e.target.value)}
-                />
-                {error && <p className="text-xs font-medium text-red-500">{error}</p>}
-                <Button type="submit" className="w-full py-3" disabled={submitting}>
-                  {submitting ? "변경 중..." : r.updateSubmitLabel}
-                </Button>
-              </form>
-            </>
-          ) : (
-            <>
-              <h2 className="mb-1.5 text-lg font-bold text-slate-900">{r.title}</h2>
-              <p className="mb-5 text-sm text-slate-500">{r.subtitle}</p>
-              <form className="space-y-4" onSubmit={handleRequest}>
-                <TextField
-                  label={r.fields.idLabel}
-                  required
-                  type="email"
-                  placeholder={r.fields.idPlaceholder}
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-                {error && <p className="text-xs font-medium text-red-500">{error}</p>}
-                <Button type="submit" className="w-full py-3" disabled={submitting}>
-                  {submitting ? "전송 중..." : r.submitLabel}
-                </Button>
-              </form>
-            </>
-          )}
+        <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+          <Icon name="lock" className="mx-auto mb-4 w-5 h-5 text-slate-400" />
+          <h2 className="mb-1.5 text-lg font-bold text-slate-900">비밀번호 재설정은 준비 중이에요</h2>
+          <p className="mb-6 text-sm leading-relaxed text-slate-500">
+            비밀번호를 잊으셨다면 담당자에게 문의해주세요. 이메일 재설정 기능은 곧 지원될 예정입니다.
+          </p>
+          <Link to="/login">
+            <Button className="w-full py-3">로그인으로 돌아가기</Button>
+          </Link>
         </div>
       </div>
     </div>

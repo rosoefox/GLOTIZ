@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Icon from "../components/Icon";
 import { Badge, Card, Button } from "../components/ui";
-import { supabase } from "../lib/supabase";
+import { api } from "../lib/api";
 
 export default function AiDocuments() {
   const navigate = useNavigate();
@@ -17,9 +17,12 @@ export default function AiDocuments() {
   useEffect(() => {
     async function loadBusinesses() {
       setLoadingBusinesses(true);
-      const { data, error } = await supabase.from("businesses").select("*").order("name");
-      if (error) setError(error.message);
-      else setBusinesses(data);
+      try {
+        const { businesses } = await api.get("/businesses?order_by=name");
+        setBusinesses(businesses);
+      } catch (err) {
+        setError(err.message);
+      }
       setLoadingBusinesses(false);
     }
     loadBusinesses();
@@ -29,13 +32,12 @@ export default function AiDocuments() {
     setSelectedBusiness(business);
     setTemplates([]);
     setLoadingTemplates(true);
-    const { data, error } = await supabase
-      .from("templates")
-      .select("*")
-      .eq("business_id", business.id)
-      .order("name");
-    if (error) setError(error.message);
-    else setTemplates(data);
+    try {
+      const { templates } = await api.get(`/templates?business_id=${business.id}&order_by=name`);
+      setTemplates(templates);
+    } catch (err) {
+      setError(err.message);
+    }
     setLoadingTemplates(false);
   };
 

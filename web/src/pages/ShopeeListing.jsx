@@ -5,16 +5,17 @@ import { shopeeListing as sl } from "../data/mockData";
 import { useMarketingImages } from "../context/MarketingImagesContext";
 import { useExportItems } from "../context/ExportItemsContext";
 import { useAuth } from "../context/AuthContext";
-import { supabase } from "../lib/supabase";
+import { api, idsParam } from "../lib/api";
 import { readErrorMessage } from "../lib/apiError";
+import { convertFromKrw } from "../lib/currency";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
 
-// "이전 정보 불러오기"(전체 일괄, 매칭되는 값이 있을 때만)나 필드 옆 전용 AI 버튼(AI로
-// 채우기/가격 추천받기)으로 채워지는 항목(description, price)을 뺀 나머지는 사용자가 직접
-// 입력해야 하는 항목들이다 — 비어 있는 동안은 테두리를 브랜드 색으로 강조해서 채우는 걸
-// 잊지 않게 하고, 값을 입력하면 바로 원래(회색 테두리) 모습으로 돌아온다.
-const AI_ASSISTED_FIELD_KEYS = new Set(sl.fields.filter((f) => f.aiFillable || f.priceSuggestable).map((f) => f.key));
+// "이전 정보 불러오기"(전체 일괄, 매칭되는 값이 있을 때만)나 필드 옆 전용 AI 버튼(AI로 채우기)으로
+// 채워지는 항목(description)을 뺀 나머지는 사용자가 직접 입력해야 하는 항목들이다 — 비어 있는
+// 동안은 테두리를 브랜드 색으로 강조해서 채우는 걸 잊지 않게 하고, 값을 입력하면 바로 원래(회색
+// 테두리) 모습으로 돌아온다.
+const AI_ASSISTED_FIELD_KEYS = new Set(sl.fields.filter((f) => f.aiFillable).map((f) => f.key));
 const HIGHLIGHT_WHEN_EMPTY = new Set(sl.fields.map((f) => f.key).filter((k) => !AI_ASSISTED_FIELD_KEYS.has(k)));
 
 // 데모용: "이전 정보 불러오기"는 실제 이전 제출 이력 대신 고정된 예시 상품 정보를 채운다.
@@ -189,86 +190,45 @@ function ProductImages({ images, onAdd, onRemove }) {
   );
 }
 
-function PriceSuggestion({ values, onApply }) {
-  const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [result, setResult] = useState(null);
-
-  const runSuggestion = async (targetMarket) => {
-    setOpen(false);
-    setLoading(true);
-    setError(null);
-    setResult(null);
-    try {
-      const res = await fetch(`${BACKEND_URL}/price-suggestion`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          product_name: values.productName || "",
-          category: values.category || "",
-          description: values.description || "",
-          brand: values.brand || "",
-          krw_price: values.price || "",
-          target_market: targetMarket,
-        }),
-      });
-      if (!res.ok) throw new Error(await readErrorMessage(res, "가격 추천에 실패했습니다."));
-      const data = await res.json();
-      setResult(data);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+// 원화 입력값을 고정 환율(대략치, 실시간 아님)로 현지통화로 변환해서 보여준다.
+// AI 가격 추천을 대체하는 결정론적 버전이라 API 호출이나 로딩 대기가 없다.
+function PriceConverter({ krwValue, onApply }) {
+  const [targetLang, setTargetLang] = useState(sl.translateLanguages[0].code);
+  const krwNumber = Number(String(krwValue ?? "").replace(/[^0-9.]/g, ""));
+  const result = krwNumber > 0 ? convertFromKrw(krwNumber, targetLang) : null;
 
   return (
     <div className="mt-2">
-      <div className="relative inline-block">
-        <Button
-          type="button"
-          variant="outlineBrand"
-          className="px-2.5 py-1.5 text-[11px]"
-          onClick={() => setOpen((v) => !v)}
-          disabled={loading || !values.productName}
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          value={targetLang}
+          onChange={(e) => setTargetLang(e.target.value)}
+          className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-700 focus:border-brand-600 focus:outline-none"
         >
-          <Icon name="sparkle" className="w-3.5 h-3.5" />
-          {loading ? sl.priceSuggestPendingLabel : sl.priceSuggestLabel}
-          <Icon name="chevronDown" className={`w-3.5 h-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
-        </Button>
-        {open && (
-          <div className="absolute left-0 top-full z-10 mt-1 w-44 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg">
-            {sl.translateLanguages.map((lang) => (
-              <button
-                key={lang.code}
-                type="button"
-                onClick={() => runSuggestion(lang.code)}
-                className="block w-full rounded-lg px-2.5 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-50"
-              >
-                {lang.label}
-              </button>
-            ))}
-          </div>
+          {sl.translateLanguages.map((lang) => (
+            <option key={lang.code} value={lang.code}>
+              {lang.label}
+            </option>
+          ))}
+        </select>
+        {result ? (
+          <>
+            <span className="text-xs font-semibold text-brand-700">
+              ≈ {result.formatted} {result.currency}
+            </span>
+            <button
+              type="button"
+              onClick={() => onApply(`${result.formatted} ${result.currency}`)}
+              className="text-[11px] font-semibold text-brand-600 hover:underline"
+            >
+              이 값 적용
+            </button>
+          </>
+        ) : (
+          <span className="text-[11px] text-slate-400">원화 가격을 먼저 입력하세요.</span>
         )}
       </div>
-      {!values.productName && <p className="mt-1 text-[10px] text-slate-400">Product Name을 먼저 입력하세요.</p>}
-      {error && <p className="mt-1.5 text-[11px] font-medium text-red-500">{error}</p>}
-      {result && (
-        <div className="mt-1.5 rounded-lg border border-brand-200 bg-brand-50/50 p-2.5 text-[11px] leading-relaxed text-slate-700">
-          <p className="font-bold text-brand-700">
-            추천가: {result.suggestedPrice} {result.currency}
-          </p>
-          <p className="mt-1 text-slate-500">{result.reasoning}</p>
-          <button
-            type="button"
-            onClick={() => onApply(result.suggestedPrice)}
-            className="mt-1.5 font-semibold text-brand-600 hover:underline"
-          >
-            이 값으로 적용
-          </button>
-        </div>
-      )}
+      <p className="mt-1 text-[10px] text-slate-400">참고용 환율이며 실시간 시세와 다를 수 있어요.</p>
     </div>
   );
 }
@@ -314,7 +274,7 @@ function TranslatePanel({ values, activeLang, translating, onTranslate }) {
 }
 
 export default function ShopeeListing() {
-  const { user: authUser, profile } = useAuth();
+  const { user: authUser, profile, session } = useAuth();
   const { items: exportItems } = useExportItems();
 
   const [values, setValues] = useState(() => Object.fromEntries(sl.fields.map((f) => [f.key, ""])));
@@ -381,23 +341,19 @@ export default function ShopeeListing() {
 
       if (authUser?.id) {
         try {
-          const { data: subs } = await supabase
-            .from("submissions")
-            .select("id, created_at")
-            .eq("user_id", authUser.id)
-            .order("created_at", { ascending: false });
+          const { submissions: subs } = await api.get("/submissions", session?.access_token);
           const submissionIds = (subs || []).map((s) => s.id);
 
           if (submissionIds.length) {
             const orderRank = Object.fromEntries(submissionIds.map((id, idx) => [id, idx]));
-            const { data: valueRows } = await supabase
-              .from("submission_values")
-              .select("submission_id, field_id, value")
-              .in("submission_id", submissionIds);
+            const { values: valueRows } = await api.get(
+              `/submission_values?${idsParam("submission_id", submissionIds)}`,
+              session?.access_token
+            );
             const fieldIds = [...new Set((valueRows || []).map((v) => v.field_id))];
-            const { data: fieldRows } = fieldIds.length
-              ? await supabase.from("template_fields").select("id, field_key").in("id", fieldIds)
-              : { data: [] };
+            const { fields: fieldRows } = fieldIds.length
+              ? await api.get(`/template_fields?${idsParam("id", fieldIds)}`)
+              : { fields: [] };
             const keyByFieldId = Object.fromEntries((fieldRows || []).map((f) => [f.id, f.field_key]));
 
             const sortedValues = (valueRows || [])
@@ -619,6 +575,9 @@ export default function ShopeeListing() {
                           <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">
                             {field.label}
                             <span className="ml-1.5 normal-case tracking-normal text-slate-400">{field.ko}</span>
+                            {field.key === "price" && (
+                              <span className="ml-1.5 normal-case tracking-normal text-slate-400">(KRW, 원)</span>
+                            )}
                           </span>
                           {field.aiFillable && (
                             <Button
@@ -651,8 +610,8 @@ export default function ShopeeListing() {
                           )}
                           <CopyButton copied={copiedKey === field.key} onClick={() => copyField(field.key, values[field.key])} />
                         </div>
-                        {field.priceSuggestable && (
-                          <PriceSuggestion values={values} onApply={(price) => updateValue(field.key, price)} />
+                        {field.key === "price" && (
+                          <PriceConverter krwValue={values.price} onApply={(v) => updateValue("price", v)} />
                         )}
                       </div>
                     );

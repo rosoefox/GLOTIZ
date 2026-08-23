@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import Icon from "../components/Icon";
 import { Card, Button } from "../components/ui";
-import { supabase } from "../lib/supabase";
+import { api } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
@@ -64,7 +64,7 @@ export default function AiDocumentFill() {
   const location = useLocation();
   const navigate = useNavigate();
   const { templateId, templateName, businessName } = location.state ?? {};
-  const { user: authUser } = useAuth();
+  const { user: authUser, session } = useAuth();
 
   const [fields, setFields] = useState([]);
   const [loadingFields, setLoadingFields] = useState(true);
@@ -81,12 +81,12 @@ export default function AiDocumentFill() {
     if (!templateId) return;
     async function loadFields() {
       setLoadingFields(true);
-      const { data, error } = await supabase
-        .from("template_fields")
-        .select("*")
-        .eq("template_id", templateId);
-      if (error) setError(error.message);
-      else setFields(data);
+      try {
+        const { fields } = await api.get(`/template_fields?template_id=${templateId}`);
+        setFields(fields);
+      } catch (err) {
+        setError(err.message);
+      }
       setLoadingFields(false);
     }
     loadFields();
@@ -105,34 +105,22 @@ export default function AiDocumentFill() {
     setSaving(true);
     setError(null);
 
-    const { data: submission, error: submissionError } = await supabase
-      .from("submissions")
-      .insert({ template_id: templateId, user_id: authUser.id, status: "filled" })
-      .select()
-      .single();
-
-    if (submissionError) {
-      setError(submissionError.message);
-      setSaving(false);
-      return;
+    try {
+      const submission = await api.post("/submissions", { template_id: templateId }, session?.access_token);
+      const values_ = fields.map((field) => ({
+        field_id: field.id,
+        value: values[field.id] ?? "",
+        source: "user_input",
+      }));
+      await api.post(
+        "/submission_values",
+        { submission_id: submission.id, values: values_ },
+        session?.access_token
+      );
+      setSubmissionId(submission.id);
+    } catch (err) {
+      setError(err.message);
     }
-
-    const rows = fields.map((field) => ({
-      submission_id: submission.id,
-      field_id: field.id,
-      value: values[field.id] ?? "",
-      source: "user_input",
-    }));
-
-    const { error: valuesError } = await supabase.from("submission_values").insert(rows);
-
-    if (valuesError) {
-      setError(valuesError.message);
-      setSaving(false);
-      return;
-    }
-
-    setSubmissionId(submission.id);
     setSaving(false);
   };
 
@@ -149,11 +137,8 @@ export default function AiDocumentFill() {
       if (!res.ok) throw new Error(data.detail || "AI 문서 생성에 실패했습니다.");
       setGeneratedPath(data.file_path);
 
-      const { data: signed, error: signError } = await supabase.storage
-        .from("generated")
-        .createSignedUrl(data.file_path, 3600);
-      if (signError) throw signError;
-      setDownloadUrl(signed.signedUrl);
+      const { url } = await api.get(`/generated-file-url?path=${encodeURIComponent(data.file_path)}`, session?.access_token);
+      setDownloadUrl(url);
     } catch (err) {
       setGenerateError(err.message);
     } finally {

@@ -4,7 +4,7 @@ import { Badge, Card, Button, TextField } from "../components/ui";
 import { myExportItems as mi, exportDocumentForm as f } from "../data/mockData";
 import { useExportItems } from "../context/ExportItemsContext";
 import { useAuth } from "../context/AuthContext";
-import { supabase } from "../lib/supabase";
+import { api, idsParam } from "../lib/api";
 
 const PROGRESS_STATUS_STYLES = {
   not_submitted: "border-slate-200 bg-slate-50 text-slate-500",
@@ -112,7 +112,7 @@ function BasicInfoForm({ item, businesses, onSave, onCancel }) {
   );
 }
 
-function ProgressPanel({ businessId, userId }) {
+function ProgressPanel({ businessId, token }) {
   const [loading, setLoading] = useState(true);
   const [templates, setTemplates] = useState([]);
   const [subsByTemplate, setSubsByTemplate] = useState({});
@@ -123,25 +123,16 @@ function ProgressPanel({ businessId, userId }) {
     let cancelled = false;
     async function load() {
       setLoading(true);
-      const { data: tpls } = await supabase
-        .from("templates")
-        .select("*")
-        .eq("business_id", businessId)
-        .order("form_number");
+      const { templates: tpls } = await api.get(`/templates?business_id=${businessId}&order_by=form_number`);
       const templateIds = (tpls || []).map((t) => t.id);
 
       let subs = {};
       let fieldCountByTemplate = {};
       let filledCountBySubmission = {};
       if (templateIds.length) {
-        const [{ data: submissions }, { data: allFields }] = await Promise.all([
-          supabase
-            .from("submissions")
-            .select("*")
-            .eq("user_id", userId)
-            .in("template_id", templateIds)
-            .order("created_at", { ascending: false }),
-          supabase.from("template_fields").select("id,template_id").in("template_id", templateIds),
+        const [{ submissions }, { fields: allFields }] = await Promise.all([
+          api.get(`/submissions?${idsParam("template_id", templateIds)}`, token),
+          api.get(`/template_fields?${idsParam("template_id", templateIds)}`),
         ]);
         (submissions || []).forEach((s) => {
           if (!subs[s.template_id]) subs[s.template_id] = s;
@@ -152,10 +143,10 @@ function ProgressPanel({ businessId, userId }) {
 
         const submissionIds = Object.values(subs).map((s) => s.id);
         if (submissionIds.length) {
-          const { data: allValues } = await supabase
-            .from("submission_values")
-            .select("submission_id,value")
-            .in("submission_id", submissionIds);
+          const { values: allValues } = await api.get(
+            `/submission_values?${idsParam("submission_id", submissionIds)}`,
+            token
+          );
           (allValues || []).forEach((v) => {
             if (v.value) filledCountBySubmission[v.submission_id] = (filledCountBySubmission[v.submission_id] || 0) + 1;
           });
@@ -173,7 +164,7 @@ function ProgressPanel({ businessId, userId }) {
     return () => {
       cancelled = true;
     };
-  }, [businessId, userId]);
+  }, [businessId, token]);
 
   // 사용자 화면(DocumentChecklist)과 동일하게 "실제로 채워진 필드 수 / 전체 필드 수"로 계산한다 —
   // 서류를 제출만 하면 무조건 100%로 표시되던 것과 달리, 실제 작성 진행도를 반영한다.
@@ -231,7 +222,7 @@ function ProgressPanel({ businessId, userId }) {
   );
 }
 
-function ProgramBlock({ business, userId }) {
+function ProgramBlock({ business, token }) {
   const [showProgress, setShowProgress] = useState(false);
 
   return (
@@ -250,13 +241,13 @@ function ProgramBlock({ business, userId }) {
         </Button>
       </div>
 
-      {showProgress && business && <ProgressPanel businessId={business.id} userId={userId} />}
+      {showProgress && business && <ProgressPanel businessId={business.id} token={token} />}
     </div>
   );
 }
 
 export default function MyExportItems() {
-  const { user } = useAuth();
+  const { user, session } = useAuth();
   const { items, addItem, updateItem } = useExportItems();
   const [expandedId, setExpandedId] = useState(null);
   const [showNewForm, setShowNewForm] = useState(false);
@@ -264,23 +255,16 @@ export default function MyExportItems() {
   const [revisionCount, setRevisionCount] = useState(0);
 
   useEffect(() => {
-    supabase
-      .from("businesses")
-      .select("id,name")
-      .order("created_at", { ascending: false })
-      .then(({ data }) => setBusinesses(data || []));
+    api.get("/businesses").then(({ businesses }) => setBusinesses(businesses || []));
   }, []);
 
   useEffect(() => {
     if (!user?.id) return;
-    supabase
-      .from("notifications")
-      .select("id", { count: "exact", head: true })
-      .eq("user_id", user.id)
-      .eq("type", "needs_revision")
-      .eq("is_read", false)
-      .then(({ count }) => setRevisionCount(count || 0));
-  }, [user?.id]);
+    api
+      .get("/notifications?type=needs_revision&is_read=false&count_only=true", session?.access_token)
+      .then(({ count }) => setRevisionCount(count || 0))
+      .catch(() => {});
+  }, [user?.id, session?.access_token]);
 
   const businessById = Object.fromEntries(businesses.map((b) => [b.id, b]));
 
@@ -360,7 +344,7 @@ export default function MyExportItems() {
                   <p className="text-sm text-slate-400">{mi.noProgramsMessage}</p>
                 ) : (
                   item.govPrograms.map((businessId) => (
-                    <ProgramBlock key={businessId} business={businessById[businessId]} userId={user?.id} />
+                    <ProgramBlock key={businessId} business={businessById[businessId]} token={session?.access_token} />
                   ))
                 )}
               </div>

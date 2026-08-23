@@ -5,7 +5,11 @@ import { Card, Button } from "../components/ui";
 import SubmissionDetailModal from "../components/SubmissionDetailModal";
 import { myApplicationStatus as mas } from "../data/mockData";
 import { useAuth } from "../context/AuthContext";
-import { supabase } from "../lib/supabase";
+import { api, idsParam } from "../lib/api";
+
+// 관리자가 승인/반려하면 이 화면에도 바로 반영되어야 하는데, Cloud SQL에는 Supabase Realtime 같은
+// 실시간 구독이 없어서 짧은 주기로 다시 불러오는 폴링으로 대체한다.
+const POLL_INTERVAL_MS = 15000;
 
 function reviewStatusKey(submission) {
   if (submission.review_status === "approved") return "approved";
@@ -119,7 +123,7 @@ function ProgramRow({ index, program, expanded, onToggle, onViewDocument, onGoTo
 
 export default function MyApplicationStatus() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, session } = useAuth();
   const [programs, setPrograms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState(null);
@@ -127,11 +131,20 @@ export default function MyApplicationStatus() {
   const [bookmarks, setBookmarks] = useState([]);
   const [loadingBookmarks, setLoadingBookmarks] = useState(true);
   const [ackedApprovals, setAckedApprovals] = useState(new Set());
+  const [needsRevisionCount, setNeedsRevisionCount] = useState(0);
 
   useEffect(() => {
     if (!user?.id) return;
     setAckedApprovals(loadAcked(user.id));
   }, [user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    api
+      .get("/submissions?review_status=needs_revision", session?.access_token)
+      .then(({ submissions }) => setNeedsRevisionCount((submissions || []).length))
+      .catch(() => {});
+  }, [user?.id, session?.access_token]);
 
   const isNewApproval = (doc) => !ackedApprovals.has(approvalAckId(doc));
 
@@ -149,12 +162,8 @@ export default function MyApplicationStatus() {
     let cancelled = false;
     async function loadBookmarks() {
       setLoadingBookmarks(true);
-      const { data: rows, error } = await supabase
-        .from("bookmarks")
-        .select("id, business_id")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false });
-      if (error || !rows?.length) {
+      const { bookmarks: rows } = await api.get("/bookmarks", session?.access_token).catch(() => ({ bookmarks: [] }));
+      if (!rows?.length) {
         if (!cancelled) {
           setBookmarks([]);
           setLoadingBookmarks(false);
@@ -162,7 +171,7 @@ export default function MyApplicationStatus() {
         return;
       }
       const businessIds = rows.map((r) => r.business_id);
-      const { data: businesses } = await supabase.from("businesses").select("id,name").in("id", businessIds);
+      const { businesses } = await api.get(`/businesses?${idsParam("id", businessIds)}`);
       const businessById = Object.fromEntries((businesses || []).map((b) => [b.id, b]));
       if (!cancelled) {
         setBookmarks(
@@ -177,12 +186,12 @@ export default function MyApplicationStatus() {
     return () => {
       cancelled = true;
     };
-  }, [user?.id]);
+  }, [user?.id, session?.access_token]);
 
   const removeBookmark = async (bookmark) => {
     setBookmarks((prev) => prev.filter((b) => b.bookmarkId !== bookmark.bookmarkId));
     try {
-      await supabase.from("bookmarks").delete().eq("id", bookmark.bookmarkId);
+      await api.delete(`/bookmarks/${bookmark.bookmarkId}`, session?.access_token);
     } catch {
       // 무시 - 다음 새로고침 시 다시 반영됨
     }
@@ -193,22 +202,20 @@ export default function MyApplicationStatus() {
     let cancelled = false;
     async function load() {
       setLoading(true);
-      const { data: subs } = await supabase
-        .from("submissions")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false });
+      const { submissions: subs } = await api
+        .get("/submissions", session?.access_token)
+        .catch(() => ({ submissions: [] }));
 
       const templateIds = [...new Set((subs || []).map((s) => s.template_id))];
-      const { data: templates } = templateIds.length
-        ? await supabase.from("templates").select("id,name,business_id").in("id", templateIds)
-        : { data: [] };
+      const { templates } = templateIds.length
+        ? await api.get(`/templates?${idsParam("id", templateIds)}`)
+        : { templates: [] };
       const templateById = Object.fromEntries((templates || []).map((t) => [t.id, t]));
 
       const businessIds = [...new Set((templates || []).map((t) => t.business_id))];
-      const { data: businesses } = businessIds.length
-        ? await supabase.from("businesses").select("id,name").in("id", businessIds)
-        : { data: [] };
+      const { businesses } = businessIds.length
+        ? await api.get(`/businesses?${idsParam("id", businessIds)}`)
+        : { businesses: [] };
       const businessNameById = Object.fromEntries((businesses || []).map((b) => [b.id, b.name]));
 
       const latestByTemplate = {};
@@ -244,22 +251,15 @@ export default function MyApplicationStatus() {
     }
     load();
 
-    // 관리자가 승인/반려 버튼을 누르면 이 화면을 새로고침하지 않아도 바로 반영되도록,
-    // 이 사용자의 submissions 변경을 실시간으로 구독해 다시 불러온다.
-    const channel = supabase
-      .channel(`my-applications-${user.id}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "submissions", filter: `user_id=eq.${user.id}` },
-        () => load()
-      )
-      .subscribe();
+    // 관리자가 승인/반려 버튼을 누르면 이 화면도 바로 반영되어야 하는데, Cloud SQL에는 실시간
+    // 구독이 없어서 짧은 주기로 다시 불러오는 폴링으로 대체한다.
+    const interval = setInterval(load, POLL_INTERVAL_MS);
 
     return () => {
       cancelled = true;
-      supabase.removeChannel(channel);
+      clearInterval(interval);
     };
-  }, [user?.id]);
+  }, [user?.id, session?.access_token]);
 
   return (
     <div className="mx-auto max-w-3xl px-8 py-8">
@@ -273,6 +273,13 @@ export default function MyApplicationStatus() {
 
       <h1 className="text-3xl font-extrabold text-slate-900">{mas.title}</h1>
       <p className="mt-2 mb-8 text-sm text-slate-500">{mas.subtitle}</p>
+
+      {needsRevisionCount > 0 && (
+        <div className="mb-8 flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">
+          <Icon name="bell" className="w-5 h-5 shrink-0" />
+          {mas.needsRevisionAlert.replace("{count}", needsRevisionCount)}
+        </div>
+      )}
 
       {!loadingBookmarks && bookmarks.length > 0 && (
         <div className="mb-8">

@@ -71,9 +71,26 @@ git clone https://github.com/rosoefox/JB-Trade-AI-Agent.git
    ```
    SUPABASE_URL=<Supabase 프로젝트 URL>
    SUPABASE_SERVICE_ROLE_KEY=<Supabase service role key>
-   GEMINI_API_KEY=<Gemini API 키>
-   DATA_GO_KR_TRADE_SERVICE_KEY=<공공데이터포털 관세청_품목별 국가별 수출입실적(GW) 서비스키>
+   VERTEX_AI_PROJECT_ID=<GCP 프로젝트 ID>
+   GOOGLE_APPLICATION_CREDENTIALS=<Vertex AI 서비스 계정 키 JSON 경로>
+   CLOUD_SQL_HOST=<Cloud SQL 인스턴스 공인 IP>
+   CLOUD_SQL_DB=<Cloud SQL 데이터베이스 이름>
+   CLOUD_SQL_USER=<Cloud SQL 사용자>
+   CLOUD_SQL_PASSWORD=<Cloud SQL 비밀번호>
+   GCS_TEMPLATES_BUCKET=<templates 버킷 이름>
+   GCS_GENERATED_BUCKET=<generated 버킷 이름>
    ```
+
+   > **아키텍처 안내**: 로그인/회원가입(Auth)과 `profiles` 테이블은 계속 Supabase를 씁니다.
+   > 그 외 실제 서비스 데이터(businesses/templates/template_fields/submissions/
+   > submission_values/generated_documents/notifications/bookmarks)는 Cloud SQL
+   > (PostgreSQL)로, 파일 저장소(템플릿 원본/생성 문서/마케팅 이미지)는 Cloud Storage로
+   > 옮겨져 있습니다. 프론트엔드는 이 테이블들을 더 이상 Supabase에 직접 쿼리하지 않고
+   > 전부 이 백엔드 API(`web/src/lib/api.js`)를 거칩니다. Supabase Realtime으로 처리하던
+   > 실시간 알림/현황 갱신은 15초 주기 폴링으로 대체되어 있습니다.
+   >
+   > **Cloud SQL은 처음엔 완전히 빈 상태입니다** — 관리자 페이지에서 사업/서식을 다시
+   > 등록해야 화면에 내용이 보입니다 (기존 Supabase에 있던 데이터는 옮기지 않았습니다).
 
 ## 3. 실행하기 (다음부터는 이 단계만 반복하면 됩니다)
 

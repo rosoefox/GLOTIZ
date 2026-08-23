@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import Icon from "../components/Icon";
 import { Card, CardHeader, CardTitle, CardContent, Button } from "../components/ui";
 import { govSupport as gs, govAnnouncementDetails } from "../data/mockData";
-import { supabase } from "../lib/supabase";
+import { api } from "../lib/api";
 import { displayPeriod } from "../lib/period";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
@@ -27,9 +27,9 @@ export default function GovSupportDetail() {
     let cancelled = false;
     async function load() {
       setLoading(true);
-      const { data: biz } = await supabase.from("businesses").select("*").eq("id", businessId).maybeSingle();
+      const biz = await api.get(`/businesses/${businessId}`).catch(() => null);
       if (!cancelled) {
-        setBusiness(biz || null);
+        setBusiness(biz);
         setLoading(false);
       }
     }

@@ -6,22 +6,21 @@ import HeroOceanScene from "../components/HeroOceanScene";
 import FloatingChatbot from "../components/FloatingChatbot";
 import { brand, dashboard, govAnnouncementDetails } from "../data/mockData";
 import { useAuth } from "../context/AuthContext";
-import { supabase } from "../lib/supabase";
+import { api, idsParam } from "../lib/api";
 import {
   periodEndDate as sharedPeriodEndDate,
   formatTodayKorean,
-  isDemoOngoingBusiness,
+  isClosed as sharedIsClosed,
 } from "../lib/period";
 
 const footerLogoUrl = new URL("../../로고최종1.png", import.meta.url).href;
 
-function orgNameFor(business) {
-  const detail = govAnnouncementDetails[business.id];
-  return detail?.recruiter || detail?.org || "전북 지원사업 포털";
-}
-
 function periodEndDate(business) {
   return sharedPeriodEndDate(business, govAnnouncementDetails);
+}
+
+function isOngoing(business) {
+  return !sharedIsClosed(business, govAnnouncementDetails);
 }
 
 // 통계 영역이 뷰포트에 들어올 때마다(재진입 포함) 카운트업이 다시 시작되도록 key를 바꿔준다.
@@ -142,8 +141,7 @@ const EMPTY_MY_APPLICATION_STATS = { total: 0, drafting: 0, reviewing: 0, review
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { isLoggedIn, user } = useAuth();
-  const [itemFilter, setItemFilter] = useState(dashboard.itemCategories[0].id);
+  const { isLoggedIn, user, session } = useAuth();
   const [selectedCase, setSelectedCase] = useState(null);
 
   const [statsRef, statsReplayKey] = useReplayOnView();
@@ -167,7 +165,6 @@ export default function Dashboard() {
   const [featuresRef, featuresInView] = useSectionReveal();
   const [caseStudiesRef, caseStudiesInView] = useSectionReveal();
   const [satisfactionRef, satisfactionInView] = useSectionReveal();
-  const [categoriesRef, categoriesInView] = useSectionReveal();
 
   const [businesses, setBusinesses] = useState([]);
   const [loadingOngoing, setLoadingOngoing] = useState(true);
@@ -175,19 +172,21 @@ export default function Dashboard() {
   useEffect(() => {
     async function loadOngoing() {
       setLoadingOngoing(true);
-      // templates!inner: 서류 양식이 하나라도 업로드된 사업만 노출한다 (GovSupport.jsx와 동일한 규칙).
-      const { data } = await supabase
-        .from("businesses")
-        .select("*, templates!inner(id)")
-        .order("created_at", { ascending: false });
-      setBusinesses(data || []);
+      // 서류 양식이 하나라도 업로드된 사업만 노출한다 (GovSupport.jsx와 동일한 규칙) - 백엔드가
+      // Supabase의 templates!inner 조인을 대신 못 해줘서, 템플릿 목록을 같이 받아 여기서 거른다.
+      const [{ businesses: allBusinesses }, { templates: allTemplates }] = await Promise.all([
+        api.get("/businesses?order_by=created_at"),
+        api.get("/templates"),
+      ]);
+      const businessIdsWithTemplate = new Set((allTemplates || []).map((t) => t.business_id));
+      setBusinesses((allBusinesses || []).filter((b) => businessIdsWithTemplate.has(b.id)).reverse());
       setLoadingOngoing(false);
     }
     loadOngoing();
   }, []);
 
   const ongoingPrograms = useMemo(
-    () => businesses.filter(isDemoOngoingBusiness).slice(0, 5),
+    () => businesses.filter(isOngoing).slice(0, 5),
     [businesses]
   );
 
@@ -205,7 +204,7 @@ export default function Dashboard() {
 
       const latest = businesses.filter((b) => {
         const days = (now - new Date(b.created_at)) / 86400000;
-        return days <= 30;
+        return days <= 7;
       }).length;
 
       const deadlineSoon = businesses.filter((b) => {
@@ -217,21 +216,17 @@ export default function Dashboard() {
 
       // 인기공고: 실제로 신청(제출)이 한 건이라도 들어온 공고 수를 인기 지표로 쓴다.
       const businessIds = businesses.map((b) => b.id);
-      const { data: templates } = await supabase
-        .from("templates")
-        .select("id,business_id")
-        .in("business_id", businessIds);
+      const { templates } = await api.get(`/templates?${idsParam("business_id", businessIds)}`);
       const businessByTemplate = Object.fromEntries((templates || []).map((t) => [t.id, t.business_id]));
-      const templateIds = Object.keys(businessByTemplate);
 
-      let popular = 0;
-      if (templateIds.length) {
-        const { data: submissions } = await supabase
-          .from("submissions")
-          .select("template_id")
-          .in("template_id", templateIds);
-        popular = new Set((submissions || []).map((s) => businessByTemplate[s.template_id])).size;
-      }
+      // 인기 지표는 "실제로 신청이 들어온 공고 수" - 비로그인 방문자도 보는 공개 통계라
+      // 개인정보 없이 template_id 집합만 주는 전용 엔드포인트를 쓴다.
+      const { template_ids: submittedTemplateIds } = await api
+        .get("/submissions/submitted-template-ids")
+        .catch(() => ({ template_ids: [] }));
+      const popular = new Set(
+        (submittedTemplateIds || []).map((id) => businessByTemplate[id]).filter(Boolean)
+      ).size;
 
       if (!cancelled) setProgramCounts({ latest, deadlineSoon, popular });
     }
@@ -260,10 +255,7 @@ export default function Dashboard() {
     }
     let cancelled = false;
     async function loadMyApplicationStatus() {
-      const { data: mySubs } = await supabase
-        .from("submissions")
-        .select("template_id,review_status")
-        .eq("user_id", user.id);
+      const { submissions: mySubs } = await api.get("/submissions", session?.access_token);
 
       const templateIds = [...new Set((mySubs || []).map((s) => s.template_id))];
       if (!templateIds.length) {
@@ -271,16 +263,13 @@ export default function Dashboard() {
         return;
       }
 
-      const { data: myTemplates } = await supabase
-        .from("templates")
-        .select("id,business_id")
-        .in("id", templateIds);
+      const { templates: myTemplates } = await api.get(`/templates?${idsParam("id", templateIds)}`);
       const businessIdByTemplate = Object.fromEntries((myTemplates || []).map((t) => [t.id, t.business_id]));
       const businessIds = [...new Set(Object.values(businessIdByTemplate))];
 
-      const [{ data: allTemplates }, { data: bizRows }] = await Promise.all([
-        supabase.from("templates").select("id,business_id").in("business_id", businessIds),
-        supabase.from("businesses").select("id,basic_info").in("id", businessIds),
+      const [{ templates: allTemplates }, { businesses: bizRows }] = await Promise.all([
+        api.get(`/templates?${idsParam("business_id", businessIds)}`),
+        api.get(`/businesses?${idsParam("id", businessIds)}`),
       ]);
 
       const totalByBusiness = {};
@@ -329,7 +318,7 @@ export default function Dashboard() {
     return () => {
       cancelled = true;
     };
-  }, [isLoggedIn, user?.id]);
+  }, [isLoggedIn, user?.id, session?.access_token]);
 
   const goToLogin = () => {
     navigate("/login");
@@ -656,7 +645,7 @@ export default function Dashboard() {
                     className="mt-2 inline-flex w-fit items-center gap-2 rounded-full bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white shadow hover:bg-brand-700"
                   >
                     <Icon name="sparkle" className="w-4 h-4" />
-                    이런 스타일로 AI 이미지 생성하기
+                    이 스타일로 AI 이미지 생성하기
                   </Link>
                 </div>
               </div>
@@ -714,63 +703,6 @@ export default function Dashboard() {
                 ))}
               </div>
             </div>
-          </div>
-        </section>
-
-        {/* 6: 품목별 지원사업 공고 */}
-        <section
-          ref={categoriesRef}
-          className="flex h-[calc(100dvh-4rem)] w-full snap-start flex-col items-center justify-center overflow-hidden bg-white px-6 py-6 sm:py-8 lg:py-10"
-        >
-          <div className="mx-auto w-full max-w-5xl">
-            <h2
-              className={`mb-4 text-center text-xl font-bold text-slate-900 sm:mb-6 ${revealCls(categoriesInView)}`}
-              style={revealStyle(0)}
-            >
-              {dashboard.itemCategoriesTitle}
-            </h2>
-
-            <div className="mb-6 flex flex-wrap justify-center gap-2 sm:mb-8">
-              {dashboard.itemCategories.map((c, i) => (
-                <button
-                  type="button"
-                  key={c.id}
-                  onClick={() => setItemFilter(c.id)}
-                  className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold ${revealCls(categoriesInView)} ${
-                    itemFilter === c.id
-                      ? "bg-brand-600 text-white"
-                      : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                  }`}
-                  style={revealStyle(i + 1)}
-                >
-                  <Icon name={c.icon} className="w-5 h-5" />
-                  {c.label}
-                </button>
-              ))}
-            </div>
-
-            {loadingOngoing ? (
-              <p className="text-center text-sm text-slate-400">불러오는 중...</p>
-            ) : businesses.length === 0 ? (
-              <p className="text-center text-sm text-slate-400">등록된 지원사업이 아직 없어요.</p>
-            ) : (
-              <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
-                {businesses.slice(0, 6).map((p) => (
-                  <button
-                    type="button"
-                    key={p.id}
-                    onClick={() => goToProgram(p.id)}
-                    className="flex flex-col rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition-transform duration-150 hover:-translate-y-0.5 hover:scale-[1.03] hover:shadow-md"
-                  >
-                    <span className="mb-3 w-fit rounded-full bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-700">
-                      모집중
-                    </span>
-                    <h4 className="mb-2 min-h-[2.5rem] text-sm font-bold leading-snug text-slate-900">{p.name}</h4>
-                    <p className="mt-auto text-xs text-slate-500">모집처 {orgNameFor(p)}</p>
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
         </section>
 

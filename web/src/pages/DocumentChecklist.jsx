@@ -5,10 +5,9 @@ import { Badge, Card, CardHeader, CardTitle, CardDescription, CardContent, CardF
 import LoginPopup from "../components/LoginPopup";
 import { documentChecklist as dc, govAnnouncementDetails } from "../data/mockData";
 import { useAuth } from "../context/AuthContext";
-import { supabase } from "../lib/supabase";
+import { api, idsParam } from "../lib/api";
 import { readErrorMessage } from "../lib/apiError";
 import { readDraft } from "../lib/draft";
-import { orderedSelect } from "../lib/supabaseOrder";
 
 const SECONDARY_BUTTON_CLASS =
   "inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50";
@@ -48,6 +47,9 @@ function GovTemplateGroup({
   onOpenFill,
   onUploadFile,
   uploadingTemplateId,
+  accountDocs,
+  onImportFromAccount,
+  importingTemplateId,
 }) {
   return (
     <div className="mb-8">
@@ -61,7 +63,9 @@ function GovTemplateGroup({
           const statusKey = statusKeyFor(submission) || (percentByTemplate[t.id] > 0 ? "drafting" : "notStarted");
           const meta = STATUS_META[statusKey];
           const isUploading = uploadingTemplateId === t.id;
+          const isImporting = importingTemplateId === t.id;
           const percent = percentByTemplate[t.id] ?? 0;
+          const importableDoc = t.linked_account_doc_type ? accountDocs?.[t.linked_account_doc_type] : null;
           return (
             <div key={t.id} className="flex flex-wrap items-center justify-between gap-3 p-4">
               <div className="flex items-center gap-3">
@@ -101,6 +105,17 @@ function GovTemplateGroup({
                       <Icon name="externalLink" className="w-5 h-5" />
                       {dc.issueLinkLabel}
                     </a>
+                    {importableDoc && (
+                      <button
+                        type="button"
+                        className={`${SECONDARY_BUTTON_CLASS} ${isImporting ? "opacity-50" : ""}`}
+                        disabled={isImporting}
+                        onClick={() => onImportFromAccount(t)}
+                      >
+                        <Icon name="documents" className="w-5 h-5" />
+                        {isImporting ? dc.importingLabel : dc.importButtonLabel}
+                      </button>
+                    )}
                     <label className={`cursor-pointer ${SECONDARY_BUTTON_CLASS} ${isUploading ? "opacity-50" : ""}`}>
                       <Icon name="upload" className="w-5 h-5" />
                       {isUploading ? dc.uploadingLabel : dc.uploadButtonLabel}
@@ -115,7 +130,25 @@ function GovTemplateGroup({
                         }}
                       />
                     </label>
-                    <Badge tone={submission ? "success" : "neutral"}>{submission ? "업로드 완료" : "미제출"}</Badge>
+                    <Badge
+                      tone={
+                        !submission
+                          ? "neutral"
+                          : statusKey === "needsRevision"
+                            ? "danger"
+                            : statusKey === "reviewed"
+                              ? "success"
+                              : "neutral"
+                      }
+                    >
+                      {!submission
+                        ? "미제출"
+                        : statusKey === "needsRevision"
+                          ? "업로드 필요"
+                          : statusKey === "reviewed"
+                            ? "승인 완료"
+                            : "업로드 완료"}
+                    </Badge>
                   </>
                 ) : (
                   <>
@@ -137,6 +170,7 @@ function GovTemplateGroup({
                         statusKey === "needsRevision" ? "border-red-300 text-red-600 hover:bg-red-50" : ""
                       }`}
                       onClick={() => onOpenFill(t)}
+                      disabled={statusKey === "reviewed"}
                     >
                       {meta.buttonLabel}
                     </Button>
@@ -224,6 +258,8 @@ export default function DocumentChecklist() {
   const [loadingGovTemplates, setLoadingGovTemplates] = useState(false);
   const [uploadingTemplateId, setUploadingTemplateId] = useState(null);
   const [uploadError, setUploadError] = useState(null);
+  const [accountDocs, setAccountDocs] = useState({});
+  const [importingTemplateId, setImportingTemplateId] = useState(null);
 
   const [programs, setPrograms] = useState([]);
   const [loadingPrograms, setLoadingPrograms] = useState(false);
@@ -232,10 +268,7 @@ export default function DocumentChecklist() {
   const refreshGovTemplates = async () => {
     if (!selectedBusinessId) return;
     setLoadingGovTemplates(true);
-    const { data: templates } = await orderedSelect(
-      () => supabase.from("templates").select("*").eq("business_id", selectedBusinessId),
-      "form_number"
-    );
+    const { templates } = await api.get(`/templates?business_id=${selectedBusinessId}&order_by=form_number`);
     setGovTemplates(templates || []);
 
     const templateIds = (templates || []).map((t) => t.id);
@@ -246,9 +279,9 @@ export default function DocumentChecklist() {
       return;
     }
 
-    const [{ data: submissions }, { data: allFields }] = await Promise.all([
-      supabase.from("submissions").select("*").in("template_id", templateIds).order("created_at", { ascending: false }),
-      supabase.from("template_fields").select("id,template_id").in("template_id", templateIds),
+    const [{ submissions }, { fields: allFields }] = await Promise.all([
+      api.get(`/submissions?${idsParam("template_id", templateIds)}`, session?.access_token),
+      api.get(`/template_fields?${idsParam("template_id", templateIds)}`),
     ]);
 
     const latestByTemplate = {};
@@ -263,9 +296,9 @@ export default function DocumentChecklist() {
     });
 
     const submittedSubmissionIds = Object.values(latestByTemplate).map((s) => s.id);
-    const { data: allValues } = submittedSubmissionIds.length
-      ? await supabase.from("submission_values").select("submission_id,value").in("submission_id", submittedSubmissionIds)
-      : { data: [] };
+    const { values: allValues } = submittedSubmissionIds.length
+      ? await api.get(`/submission_values?${idsParam("submission_id", submittedSubmissionIds)}`, session?.access_token)
+      : { values: [] };
     const filledCountBySubmission = {};
     (allValues || []).forEach((v) => {
       if (v.value) filledCountBySubmission[v.submission_id] = (filledCountBySubmission[v.submission_id] || 0) + 1;
@@ -302,6 +335,31 @@ export default function DocumentChecklist() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBusinessId, location.key]);
 
+  // 마이페이지 서류 슬롯(사업자 등록증/상품 상세설명서)에 등록된 파일 유무를 미리 조회해서
+  // "마이페이지에서 가져오기" 버튼을 보여줄지 판단한다.
+  useEffect(() => {
+    if (!session) {
+      setAccountDocs({});
+      return;
+    }
+    let cancelled = false;
+    Promise.all(
+      ["biz_reg", "product_spec"].map((docType) =>
+        fetch(`${BACKEND_URL}/account/documents?doc_type=${docType}`, {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        })
+          .then((res) => (res.ok ? res.json() : { documents: [] }))
+          .then((data) => [docType, data.documents?.[0] || null])
+      )
+    ).then((entries) => {
+      if (!cancelled) setAccountDocs(Object.fromEntries(entries));
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.access_token]);
+
   // 지원사업을 선택하지 않은 상태(사이드바에서 바로 진입)면, 내가 서류를
   // 하나라도 제출한 사업만 목록에 보여주고, 각 사업의 제출 현황(N/전체)을 표시한다.
   useEffect(() => {
@@ -318,10 +376,7 @@ export default function DocumentChecklist() {
         return;
       }
 
-      const { data: subs } = await supabase
-        .from("submissions")
-        .select("template_id")
-        .eq("user_id", user.id);
+      const { submissions: subs } = await api.get("/submissions", session?.access_token);
       const submittedTemplateIds = [...new Set((subs || []).map((s) => s.template_id))];
 
       if (!submittedTemplateIds.length) {
@@ -333,15 +388,14 @@ export default function DocumentChecklist() {
         return;
       }
 
-      const { data: submittedTemplates } = await supabase
-        .from("templates")
-        .select("id,business_id")
-        .in("id", submittedTemplateIds);
+      const { templates: submittedTemplates } = await api.get(
+        `/templates?${idsParam("id", submittedTemplateIds)}`
+      );
       const businessIds = [...new Set((submittedTemplates || []).map((t) => t.business_id))];
 
-      const [{ data: businesses }, { data: allTemplates }] = await Promise.all([
-        supabase.from("businesses").select("*").in("id", businessIds).order("created_at", { ascending: false }),
-        supabase.from("templates").select("id,business_id").in("business_id", businessIds),
+      const [{ businesses }, { templates: allTemplates }] = await Promise.all([
+        api.get(`/businesses?${idsParam("id", businessIds)}`),
+        api.get(`/templates?${idsParam("business_id", businessIds)}`),
       ]);
 
       const submittedByBusiness = {};
@@ -407,8 +461,33 @@ export default function DocumentChecklist() {
     }
   };
 
+  const handleImportFromAccount = async (template) => {
+    if (!session) return;
+    setImportingTemplateId(template.id);
+    setUploadError(null);
+    try {
+      const form = new FormData();
+      form.append("template_id", template.id);
+      const res = await fetch(`${BACKEND_URL}/submissions/import-from-account`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        body: form,
+      });
+      if (!res.ok) throw new Error(await readErrorMessage(res, "마이페이지 서류를 가져오지 못했습니다."));
+      await refreshGovTemplates();
+    } catch (err) {
+      setUploadError(err.message);
+    } finally {
+      setImportingTemplateId(null);
+    }
+  };
+
   const perTemplatePercents = govTemplates.map((t) =>
-    t.user_upload_required ? (govSubmissions[t.id] ? 100 : 0) : percentByTemplate[t.id] ?? 0
+    t.user_upload_required
+      ? govSubmissions[t.id] && govSubmissions[t.id].review_status !== "needs_revision"
+        ? 100
+        : 0
+      : percentByTemplate[t.id] ?? 0
   );
   const govPercent = perTemplatePercents.length
     ? Math.round(perTemplatePercents.reduce((sum, p) => sum + p, 0) / perTemplatePercents.length)
@@ -456,6 +535,9 @@ export default function DocumentChecklist() {
                 onOpenFill={handleOpenFill}
                 onUploadFile={handleUploadFile}
                 uploadingTemplateId={uploadingTemplateId}
+                accountDocs={accountDocs}
+                onImportFromAccount={handleImportFromAccount}
+                importingTemplateId={importingTemplateId}
               />
               {uploadError && (
                 <p className="mb-4 text-xs font-medium text-red-500">{uploadError}</p>

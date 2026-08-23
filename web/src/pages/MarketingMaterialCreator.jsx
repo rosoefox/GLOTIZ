@@ -6,6 +6,7 @@ import { marketingMaterialCreator as mc } from "../data/mockData";
 import { useMarketingImages } from "../context/MarketingImagesContext";
 import { useAuth } from "../context/AuthContext";
 import { readErrorMessage } from "../lib/apiError";
+import { convertFromKrw } from "../lib/currency";
 import { parseSpecLines } from "../lib/spec";
 import thumbMinimal from "../../미니멀 클린.jpg";
 import thumbLuxury from "../../럭셔리.jpg";
@@ -440,6 +441,49 @@ const TRANSLATE_LANGUAGES = [
   { code: "th", label: "ภาษาไทย" },
 ];
 
+// 원화 입력값을 고정 환율(대략치, 실시간 아님)로 현지통화로 변환해서 보여준다.
+// AI 가격 추천을 대체하는 결정론적 버전이라 API 호출이나 로딩 대기가 없다.
+function PriceConverter({ krwValue, onApply }) {
+  const [targetLang, setTargetLang] = useState(TRANSLATE_LANGUAGES[0].code);
+  const krwNumber = Number(String(krwValue ?? "").replace(/[^0-9.]/g, ""));
+  const result = krwNumber > 0 ? convertFromKrw(krwNumber, targetLang) : null;
+
+  return (
+    <div className="mt-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          value={targetLang}
+          onChange={(e) => setTargetLang(e.target.value)}
+          className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-700 focus:border-brand-600 focus:outline-none"
+        >
+          {TRANSLATE_LANGUAGES.map((lang) => (
+            <option key={lang.code} value={lang.code}>
+              {lang.label}
+            </option>
+          ))}
+        </select>
+        {result ? (
+          <>
+            <span className="text-xs font-semibold text-brand-700">
+              ≈ {result.formatted} {result.currency}
+            </span>
+            <button
+              type="button"
+              onClick={() => onApply(`${result.formatted} ${result.currency}`)}
+              className="text-[11px] font-semibold text-brand-600 hover:underline"
+            >
+              이 값 적용
+            </button>
+          </>
+        ) : (
+          <span className="text-[11px] text-slate-400">원화 가격을 먼저 입력하세요.</span>
+        )}
+      </div>
+      <p className="mt-1 text-[10px] text-slate-400">참고용 환율이며 실시간 시세와 다를 수 있어요.</p>
+    </div>
+  );
+}
+
 // 이미지에 얹힐 언어를 미리 고르는 드롭다운. 생성 전에 고르면 "이미지 생성하기"를 누를 때
 // 바로 그 언어로 생성되고, 이미 생성된 이미지가 있는 상태에서 고르면 문구만 바로 번역해서 바꿔친다.
 // 이미지 자체(사진)는 다시 만들지 않고, 오버레이 텍스트만 번역해서 그 위에 얹는 방식이다.
@@ -520,10 +564,6 @@ export default function MarketingMaterialCreator() {
   const [generatedResult, setGeneratedResult] = useState(null);
   const [aiFillingInfo, setAiFillingInfo] = useState(false);
   const [aiFillError, setAiFillError] = useState("");
-  const [priceSuggestLang, setPriceSuggestLang] = useState("en");
-  const [suggestingPrice, setSuggestingPrice] = useState(false);
-  const [priceSuggestError, setPriceSuggestError] = useState("");
-  const [priceSuggestion, setPriceSuggestion] = useState(null);
   const [aiFilledFields, setAiFilledFields] = useState(() => new Set()); // AI가 채운 뒤 아직 사용자가 손대지 않은 필드
   const [translating, setTranslating] = useState(false);
   const [translateError, setTranslateError] = useState(null);
@@ -700,44 +740,6 @@ export default function MarketingMaterialCreator() {
     }
   };
 
-  // Shopee 입점 페이지의 "AI 적정가 추천"과 같은 백엔드(/price-suggestion)를 재사용한다 —
-  // target_market이 이미지 언어(en/vi/th)와 같은 코드 체계라 그대로 맞는다.
-  const handleSuggestPrice = async () => {
-    if (!preview.productName.trim()) {
-      setPriceSuggestError("상품명을 먼저 입력해주세요.");
-      return;
-    }
-    setSuggestingPrice(true);
-    setPriceSuggestError("");
-    setPriceSuggestion(null);
-    try {
-      const res = await fetch(`${BACKEND_URL}/price-suggestion`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          product_name: preview.productName,
-          description: preview.description,
-          krw_price: preview.price,
-          target_market: priceSuggestLang,
-        }),
-      });
-      if (!res.ok) throw new Error(await readErrorMessage(res, "가격 추천에 실패했습니다."));
-      const data = await res.json();
-      setPriceSuggestion(data);
-    } catch (err) {
-      setPriceSuggestError(err.message || "가격 추천에 실패했습니다.");
-    } finally {
-      setSuggestingPrice(false);
-    }
-  };
-
-  const applyPriceSuggestion = () => {
-    if (!priceSuggestion) return;
-    setPreview((p) => ({ ...p, price: `${priceSuggestion.suggestedPrice} ${priceSuggestion.currency}` }));
-    setAiFilledFields((prev) => new Set(prev).add("price"));
-    setPriceSuggestion(null);
-  };
-
   const handleFileChange = (e) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
@@ -814,11 +816,17 @@ export default function MarketingMaterialCreator() {
     setGenerateError("");
     try {
       const template = mc.templates.items.find((t) => t.id === activeTemplate);
+      // 카드뉴스/럭셔리&프리미엄 포스터는 Gemini가 문구를 이미지 픽셀에 직접 그려 넣는데, 이 모델은
+      // 한글 글자를 깨뜨려서 그린다. 사용자가 언어를 따로 고르지 않았으면(=한국어 그대로 생성) 화면
+      // 입력값은 한국어로 그대로 두되, AI에게 넘기는 문구만 조용히 영어로 번역해서 보낸다.
+      const bakesTextIntoImage =
+        template?.layout === "card-news" || (template?.layout === "poster" && activeTemplate === "tpl-poster-luxury");
+      const genLang = lang || (bakesTextIntoImage ? "en" : null);
 
       let genPreview = preview;
-      if (lang) {
+      if (genLang) {
         try {
-          const { nextPreview } = await applyTranslation(lang, preview, null, spec);
+          const { nextPreview } = await applyTranslation(genLang, preview, null, spec);
           genPreview = nextPreview;
         } catch (err) {
           setTranslateError(err.message);
@@ -848,7 +856,9 @@ export default function MarketingMaterialCreator() {
       const data = await res.json();
 
       let finalResult = data;
-      let previewSnapshot = genPreview;
+      // lang(사용자가 명시적으로 고른 언어)일 때만 번역된 genPreview를 기록/표시에 쓴다 — bakesTextIntoImage로
+      // 조용히 번역한 경우는 화면에 보여줄 일이 없는 내부용이라, 기록은 사용자가 실제로 본 한국어 원문으로 남긴다.
+      let previewSnapshot = lang ? genPreview : preview;
       let specSnapshot = spec;
 
       if (lang) {
@@ -876,7 +886,7 @@ export default function MarketingMaterialCreator() {
 
       setGeneratedResult(finalResult);
       pushVersion(finalResult, previewSnapshot, specSnapshot);
-      (finalResult.images || []).forEach((img) => addImage(img.url, `${genPreview.productName} - ${img.slot}`));
+      (finalResult.images || []).forEach((img) => addImage(img.url, `${previewSnapshot.productName} - ${img.slot}`));
     } catch (err) {
       setGenerateError(err.message || "이미지 생성에 실패했습니다.");
     } finally {
@@ -1024,11 +1034,13 @@ export default function MarketingMaterialCreator() {
   // 기억해뒀다가 handleGenerate에서 그 언어로 바로 생성하고, 이미 이미지가 있으면 지금
   // 바로 문구만 번역해서 바꿔친다.
   const runTranslate = async (langCode) => {
-    // 럭셔리&프리미엄은 AI가 문구를 이미지 안에 직접 그려 넣기 때문에, 언어를 바꾸거나 원래
-    // 언어(한국어)로 되돌릴 때 오버레이만 바꿔치기해서는 이미지 속 글자가 바뀌지 않는다 —
-    // 이미 생성된 이미지가 있으면 그 언어로 다시 생성해야 한다.
-    const isLuxuryPoster = activeTemplate === "tpl-poster-luxury";
-    if (generatedResult && isLuxuryPoster) {
+    // 카드뉴스/럭셔리&프리미엄 포스터는 AI가 문구를 이미지 안에 직접 그려 넣기 때문에, 언어를
+    // 바꾸거나 원래 언어(한국어)로 되돌릴 때 오버레이만 바꿔치기해서는 이미지 속 글자가 바뀌지
+    // 않는다 — 이미 생성된 이미지가 있으면 그 언어로 다시 생성해야 한다.
+    const template = mc.templates.items.find((t) => t.id === activeTemplate);
+    const bakesTextIntoImage =
+      template?.layout === "card-news" || (template?.layout === "poster" && activeTemplate === "tpl-poster-luxury");
+    if (generatedResult && bakesTextIntoImage) {
       await runGenerate(langCode === "ko" ? null : langCode);
       return;
     }
@@ -1260,7 +1272,9 @@ export default function MarketingMaterialCreator() {
                         {aiFilledFields.has("description") && <AiFilledHint />}
                       </label>
                       <label className="block">
-                        <FieldLabel>가격</FieldLabel>
+                        <FieldLabel>
+                          가격 <span className="font-normal text-slate-400">(KRW, 원)</span>
+                        </FieldLabel>
                         <input
                           className={`${aiFilledFieldClass(aiFilledFields.has("price"))} h-10`}
                           value={preview.price}
@@ -1268,58 +1282,7 @@ export default function MarketingMaterialCreator() {
                           placeholder={mc.preview.price}
                         />
                         {aiFilledFields.has("price") && <AiFilledHint />}
-                        <div className="mt-2 flex flex-wrap items-center gap-2">
-                          <select
-                            value={priceSuggestLang}
-                            onChange={(e) => setPriceSuggestLang(e.target.value)}
-                            className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-700 focus:border-brand-600 focus:outline-none"
-                          >
-                            {TRANSLATE_LANGUAGES.map((lang) => (
-                              <option key={lang.code} value={lang.code}>
-                                {lang.label}
-                              </option>
-                            ))}
-                          </select>
-                          <Button
-                            type="button"
-                            variant="outlineBrand"
-                            className="px-3 py-1.5 text-xs"
-                            onClick={handleSuggestPrice}
-                            disabled={suggestingPrice}
-                          >
-                            <Icon name="sparkle" className="w-3.5 h-3.5" />
-                            {suggestingPrice ? "추천받는 중..." : "AI 가격 추천"}
-                          </Button>
-                        </div>
-                        {priceSuggestError && (
-                          <p className="mt-1.5 text-xs font-medium text-red-500">{priceSuggestError}</p>
-                        )}
-                        {priceSuggestion && (
-                          <div className="mt-2 rounded-md border border-brand-200 bg-brand-50 p-3">
-                            <p className="text-sm font-bold text-brand-700">
-                              {priceSuggestion.suggestedPrice} {priceSuggestion.currency}
-                            </p>
-                            <p className="mt-1 text-xs leading-relaxed text-slate-600">{priceSuggestion.reasoning}</p>
-                            <div className="mt-2 flex gap-2">
-                              <Button
-                                type="button"
-                                variant="secondary"
-                                className="px-3 py-1.5 text-xs"
-                                onClick={applyPriceSuggestion}
-                              >
-                                이 가격 적용하기
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="secondary"
-                                className="px-3 py-1.5 text-xs"
-                                onClick={() => setPriceSuggestion(null)}
-                              >
-                                닫기
-                              </Button>
-                            </div>
-                          </div>
-                        )}
+                        <PriceConverter krwValue={preview.price} onApply={(v) => setPreview((p) => ({ ...p, price: v }))} />
                       </label>
                       <label className="block">
                         <FieldLabel>꼭 들어갔으면 하는 사진</FieldLabel>

@@ -1,3 +1,4 @@
+import base64
 import io
 import json
 import os
@@ -5,38 +6,53 @@ import re
 import subprocess
 import tempfile
 import uuid
-import xml.etree.ElementTree as ET
 from urllib.parse import quote
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-import httpx
+import bcrypt
+import jwt
+import psycopg2
+import psycopg2.extras
 import pymupdf
 from docx import Document
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
+from fastapi import Body, FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from google import genai
+from google.cloud import documentai_v1 as documentai, pubsub_v1, translate_v3 as translate
+from google.cloud import storage as gcs_sdk
 from google.genai import types
 from pydantic import BaseModel
-from supabase import Client, create_client
 
 from fill_docx import apply_blank_field, detect_blank_candidates, extract_docx_fields, fill_document
 
 load_dotenv()
 
-SUPABASE_URL = os.environ["SUPABASE_URL"]
-SUPABASE_SERVICE_ROLE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
-DATA_GO_KR_TRADE_SERVICE_KEY = os.environ["DATA_GO_KR_TRADE_SERVICE_KEY"]
 # 모든 Gemini 호출은 Developer API 키가 아니라 Vertex AI를 통해 이뤄진다.
 # GOOGLE_APPLICATION_CREDENTIALS(서비스 계정 키 경로)는 google-auth ADC가 자동으로 읽는다.
 VERTEX_AI_PROJECT_ID = os.environ["VERTEX_AI_PROJECT_ID"]
 VERTEX_AI_LOCATION = os.environ.get("VERTEX_AI_LOCATION", "us-central1")
 IMAGE_GEN_MODEL = os.environ.get("IMAGE_GEN_MODEL", "gemini-2.5-flash-image")
+# 실제 전북/전국 수출지원사업 서식 56개(필드 460개)로 파인튜닝한 모델. 검증셋 기준
+# field_key 정확일치율이 46.7% -> 95.5%로 개선됨 (backend/finetune_data 참고).
+# 설정 안 돼있으면 베이스 모델로 자동 폴백.
+TUNED_BLANK_CANDIDATE_MODEL = os.environ.get("TUNED_BLANK_CANDIDATE_MODEL", "gemini-2.5-flash")
+# 공고 원문(reference-doc)에서 기본 정보를 뽑을 때 1단계 OCR로 쓰는 Document AI 프로세서.
+# GCP 콘솔에서 "Document OCR" 프로세서를 만들고 그 processor ID를 넣어야 동작한다.
+DOCUMENT_AI_LOCATION = os.environ.get("DOCUMENT_AI_LOCATION", "us")
+DOCUMENT_AI_PROCESSOR_ID = os.environ.get("DOCUMENT_AI_PROCESSOR_ID")
+# 회원/로그인(계정)과 businesses/templates/template_fields/submissions/submission_values/
+# generated_documents/notifications/bookmarks 전부 Cloud SQL(PostgreSQL)에 있다. Supabase는
+# 더 이상 쓰지 않는다.
+CLOUD_SQL_HOST = os.environ["CLOUD_SQL_HOST"]
+CLOUD_SQL_DB = os.environ["CLOUD_SQL_DB"]
+CLOUD_SQL_USER = os.environ["CLOUD_SQL_USER"]
+CLOUD_SQL_PASSWORD = os.environ["CLOUD_SQL_PASSWORD"]
 
-TEMPLATES_BUCKET = "templates"
-GENERATED_BUCKET = "generated"
+TEMPLATES_BUCKET = os.environ.get("GCS_TEMPLATES_BUCKET", "team-01-504502-templates")
+GENERATED_BUCKET = os.environ.get("GCS_GENERATED_BUCKET", "team-01-504502-generated")
 AI_FIELD_TYPES = {"long_text", "checkbox"}
 VALID_FIELD_TYPES = {"text", "number", "date", "select", "checkbox", "textarea", "long_text"}
 
@@ -74,10 +90,246 @@ VIETNAM_APPLICATION_FIELDS = [
     {"field_key": "company_intro_en", "field_label": "기업 소개(영문)", "field_type": "long_text", "options": None},
 ]
 
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+class _GCSBucketProxy:
+    """Supabase Storage 클라이언트(list/upload/update/download/remove/create_signed_url)와
+    동일한 인터페이스를 Cloud Storage 위에 구현한 어댑터. 파일 저장소를 Supabase Storage에서
+    GCS로 옮기면서, 호출부 코드(수십 곳)는 그대로 두고 클라이언트만 이걸로 바꿔치기한다."""
+
+    def __init__(self, bucket_name: str):
+        self._bucket = _gcs_client.bucket(bucket_name)
+
+    def list(self, folder: str):
+        prefix = f"{folder}/" if folder else ""
+        items = []
+        for blob in _gcs_client.list_blobs(self._bucket, prefix=prefix):
+            name = blob.name[len(prefix):]
+            if not name or "/" in name:
+                continue  # 하위 폴더 항목은 제외 - Supabase list()도 해당 폴더 직속 항목만 반환한다.
+            items.append({
+                "id": blob.name,
+                "name": name,
+                "created_at": blob.time_created.isoformat() if blob.time_created else "",
+            })
+        return items
+
+    def create_signed_url(self, path: str, expires_in: int = 3600):
+        url = self._bucket.blob(path).generate_signed_url(
+            version="v4", expiration=timedelta(seconds=expires_in), method="GET"
+        )
+        return {"signedURL": url}
+
+    def remove(self, paths):
+        for p in paths:
+            try:
+                self._bucket.blob(p).delete()
+            except Exception:
+                pass
+
+    def upload(self, path: str, data: bytes, options: dict | None = None):
+        content_type = (options or {}).get("content-type", "application/octet-stream")
+        self._bucket.blob(path).upload_from_string(data, content_type=content_type)
+
+    def update(self, path: str, data: bytes, options: dict | None = None):
+        self.upload(path, data, options)
+
+    def download(self, path: str) -> bytes:
+        return self._bucket.blob(path).download_as_bytes()
+
+
+class _GCSStorageClient:
+    def from_(self, bucket_name: str) -> _GCSBucketProxy:
+        return _GCSBucketProxy(bucket_name)
+
+
+_gcs_client = gcs_sdk.Client()
+gcs = _GCSStorageClient()
+
+
+def _pg_connect():
+    conn = psycopg2.connect(
+        host=CLOUD_SQL_HOST, port=5432, dbname=CLOUD_SQL_DB,
+        user=CLOUD_SQL_USER, password=CLOUD_SQL_PASSWORD, sslmode="require",
+    )
+    conn.autocommit = True
+    return conn
+
+
+_pg_conn = _pg_connect()
+
+
+def _pg_value(v):
+    """dict/list 값은 jsonb 컬럼에 넣을 수 있게 Json으로 감싼다. 그 외 값은 그대로 psycopg2에 맡긴다."""
+    if isinstance(v, (dict, list)):
+        return psycopg2.extras.Json(v)
+    return v
+
+
+def _pg_row(row: dict | None) -> dict | None:
+    """datetime 값을 Supabase 클라이언트와 동일하게 ISO 문자열로 바꾼다 (그 외 타입은 psycopg2가
+    이미 Supabase와 같은 파이썬 타입으로 반환한다: uuid/text->str, jsonb->dict/list, bool->bool)."""
+    if row is None:
+        return None
+    for k, v in row.items():
+        if isinstance(v, datetime):
+            row[k] = v.isoformat()
+    return row
+
+
+class _PgResult:
+    def __init__(self, data):
+        self.data = data
+
+
+class _PgQuery:
+    """Supabase Python 클라이언트(postgrest)의 체이닝 인터페이스 중 이 프로젝트가 실제로 쓰는
+    부분(select/insert/update/delete/eq/in_/order/limit/maybe_single/single/execute/.data)만
+    Cloud SQL(psycopg2) 위에 구현한 어댑터. 호출부 코드(80여 곳)는 그대로 두고 클라이언트
+    객체만 supabase -> db로 바꿔치기하기 위한 것이다."""
+
+    def __init__(self, table: str):
+        self._table = table
+        self._op = None
+        self._columns = "*"
+        self._payload = None
+        self._filters = []  # (column, "eq"|"in", value)
+        self._order_col = None
+        self._order_desc = False
+        self._limit_n = None
+        self._single_mode = None  # None | "maybe_single" | "single"
+
+    def select(self, columns: str = "*"):
+        self._op = self._op or "select"
+        self._columns = columns
+        return self
+
+    def insert(self, payload):
+        self._op = "insert"
+        self._payload = payload
+        return self
+
+    def update(self, payload):
+        self._op = "update"
+        self._payload = payload
+        return self
+
+    def delete(self):
+        self._op = "delete"
+        return self
+
+    def eq(self, column: str, value):
+        self._filters.append((column, "eq", value))
+        return self
+
+    def in_(self, column: str, values):
+        self._filters.append((column, "in", list(values)))
+        return self
+
+    def order(self, column: str, desc: bool = False):
+        self._order_col = column
+        self._order_desc = desc
+        return self
+
+    def limit(self, n: int):
+        self._limit_n = n
+        return self
+
+    def maybe_single(self):
+        self._single_mode = "maybe_single"
+        return self
+
+    def single(self):
+        self._single_mode = "single"
+        return self
+
+    def _where(self):
+        if not self._filters:
+            return "", []
+        clauses, params = [], []
+        for column, op, value in self._filters:
+            if op == "eq":
+                clauses.append(f'"{column}" = %s')
+                params.append(_pg_value(value))
+            elif op == "in":
+                if not value:
+                    clauses.append("FALSE")
+                else:
+                    # uuid/text 등 컬럼 타입을 몰라도 안전하게 비교하기 위해 컬럼을 text로 캐스팅한다.
+                    clauses.append(f'"{column}"::text = ANY(%s)')
+                    params.append([str(_pg_value(v)) for v in value])
+        return " WHERE " + " AND ".join(clauses), params
+
+    def execute(self):
+        where_sql, where_params = self._where()
+        with _pg_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            if self._op == "select":
+                sql = f'SELECT {self._columns} FROM "{self._table}"{where_sql}'
+                if self._order_col:
+                    sql += f' ORDER BY "{self._order_col}" {"DESC" if self._order_desc else "ASC"}'
+                if self._limit_n is not None:
+                    sql += f" LIMIT {int(self._limit_n)}"
+                cur.execute(sql, where_params)
+                rows = [_pg_row(dict(r)) for r in cur.fetchall()]
+                if self._single_mode:
+                    return _PgResult(rows[0] if rows else None)
+                return _PgResult(rows)
+
+            if self._op == "insert":
+                rows_in = self._payload if isinstance(self._payload, list) else [self._payload]
+                inserted = []
+                for row in rows_in:
+                    cols = list(row.keys())
+                    col_sql = ", ".join(f'"{c}"' for c in cols)
+                    placeholders = ", ".join(["%s"] * len(cols))
+                    vals = [_pg_value(row[c]) for c in cols]
+                    cur.execute(f'INSERT INTO "{self._table}" ({col_sql}) VALUES ({placeholders}) RETURNING *', vals)
+                    inserted.append(_pg_row(dict(cur.fetchone())))
+                return _PgResult(inserted)
+
+            if self._op == "update":
+                set_cols = list(self._payload.keys())
+                set_sql = ", ".join(f'"{c}" = %s' for c in set_cols)
+                set_vals = [_pg_value(self._payload[c]) for c in set_cols]
+                cur.execute(f'UPDATE "{self._table}" SET {set_sql}{where_sql} RETURNING *', set_vals + where_params)
+                rows = [_pg_row(dict(r)) for r in cur.fetchall()]
+                return _PgResult(rows)
+
+            if self._op == "delete":
+                cur.execute(f'DELETE FROM "{self._table}"{where_sql}', where_params)
+                return _PgResult(None)
+
+            raise RuntimeError("execute() 전에 select/insert/update/delete 중 하나를 호출해야 합니다.")
+
+
+class _PgClient:
+    def table(self, name: str) -> _PgQuery:
+        return _PgQuery(name)
+
+
+db = _PgClient()
 gemini_client = genai.Client(vertexai=True, project=VERTEX_AI_PROJECT_ID, location=VERTEX_AI_LOCATION)
-market_gemini_client = gemini_client
 vertex_image_client = gemini_client
+document_ai_client = documentai.DocumentProcessorServiceClient(
+    client_options={"api_endpoint": f"{DOCUMENT_AI_LOCATION}-documentai.googleapis.com"}
+)
+translate_client = translate.TranslationServiceClient(transport="rest")
+TRANSLATE_PARENT = f"projects/{VERTEX_AI_PROJECT_ID}/locations/global"
+
+# 서류 승인/반려, 마감 임박 알림을 Pub/Sub 이벤트로 발행한다 - 발행 쪽(이 백엔드)과 실제 알림
+# 생성 쪽(/pubsub/* 구독 엔드포인트)을 분리해서, 나중에 Cloud Run에 배포하면 Pub/Sub가 그 둘을
+# 이어준다. 로컬 개발 중에는 토픽이 없거나 권한이 없어도 앱이 죽지 않도록 발행은 항상 best-effort로
+# 처리한다(발행 실패가 서류 상태 변경 자체를 막으면 안 되기 때문).
+pubsub_publisher = pubsub_v1.PublisherClient()
+SUBMISSION_EVENTS_TOPIC = pubsub_publisher.topic_path(
+    VERTEX_AI_PROJECT_ID, os.environ.get("PUBSUB_SUBMISSION_EVENTS_TOPIC", "submission-events")
+)
+
+
+def publish_event(topic_path: str, payload: dict):
+    try:
+        pubsub_publisher.publish(topic_path, json.dumps(payload).encode("utf-8")).result(timeout=10)
+    except Exception as e:
+        print(f"[pubsub] 이벤트 발행 실패 ({topic_path}): {e}")
+
 
 def friendly_ai_error(e: Exception) -> str:
     """Gemini API 에러를 사용자에게 보여줘도 되는 한국어 메시지로 바꾼다. 특히 무료 티어
@@ -135,7 +387,31 @@ CHATBOT_SYSTEM_PROMPT = """당신은 전북 지역 수출지원사업 공고를 
 
 예시:
 사용자: 이번 수출바우처 공고 접수기간이랑 지원대상 알려줘
-AI: 접수기간은 2026년 3월 1일부터 31일까지고요, 수출 초보·유망 중소기업이면 신청하실 수 있어요. 자세한 건 전북경제통상진흥원 수출지원팀으로 문의하시면 됩니다. 혹시 더 궁금하신 정보 있으신가요?"""
+AI: 접수기간은 2026년 3월 1일부터 31일까지고요, 수출 초보·유망 중소기업이면 신청하실 수 있어요. 자세한 건 전북경제통상진흥원 수출지원팀으로 문의하시면 됩니다. 혹시 더 궁금하신 정보 있으신가요?
+
+아래 [등록된 공고 목록]에 없는 공고나 항목을 물어보면, 안다고 지어내지 말고 목록에 없다고
+솔직히 말한 뒤 담당 기관에 직접 문의해보라고 안내하세요."""
+
+
+def fetch_business_context() -> str:
+    """챗봇이 실제 공고 데이터에 근거해 답하도록, 등록된 공고들의 기본 정보(주관기관/접수기간/
+    지원대상/지원내용/문의처)를 프롬프트에 넣을 텍스트로 요약한다. 공고 수가 적어(전북 지역 한정)
+    벡터 검색 없이 전체를 프롬프트에 그대로 넣는다."""
+    rows = (
+        db.table("businesses").select("name,basic_info").order("created_at", desc=True).execute().data
+        or []
+    )
+    lines = []
+    for row in rows:
+        info = row.get("basic_info") or {}
+        if not any((info.get(k) or "").strip() for k in ("org", "period", "target", "support", "contact")):
+            continue
+        lines.append(
+            f"- {row['name']} | 주관기관: {info.get('org', '')} | 접수기간: {info.get('period', '')} "
+            f"| 지원대상: {info.get('target', '')} | 지원내용: {info.get('support', '')} "
+            f"| 문의처: {info.get('contact', '')}"
+        )
+    return "\n".join(lines)
 
 
 @app.post("/chat")
@@ -143,7 +419,9 @@ def chat(req: ChatRequest):
     history_text = "\n".join(
         f"{'사용자' if h.role == 'user' else 'AI'}: {h.message}" for h in req.history[-6:]
     )
-    prompt = f"{CHATBOT_SYSTEM_PROMPT}\n\n{history_text}\n사용자: {req.message}\nAI:"
+    business_context = fetch_business_context()
+    context_block = f"[등록된 공고 목록]\n{business_context}" if business_context else "[등록된 공고 목록]\n(현재 등록된 공고 정보 없음)"
+    prompt = f"{CHATBOT_SYSTEM_PROMPT}\n\n{context_block}\n\n{history_text}\n사용자: {req.message}\nAI:"
 
     response = gemini_client.models.generate_content(
         model="gemini-2.5-flash",
@@ -152,352 +430,161 @@ def chat(req: ChatRequest):
     return {"answer": (response.text or "").strip()}
 
 
-FAQ_SUGGEST_PROMPT = """당신은 GLOTIZ(전북 소상공인의 해외 수출을 돕는 서비스: 수출지원사업 매칭,
-서류 자동작성·번역, AI 마케팅 이미지 생성, 쇼피 등 해외 플랫폼 입점 가이드 제공) 고객지원 담당자입니다.
-
-이 서비스를 처음 쓰는 소상공인 사장님이 가장 헷갈려하거나 어려워할 만한 질문 5개를 스스로 떠올려서,
-자주 묻는 질문(FAQ) 형태로 만들어주세요. 각 답변은 2문장 이내로 친절하고 구체적으로 작성하세요.
-"""
-
-
-@app.get("/faq/suggest")
-def suggest_faq():
-    """고객지원 페이지의 '자주 묻는 질문'을, 사용자가 가장 어려워할 만한 주제로 AI가 스스로
-    골라 채운다. 실패하면 프런트에서 mockData의 고정 FAQ로 대체한다."""
-    try:
-        response = gemini_client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=FAQ_SUGGEST_PROMPT,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema={
-                    "type": "ARRAY",
-                    "items": {
-                        "type": "OBJECT",
-                        "properties": {
-                            "question": {"type": "STRING"},
-                            "answer": {"type": "STRING"},
-                        },
-                        "required": ["question", "answer"],
-                    },
-                },
-            ),
-        )
-        faqs = json.loads(response.text)
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"FAQ 추천에 실패했습니다: {friendly_ai_error(e)}")
-    return {"faqs": faqs}
+# --- 회원가입/로그인 (Cloud SQL + JWT) ---
+# 원래는 Supabase Auth를 썼지만, 로그인/계정도 Cloud SQL로 옮겼다. 이 프로젝트 GCP 계정에
+# Identity Platform/Firebase를 붙이려면 콘솔에서 한 번 약관 동의를 해야 하는데(Firebase
+# Management API가 "the caller does not have permission"로 막음 - 브라우저 로그인이 필요해서
+# 이 세션에선 넘을 수 없었다) 그래서 자체 JWT 발급 방식으로 구현했다. bcrypt로 비밀번호를
+# 해시하고, HS256 JWT를 발급해서 Authorization: Bearer로 검증한다.
+AUTH_JWT_SECRET = os.environ["AUTH_JWT_SECRET"]
+AUTH_TOKEN_TTL_DAYS = 30
 
 
-# --- 시장 분석: 관세청 품목별 국가별 수출입실적(GW) 연동 + Gemini 코멘터리 ---
-
-TRADE_API_URL = "https://apis.data.go.kr/1220000/nitemtrade/getNitemtradeList"
-
-MARKET_CATEGORIES = {
-    "cosmetics": {"label": "화장품", "hsCode": "3304.99", "hsSgn": "330499"},
-    "food": {"label": "식품", "hsCode": "2106.90", "hsSgn": "210690"},
-    "electronics": {"label": "전자기기", "hsCode": "8517.62", "hsSgn": "851762"},
-    "fashion": {"label": "패션잡화", "hsCode": "4202.92", "hsSgn": "420292"},
-    "household": {"label": "생활용품", "hsCode": "3924.90", "hsSgn": "392490"},
-}
-
-MARKET_COUNTRIES = {
-    "베트남": "VN",
-    "태국": "TH",
-    "인도네시아": "ID",
-    "필리핀": "PH",
-    "말레이시아": "MY",
-    "싱가포르": "SG",
-}
-
-MARKET_QUARTERS = {
-    "q1": {"label": "1분기 (1~3월)", "months": [1, 2, 3]},
-    "q2": {"label": "2분기 (4~6월)", "months": [4, 5, 6]},
-    "q3": {"label": "3분기 (7~9월)", "months": [7, 8, 9]},
-    "q4": {"label": "4분기 (10~12월)", "months": [10, 11, 12]},
-}
-
-MONTH_LABELS = [f"{m}월" for m in range(1, 13)]
-
-
-class MarketAnalysisRequest(BaseModel):
-    query: str
-    category_id: str
-    country_ids: list[str]
-    quarter_ids: list[str]
-
-
-def fetch_trade_stats(hs_sgn: str, cnty_cd: str, strt_yymm: str, end_yymm: str) -> list[dict]:
-    """관세청_품목별 국가별 수출입실적(GW) API를 호출해 월별 {month, exp_dlr} 목록을 반환한다.
-    API 실패/무응답 시에는 예외를 던지지 않고 빈 목록을 반환한다 (다른 국가 조회는 계속 진행되어야 하므로)."""
-    url = (
-        f"{TRADE_API_URL}?serviceKey={DATA_GO_KR_TRADE_SERVICE_KEY}"
-        f"&strtYymm={strt_yymm}&endYymm={end_yymm}&hsSgn={hs_sgn}&cntyCd={cnty_cd}"
-    )
-    try:
-        resp = httpx.get(url, timeout=10)
-        resp.raise_for_status()
-        root = ET.fromstring(resp.text)
-    except (httpx.HTTPError, ET.ParseError):
-        return []
-
-    result_code = root.findtext(".//resultCode")
-    if result_code not in (None, "00", "0"):
-        return []
-
-    rows = []
-    for item in root.iter("item"):
-        year_month = (item.findtext("year") or "").strip()  # 예: "2025.09"
-        try:
-            month = int(year_month.split(".")[1])
-            exp_dlr = int(item.findtext("expDlr") or "0")
-        except (IndexError, ValueError):
-            continue
-        rows.append({"month": month, "exp_dlr": exp_dlr})
-    return rows
-
-
-def _shift_yymm(year: int, month: int, delta_months: int) -> tuple[int, int]:
-    idx = year * 12 + (month - 1) + delta_months
-    return idx // 12, idx % 12 + 1
-
-
-def trailing_12_month_range() -> tuple[str, str]:
-    """관세청 통계는 약 15일 지연으로 확정되므로, 최신 확정 월부터 과거 12개월을 조회 범위로 잡는다."""
-    now = datetime.now(timezone.utc)
-    end_year, end_month = _shift_yymm(now.year, now.month, -2)
-    start_year, start_month = _shift_yymm(end_year, end_month, -11)
-    return f"{start_year:04d}{start_month:02d}", f"{end_year:04d}{end_month:02d}"
-
-
-def build_hs_code_prompt(query, category_label, default_hs_sgn):
-    return f"""당신은 한국 관세청 수출입무역통계에서 쓰이는 HS 품목분류 전문가입니다.
-아래 상품을 관세청 수출입무역통계(HS 6단위 기준)로 조회하려고 합니다. 이 상품에 가장 적합한 HS 6자리 코드를 알려주세요.
-
-검색 상품명: {query}
-참고 카테고리: {category_label}
-참고 카테고리의 기본 HS 6자리 코드: {default_hs_sgn}
-
-규칙:
-- hsSgn은 반드시 숫자 6자리 문자열이어야 합니다 (점 없이, 예: "210390").
-- 상품명이 너무 모호하거나 적합한 HS코드를 확신할 수 없으면 참고 카테고리의 기본 코드를 그대로 반환하세요.
-"""
-
-
-def infer_hs_code(query, category_label, default_hs_sgn, default_hs_code):
-    """검색어에 맞는 HS 6자리 코드를 Gemini로 추론한다. 실패/이상값이면 카테고리 기본 코드로 폴백한다."""
-    try:
-        response = market_gemini_client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=build_hs_code_prompt(query, category_label, default_hs_sgn),
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema={
-                    "type": "OBJECT",
-                    "properties": {"hsSgn": {"type": "STRING"}},
-                    "required": ["hsSgn"],
-                },
-            ),
-        )
-        hs_sgn = "".join(ch for ch in json.loads(response.text).get("hsSgn", "") if ch.isdigit())
-        if len(hs_sgn) == 6:
-            return hs_sgn, f"{hs_sgn[:4]}.{hs_sgn[4:6]}"
-    except Exception:
-        pass
-    return default_hs_sgn, default_hs_code
-
-
-def build_market_analysis_prompt(query, category_label, hs_code, country_label, quarter_label, chart_data, has_data):
-    monthly_lines = "\n".join(f"- {d['month']}: {d['value']:,} 달러" for d in chart_data)
-    data_note = (
-        ""
-        if has_data
-        else "\n(주의: 해당 조건의 관세청 수출 실적 데이터가 조회되지 않았습니다. "
-        "데이터가 부족하다는 점을 감안해 단정적인 수치 언급 없이 일반적인 시장 정보 위주로 신중하게 서술하세요.)"
-    )
-    return f"""당신은 전북 소상공인의 해외 수출을 돕는 시장 분석 AI입니다.
-아래는 관세청 수출입무역통계에서 조회한 최근 12개월 실제 수출금액(달러) 데이터입니다.
-
-검색 상품: {query}
-품목 카테고리: {category_label} (HS코드 {hs_code} 기준으로 조회함)
-대상 국가: {country_label}
-분석 분기: {quarter_label}
-
-[월별 수출금액]
-{monthly_lines}
-{data_note}
-
-위 실제 데이터를 근거로 아래를 작성하세요:
-1. headline: "{query}"과(와) {country_label}, {quarter_label} 시장 상황을 한 문장으로 요약 (실제 수치 흐름을 반영)
-2. body: 월별 수출 데이터 흐름을 근거로 한 2~3문장의 분석
-3. keyMarketDrivers: 이 시장 진출에 참고할 핵심 동인 3가지. 각각 icon(growth/checkCircle/truck/globe/sparkle/analysis 중 선택), title(10자 내외), description(1~2문장)
-
-모두 한국어로, 실제 데이터에 근거해 과장 없이 작성하세요.
-"""
-
-
-def call_gemini_market_analysis(query, category_label, hs_code, country_label, quarter_label, chart_data, has_data):
-    prompt = build_market_analysis_prompt(query, category_label, hs_code, country_label, quarter_label, chart_data, has_data)
-
-    response = market_gemini_client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-            response_schema={
-                "type": "OBJECT",
-                "properties": {
-                    "headline": {"type": "STRING"},
-                    "body": {"type": "STRING"},
-                    "keyMarketDrivers": {
-                        "type": "ARRAY",
-                        "items": {
-                            "type": "OBJECT",
-                            "properties": {
-                                "icon": {
-                                    "type": "STRING",
-                                    "enum": ["growth", "checkCircle", "truck", "globe", "sparkle", "analysis"],
-                                },
-                                "title": {"type": "STRING"},
-                                "description": {"type": "STRING"},
-                            },
-                            "required": ["icon", "title", "description"],
-                        },
-                    },
-                },
-                "required": ["headline", "body", "keyMarketDrivers"],
-            },
-        ),
-    )
-    return json.loads(response.text)
-
-
-@app.post("/market-analysis")
-def market_analysis(req: MarketAnalysisRequest):
-    query = (req.query or "").strip() or "이 상품"
-    category_id = req.category_id if req.category_id in MARKET_CATEGORIES else "cosmetics"
-    category = MARKET_CATEGORIES[category_id]
-
-    is_all_countries = not req.country_ids or "all" in req.country_ids
-    country_labels = (
-        list(MARKET_COUNTRIES.keys())
-        if is_all_countries
-        else [c for c in req.country_ids if c in MARKET_COUNTRIES] or list(MARKET_COUNTRIES.keys())
-    )
-    country_label = "동남아시아 전역" if is_all_countries else "·".join(country_labels)
-
-    selected_quarter_ids = [q for q in req.quarter_ids if q in MARKET_QUARTERS] or ["q1"]
-    selected_quarters = [{"id": q, **MARKET_QUARTERS[q]} for q in selected_quarter_ids]
-    is_all_quarters = len(selected_quarters) == len(MARKET_QUARTERS)
-    quarter_label = (
-        "전체(연중)" if is_all_quarters else ", ".join(q["label"].split(" ")[0] for q in selected_quarters)
-    )
-    highlighted_months = {m for q in selected_quarters for m in q["months"]}
-
-    hs_sgn, hs_code = infer_hs_code(query, category["label"], category["hsSgn"], category["hsCode"])
-
-    strt_yymm, end_yymm = trailing_12_month_range()
-
-    month_totals = {m: 0 for m in range(1, 13)}
-    has_data = False
-    for label in country_labels:
-        for row in fetch_trade_stats(hs_sgn, MARKET_COUNTRIES[label], strt_yymm, end_yymm):
-            month_totals[row["month"]] += row["exp_dlr"]
-            has_data = True
-
-    chart_data = [
-        {"month": MONTH_LABELS[m - 1], "value": month_totals[m], "highlighted": m in highlighted_months}
-        for m in range(1, 13)
-    ]
-
-    try:
-        narrative = call_gemini_market_analysis(query, category["label"], hs_code, country_label, quarter_label, chart_data, has_data)
-    except Exception:
-        narrative = {
-            "headline": f'"{query}"의 {country_label} {quarter_label} 수출 동향',
-            "body": "AI 코멘터리 생성 중 오류가 발생했습니다. 아래 월별 수출 데이터를 참고해주세요.",
-            "keyMarketDrivers": [
-                {
-                    "icon": "analysis",
-                    "title": "수출 데이터 직접 확인",
-                    "description": "AI 코멘터리 생성에 실패했습니다. 아래 월별 수출 그래프를 참고해 직접 흐름을 확인해보세요.",
-                },
-                {
-                    "icon": "globe",
-                    "title": "현지 시장 조사 권장",
-                    "description": f"{country_label} 현지 소비 트렌드·인증 요건은 KOTRA 등 별도 채널에서 추가로 확인해보세요.",
-                },
-                {
-                    "icon": "checkCircle",
-                    "title": "잠시 후 다시 시도",
-                    "description": "AI 분석 서버가 일시적으로 응답하지 않았습니다. 잠시 후 다시 검색하면 정상적으로 표시됩니다.",
-                },
-            ],
-        }
-
-    return {
-        "query": query,
-        "category": {"id": category_id, "label": category["label"], "hsCode": category["hsCode"]},
-        "productHsCode": hs_code,
-        "countries": country_labels,
-        "countryLabel": country_label,
-        "quarters": selected_quarters,
-        "quarterLabel": quarter_label,
-        "headline": narrative.get("headline", ""),
-        "body": narrative.get("body", ""),
-        "chart": {
-            "title": "월별 수출 규모 추이",
-            "subtitle": f"{country_label} · 관세청 수출입무역통계 기준",
-            "data": chart_data,
-        },
-        "keyMarketDrivers": narrative.get("keyMarketDrivers", []),
-        "hasTradeData": has_data,
+def _issue_token(user: dict) -> str:
+    payload = {
+        "sub": user["id"],
+        "email": user["email"],
+        "exp": datetime.now(timezone.utc) + timedelta(days=AUTH_TOKEN_TTL_DAYS),
+        "iat": datetime.now(timezone.utc),
     }
+    return jwt.encode(payload, AUTH_JWT_SECRET, algorithm="HS256")
+
+
+def _user_public(user: dict) -> dict:
+    return {k: v for k, v in user.items() if k != "password_hash"}
+
+
+class SignupRequest(BaseModel):
+    email: str
+    password: str
+    login_id: str | None = None
+    name: str | None = None
+    phone: str | None = None
+    company: str | None = None
+    category_id: str | None = None
+    country: str | None = None
+    account_type: str = "user"
+
+
+@app.post("/auth/signup")
+def auth_signup(req: SignupRequest):
+    email = req.email.strip().lower()
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="올바른 이메일을 입력해주세요.")
+    if len(req.password) < 6:
+        raise HTTPException(status_code=400, detail="비밀번호는 6자 이상이어야 합니다.")
+    if req.account_type not in ("user", "admin"):
+        raise HTTPException(status_code=400, detail="account_type이 올바르지 않습니다.")
+
+    existing = db.table("users").select("id").eq("email", email).maybe_single().execute().data
+    if existing:
+        raise HTTPException(status_code=409, detail="이미 가입된 이메일입니다.")
+
+    password_hash = bcrypt.hashpw(req.password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    user = (
+        db.table("users")
+        .insert({
+            "email": email,
+            "password_hash": password_hash,
+            "login_id": req.login_id,
+            "name": req.name,
+            "phone": req.phone,
+            "company": req.company,
+            "category_id": req.category_id,
+            "country": req.country,
+            "account_type": req.account_type,
+        })
+        .execute()
+        .data[0]
+    )
+    token = _issue_token(user)
+    return {"access_token": token, "user": _user_public(user)}
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+@app.post("/auth/login")
+def auth_login(req: LoginRequest):
+    email = req.email.strip().lower()
+    user = db.table("users").select("*").eq("email", email).maybe_single().execute().data
+    if not user or not bcrypt.checkpw(req.password.encode("utf-8"), user["password_hash"].encode("utf-8")):
+        raise HTTPException(status_code=401, detail="이메일 또는 비밀번호가 올바르지 않습니다.")
+    token = _issue_token(user)
+    return {"access_token": token, "user": _user_public(user)}
+
+
+def _decode_token(authorization: str | None) -> dict:
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="인증 토큰이 필요합니다.")
+    token = authorization.split(" ", 1)[1]
+    try:
+        return jwt.decode(token, AUTH_JWT_SECRET, algorithms=["HS256"])
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="로그인 세션이 만료되었습니다. 다시 로그인해주세요.")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="유효하지 않은 토큰입니다.")
+
+
+@app.get("/auth/me")
+def auth_me(authorization: str | None = Header(None)):
+    payload = _decode_token(authorization)
+    user = db.table("users").select("*").eq("id", payload["sub"]).maybe_single().execute().data
+    if not user:
+        raise HTTPException(status_code=401, detail="계정을 찾을 수 없습니다.")
+    return _user_public(user)
+
+
+class UpdateProfileRequest(BaseModel):
+    login_id: str | None = None
+    name: str | None = None
+    phone: str | None = None
+    company: str | None = None
+
+
+@app.patch("/auth/me")
+def auth_update_me(req: UpdateProfileRequest, authorization: str | None = Header(None)):
+    payload = _decode_token(authorization)
+    updates = {k: v for k, v in req.model_dump().items() if v is not None}
+    if not updates:
+        user = db.table("users").select("*").eq("id", payload["sub"]).maybe_single().execute().data
+        return _user_public(user)
+    user = db.table("users").update(updates).eq("id", payload["sub"]).execute().data[0]
+    return _user_public(user)
 
 
 @app.delete("/account")
 def delete_account(authorization: str | None = Header(None)):
-    if not authorization or not authorization.lower().startswith("bearer "):
-        raise HTTPException(status_code=401, detail="인증 토큰이 필요합니다.")
-
-    token = authorization.split(" ", 1)[1]
-    try:
-        user_res = supabase.auth.get_user(token)
-    except Exception:
-        # 세션 만료/무효화 시 supabase-auth가 예외를 던진다 (정상적인 "토큰 없음" 응답이 아니라).
-        raise HTTPException(status_code=401, detail="로그인 세션이 만료되었습니다. 다시 로그인해주세요.")
-    if not user_res or not user_res.user:
-        raise HTTPException(status_code=401, detail="유효하지 않은 토큰입니다.")
-
-    # profiles 행은 auth.users FK에 on delete cascade 로 걸려 있어 함께 삭제된다.
-    supabase.auth.admin.delete_user(user_res.user.id)
+    payload = _decode_token(authorization)
+    db.table("users").delete().eq("id", payload["sub"]).execute()
     return {"deleted": True}
 
 
 def require_user(authorization: str | None) -> str:
     """bearer 토큰을 검증하고 로그인한 사용자의 user_id를 반환한다 (관리자 권한은 요구하지 않는다)."""
-    if not authorization or not authorization.lower().startswith("bearer "):
-        raise HTTPException(status_code=401, detail="인증 토큰이 필요합니다.")
-
-    token = authorization.split(" ", 1)[1]
-    try:
-        user_res = supabase.auth.get_user(token)
-    except Exception:
-        raise HTTPException(status_code=401, detail="로그인 세션이 만료되었습니다. 다시 로그인해주세요.")
-    if not user_res or not user_res.user:
-        raise HTTPException(status_code=401, detail="유효하지 않은 토큰입니다.")
-    return user_res.user.id
+    payload = _decode_token(authorization)
+    return payload["sub"]
 
 
 ADDITIONAL_DOC_ALLOWED_EXTENSIONS = {".pdf", ".docx", ".hwp", ".jpg", ".jpeg", ".png"}
+# 마이페이지에 고정으로 노출되는 서류 슬롯 (슬롯당 파일 1개 - 재업로드하면 기존 파일을 교체한다).
+ACCOUNT_DOC_TYPES = {"biz_reg": "사업자 등록증", "product_spec": "상품 상세설명서"}
+
+
+def _account_doc_folder(user_id: str, doc_type: str) -> str:
+    if doc_type not in ACCOUNT_DOC_TYPES:
+        raise HTTPException(status_code=400, detail="알 수 없는 서류 종류입니다.")
+    return f"additional-docs/{user_id}/{doc_type}"
 
 
 @app.get("/account/documents")
-def list_additional_documents(authorization: str | None = Header(None)):
-    """마이페이지에서 사용자가 업로드한 추가 기본 서류 목록을 조회한다."""
+def list_additional_documents(doc_type: str, authorization: str | None = Header(None)):
+    """마이페이지 서류 슬롯(사업자 등록증/상품 상세설명서)에 업로드된 파일을 조회한다."""
     user_id = require_user(authorization)
-    folder = f"additional-docs/{user_id}"
-    objects = supabase.storage.from_(TEMPLATES_BUCKET).list(folder)
+    folder = _account_doc_folder(user_id, doc_type)
+    objects = gcs.from_(TEMPLATES_BUCKET).list(folder)
 
     documents = []
     for obj in objects or []:
@@ -505,7 +592,7 @@ def list_additional_documents(authorization: str | None = Header(None)):
         if not obj.get("id"):
             continue
         path = f"{folder}/{obj['name']}"
-        signed = supabase.storage.from_(TEMPLATES_BUCKET).create_signed_url(path, 3600)
+        signed = gcs.from_(TEMPLATES_BUCKET).create_signed_url(path, 3600)
         original_name = obj["name"].split("_", 1)[-1] if "_" in obj["name"] else obj["name"]
         documents.append(
             {
@@ -520,20 +607,31 @@ def list_additional_documents(authorization: str | None = Header(None)):
 
 
 @app.post("/account/documents")
-def upload_additional_document(file: UploadFile = File(...), authorization: str | None = Header(None)):
-    """마이페이지에서 사용자가 추가 기본 서류를 업로드한다."""
+def upload_additional_document(
+    doc_type: str = Form(...),
+    file: UploadFile = File(...),
+    authorization: str | None = Header(None),
+):
+    """마이페이지 서류 슬롯에 파일을 업로드한다. 슬롯당 파일 1개만 유지하므로,
+    새로 업로드하면 그 슬롯에 있던 기존 파일은 지운다."""
     user_id = require_user(authorization)
+    folder = _account_doc_folder(user_id, doc_type)
 
     ext = Path(file.filename or "").suffix.lower()
     if ext not in ADDITIONAL_DOC_ALLOWED_EXTENSIONS:
         raise HTTPException(status_code=400, detail="PDF, DOCX, HWP, JPG, PNG 파일만 업로드할 수 있습니다.")
 
+    existing = gcs.from_(TEMPLATES_BUCKET).list(folder)
+    old_paths = [f"{folder}/{obj['name']}" for obj in (existing or []) if obj.get("id")]
+    if old_paths:
+        gcs.from_(TEMPLATES_BUCKET).remove(old_paths)
+
     file_bytes = file.file.read()
     # 원본 파일명을 그대로 스토리지 키에 넣으면 한글/대괄호/공백 때문에 Supabase Storage가
     # "Invalid key"로 거부한다. 키는 안전한 uuid+확장자로만 만들고, 원본 이름은 별도로 반환한다.
-    object_path = f"additional-docs/{user_id}/{uuid.uuid4().hex}{ext}"
+    object_path = f"{folder}/{uuid.uuid4().hex}{ext}"
     try:
-        supabase.storage.from_(TEMPLATES_BUCKET).upload(
+        gcs.from_(TEMPLATES_BUCKET).upload(
             object_path, file_bytes, {"content-type": file.content_type or "application/octet-stream"}
         )
     except Exception as e:
@@ -544,12 +642,12 @@ def upload_additional_document(file: UploadFile = File(...), authorization: str 
 
 @app.delete("/account/documents")
 def delete_additional_document(path: str, authorization: str | None = Header(None)):
-    """마이페이지에서 업로드했던 추가 기본 서류를 삭제한다."""
+    """마이페이지 서류 슬롯에서 업로드했던 파일을 삭제한다."""
     user_id = require_user(authorization)
     if not path.startswith(f"additional-docs/{user_id}/"):
         raise HTTPException(status_code=403, detail="본인이 업로드한 서류만 삭제할 수 있습니다.")
 
-    supabase.storage.from_(TEMPLATES_BUCKET).remove([path])
+    gcs.from_(TEMPLATES_BUCKET).remove([path])
     return {"deleted": True}
 
 
@@ -564,7 +662,7 @@ def upload_user_submission(
     user_id = require_user(authorization)
 
     template = (
-        supabase.table("templates").select("*").eq("id", template_id).maybe_single().execute().data
+        db.table("templates").select("*").eq("id", template_id).maybe_single().execute().data
     )
     if not template:
         raise HTTPException(status_code=404, detail="해당 서식을 찾을 수 없습니다.")
@@ -580,7 +678,7 @@ def upload_user_submission(
     # "Invalid key"로 거부한다. 키는 안전한 uuid+확장자로만 만든다.
     object_path = f"user-submissions/{template_id}/{user_id}/{uuid.uuid4().hex}{ext}"
     try:
-        supabase.storage.from_(TEMPLATES_BUCKET).upload(
+        gcs.from_(TEMPLATES_BUCKET).upload(
             object_path, file_bytes, {"content-type": file.content_type or "application/octet-stream"}
         )
     except Exception as e:
@@ -589,7 +687,57 @@ def upload_user_submission(
     # submissions.status는 'filled'/'generated'만 허용한다(체크 제약) — "uploaded"는 없는 값이라
     # insert가 매번 500으로 죽었었다. 사용자가 올린 파일 자체가 최종 산출물이니 'generated'로 넣는다.
     row = (
-        supabase.table("submissions")
+        db.table("submissions")
+        .insert({"template_id": template_id, "user_id": user_id, "status": "generated", "file_path": object_path})
+        .execute()
+        .data[0]
+    )
+    return row
+
+
+@app.post("/submissions/import-from-account")
+def import_submission_from_account(
+    template_id: str = Form(...),
+    authorization: str | None = Header(None),
+):
+    """마이페이지 서류 슬롯(사업자등록증/상품 상세설명서)에 이미 올려둔 파일을 그대로
+    복사해 해당 공고의 submission으로 등록한다. /submissions/user-upload와 같은 결과를
+    만들되, 사용자가 파일을 다시 고를 필요 없이 마이페이지 파일을 재사용한다."""
+    user_id = require_user(authorization)
+
+    template = (
+        db.table("templates").select("*").eq("id", template_id).maybe_single().execute().data
+    )
+    if not template:
+        raise HTTPException(status_code=404, detail="해당 서식을 찾을 수 없습니다.")
+    if not template.get("user_upload_required"):
+        raise HTTPException(status_code=400, detail="직접 업로드가 필요한 서류가 아닙니다.")
+    doc_type = template.get("linked_account_doc_type")
+    if not doc_type:
+        raise HTTPException(status_code=400, detail="마이페이지 서류와 연결되지 않은 항목입니다.")
+
+    folder = _account_doc_folder(user_id, doc_type)
+    objects = [obj for obj in (gcs.from_(TEMPLATES_BUCKET).list(folder) or []) if obj.get("id")]
+    if not objects:
+        raise HTTPException(
+            status_code=404, detail=f"마이페이지에 등록된 {ACCOUNT_DOC_TYPES[doc_type]}가 없습니다."
+        )
+    objects.sort(key=lambda o: o.get("created_at") or "", reverse=True)
+    src_name = objects[0]["name"]
+    src_path = f"{folder}/{src_name}"
+    ext = Path(src_name).suffix.lower()
+
+    file_bytes = gcs.from_(TEMPLATES_BUCKET).download(src_path)
+    object_path = f"user-submissions/{template_id}/{user_id}/{uuid.uuid4().hex}{ext}"
+    try:
+        gcs.from_(TEMPLATES_BUCKET).upload(
+            object_path, file_bytes, {"content-type": "application/octet-stream"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"파일 가져오기에 실패했습니다: {e}")
+
+    row = (
+        db.table("submissions")
         .insert({"template_id": template_id, "user_id": user_id, "status": "generated", "file_path": object_path})
         .execute()
         .data[0]
@@ -598,28 +746,575 @@ def upload_user_submission(
 
 
 def require_admin(authorization: str | None) -> str:
-    """bearer 토큰을 검증하고 profiles.account_type == 'admin'인지 확인한다.
+    """bearer 토큰을 검증하고 users.account_type == 'admin'인지 확인한다.
     성공 시 user_id를 반환하고, 실패 시 HTTPException을 던진다."""
-    if not authorization or not authorization.lower().startswith("bearer "):
-        raise HTTPException(status_code=401, detail="인증 토큰이 필요합니다.")
-
-    token = authorization.split(" ", 1)[1]
-    try:
-        user_res = supabase.auth.get_user(token)
-    except Exception:
-        # 세션 만료/무효화 시 supabase-auth가 예외를 던진다 (정상적인 "토큰 없음" 응답이 아니라).
-        raise HTTPException(status_code=401, detail="로그인 세션이 만료되었습니다. 다시 로그인해주세요.")
-    if not user_res or not user_res.user:
-        raise HTTPException(status_code=401, detail="유효하지 않은 토큰입니다.")
-
-    user_id = user_res.user.id
-    profile = (
-        supabase.table("profiles").select("account_type").eq("id", user_id).maybe_single().execute().data
-    )
-    if not profile or profile.get("account_type") != "admin":
+    payload = _decode_token(authorization)
+    user_id = payload["sub"]
+    user = db.table("users").select("account_type").eq("id", user_id).maybe_single().execute().data
+    if not user or user.get("account_type") != "admin":
         raise HTTPException(status_code=403, detail="관리자만 접근할 수 있습니다.")
-
     return user_id
+
+
+class SetReviewStatusRequest(BaseModel):
+    status: str  # "approved" | "needs_revision"
+    note: str | None = None
+
+
+@app.post("/admin/submissions/{submission_id}/review-status")
+def set_review_status(submission_id: str, req: SetReviewStatusRequest, authorization: str | None = Header(None)):
+    """관리자가 제출된 서류를 승인/반려할 때 쓴다. 상태 변경은 여기서 바로 반영하고, 사용자에게
+    보여줄 알림 생성은 Pub/Sub 이벤트로 넘긴다(승인/반려 둘 다 같은 방식으로 처리되도록 통일)."""
+    require_admin(authorization)
+    if req.status not in ("approved", "needs_revision"):
+        raise HTTPException(status_code=400, detail="status는 approved 또는 needs_revision이어야 합니다.")
+
+    submission = db.table("submissions").select("*").eq("id", submission_id).maybe_single().execute().data
+    if not submission:
+        raise HTTPException(status_code=404, detail="제출 내역을 찾을 수 없습니다.")
+
+    updated = (
+        db.table("submissions")
+        .update({
+            "review_status": req.status,
+            "review_note": req.note,
+            "reviewed_at": datetime.now(timezone.utc).isoformat(),
+        })
+        .eq("id", submission_id)
+        .execute()
+        .data[0]
+    )
+
+    template = (
+        db.table("templates").select("name").eq("id", submission["template_id"]).maybe_single().execute().data
+    )
+
+    event = {
+        "event_type": req.status,
+        "submission_id": submission_id,
+        "user_id": submission["user_id"],
+        "template_id": submission["template_id"],
+        "template_name": template["name"] if template else "",
+        "note": req.note or "",
+    }
+    publish_event(SUBMISSION_EVENTS_TOPIC, event)
+    # publish_event는 best-effort라 Pub/Sub 토픽/구독이 없으면(로컬 개발 환경) 알림이 절대 오지
+    # 않는다 - 실제 push 구독이 붙어 있으면 handle_submission_event가 같은 이벤트를 한 번 더
+    # 받을 수 있지만, _create_submission_review_notification 안의 중복 방지로 안전하다.
+    _create_submission_review_notification(event)
+
+    return {"submission_id": submission_id, "review_status": updated["review_status"]}
+
+
+def _decode_pubsub_push(body: dict) -> dict:
+    """Pub/Sub push 구독이 보내는 envelope({"message": {"data": base64, ...}})에서
+    우리가 발행했던 실제 JSON payload를 꺼낸다."""
+    data_b64 = (body.get("message") or {}).get("data") or ""
+    if not data_b64:
+        return {}
+    return json.loads(base64.b64decode(data_b64).decode("utf-8"))
+
+
+_notified_submission_events = set()  # (event_type, submission_id) 중복 알림 방지 (같은 이벤트가 두 경로로 들어올 수 있어서)
+
+
+def _create_submission_review_notification(event: dict):
+    """서류 승인/반려 이벤트로 사용자에게 보여줄 알림을 만든다. Pub/Sub push(handle_submission_event)와
+    set_review_status의 직접 호출 양쪽에서 같이 쓴다 - 이 프로젝트엔 실제 Pub/Sub 토픽/구독이
+    구성되어 있지 않아(로컬 개발 환경이라 Pub/Sub가 localhost로 push할 수 없음) publish_event()만
+    믿으면 알림이 영영 안 생기므로, set_review_status가 상태 변경 직후 이 함수를 직접도 호출한다."""
+    event_type = event.get("event_type")
+    if event_type not in ("approved", "needs_revision"):
+        return
+    submission_id = event.get("submission_id")
+    dedup_key = (event_type, submission_id)
+    if submission_id and dedup_key in _notified_submission_events:
+        return
+
+    template_name = event.get("template_name") or ""
+    if event_type == "approved":
+        message = f"[{template_name}] 제출하신 서류가 승인되었습니다."
+    else:
+        note = event.get("note")
+        message = f"[{template_name}] 제출하신 서류에 보완이 필요합니다.{f' ({note})' if note else ''}"
+
+    db.table("notifications").insert({
+        "user_id": event["user_id"],
+        "submission_id": event["submission_id"],
+        "template_id": event["template_id"],
+        "type": event_type,
+        "message": message,
+    }).execute()
+    if submission_id:
+        _notified_submission_events.add(dedup_key)
+
+
+# 주의: 아래 /pubsub/* 엔드포인트는 Pub/Sub push 구독 전용이라 Supabase 로그인 토큰으로 인증하지
+# 않는다. 실제 배포(Cloud Run) 시에는 Cloud Run 자체 인증을 켜고, 해당 push 구독의 서비스 계정에만
+# roles/run.invoker를 부여하는 방식으로 막아야 한다(Pub/Sub가 자동으로 OIDC 토큰을 붙여 호출).
+@app.post("/pubsub/submission-events")
+def handle_submission_event(body: dict = Body(...)):
+    """서류 승인/반려 이벤트를 받아 사용자에게 보여줄 알림을 만든다."""
+    event = _decode_pubsub_push(body)
+    _create_submission_review_notification(event)
+    return {"ok": True}
+
+
+# 위 push 엔드포인트는 공인 URL이 있어야 Pub/Sub가 호출할 수 있어서 로컬 개발(localhost)에서는
+# 도달할 수 없다. 그래서 pull 구독으로 백엔드가 직접 메시지를 당겨오는 백그라운드 스레드를 같이
+# 띄운다 - 실제로 Pub/Sub를 거쳐서 알림이 만들어지는 걸 로컬에서도 확인할 수 있다. set_review_status가
+# 이미 직접 호출로도 알림을 만들어두기 때문에(Pub/Sub가 아직 없던 시절의 안전장치), 같은 이벤트가
+# 이 pull 경로로 한 번 더 들어와도 _create_submission_review_notification의 dedup 처리 덕분에
+# 알림이 중복 생성되지는 않는다.
+pubsub_subscriber = pubsub_v1.SubscriberClient()
+SUBMISSION_EVENTS_SUBSCRIPTION = pubsub_subscriber.subscription_path(
+    VERTEX_AI_PROJECT_ID, os.environ.get("PUBSUB_SUBMISSION_EVENTS_SUBSCRIPTION", "submission-events-sub")
+)
+
+
+def _handle_pulled_submission_event(message):
+    try:
+        event = json.loads(message.data.decode("utf-8"))
+        _create_submission_review_notification(event)
+    except Exception as e:
+        print(f"[pubsub] pull 메시지 처리 실패: {e}")
+    finally:
+        message.ack()
+
+
+try:
+    pubsub_subscriber.subscribe(SUBMISSION_EVENTS_SUBSCRIPTION, callback=_handle_pulled_submission_event)
+    print(f"[pubsub] pull 구독 시작: {SUBMISSION_EVENTS_SUBSCRIPTION}")
+except Exception as e:
+    print(f"[pubsub] pull 구독 시작 실패 (구독이 아직 없거나 권한 문제일 수 있음): {e}")
+
+
+# web/src/lib/period.js의 데모용 오버라이드와 맞춘다 - 시연 중에는 이 세 공고만 마감을
+# 2026-09-30으로 고정해서 보여주기 때문에, 마감임박 판정도 화면에 보이는 것과 일치해야 한다.
+DEMO_SEPTEMBER_BUSINESS_IDS = {
+    "5090843f-cf8e-4945-a51d-69e1aa8e61e6",
+    "da530822-7707-44b6-b3b8-93dba472815c",
+    "bb7ab51f-5978-43f7-8f3e-bc85add54153",
+}
+DEMO_SEPTEMBER_PERIOD_END = datetime(2026, 9, 30, tzinfo=timezone.utc)
+
+
+def business_period_end(business: dict) -> datetime | None:
+    """web/src/lib/period.js의 periodEndDate와 같은 로직의 파이썬 버전 - 접수기간 텍스트
+    ("2026. 8. 3. ~ 2026. 8. 7." 같은 형식)에서 마감일만 뽑아낸다. 요일/시각 표기나 연도 누락 등
+    형식이 어긋나면(예: "6. 5.(금)") 조용히 None을 반환한다 - 프론트도 이런 값은 무시하기 때문."""
+    if business.get("id") in DEMO_SEPTEMBER_BUSINESS_IDS:
+        return DEMO_SEPTEMBER_PERIOD_END
+
+    period = ((business.get("basic_info") or {}).get("period")) or ""
+    if "~" not in period:
+        return None
+    end_str = period.split("~", 1)[1]
+    end_str = re.sub(r"\([^)]*\)", "", end_str)  # "(수)" 같은 요일 표기 제거
+    end_str = re.sub(r"\d{1,2}:\d{2}", "", end_str)  # "17:00" 같은 시각 제거
+    numbers = re.findall(r"\d+", end_str)
+    if len(numbers) < 3:
+        return None
+    year, month, day = (int(n) for n in numbers[:3])
+    try:
+        return datetime(year, month, day, tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def _run_deadline_check() -> dict:
+    """마감이 3일 이내로 남았고, 서류를 하나라도 작성(제출)한 신청자에게 마감임박 알림을 보낸다.
+    같은 신청자·공고 조합으로 이미 마감임박 알림을 보낸 적이 있으면 다시 보내지 않는다.
+    Cloud Scheduler가 주기적으로 Pub/Sub 토픽에 발행하면, 백엔드의 pull 구독이 그걸 받아서
+    이 함수를 실행한다(아래 deadline-check-trigger 구독 참고) - /pubsub/deadline-check
+    엔드포인트로 수동/직접 호출할 수도 있다."""
+    now = datetime.now(timezone.utc)
+
+    businesses = db.table("businesses").select("id, name, basic_info").execute().data or []
+    soon = {}
+    for b in businesses:
+        end = business_period_end(b)
+        if end and timedelta(0) <= (end - now) <= timedelta(days=3):
+            soon[b["id"]] = b["name"]
+    if not soon:
+        return {"ok": True, "notified": 0}
+
+    templates = (
+        db.table("templates").select("id, business_id").in_("business_id", list(soon.keys())).execute().data
+        or []
+    )
+    business_by_template = {t["id"]: t["business_id"] for t in templates}
+    if not business_by_template:
+        return {"ok": True, "notified": 0}
+
+    submissions = (
+        db.table("submissions")
+        .select("user_id, template_id")
+        .in_("template_id", list(business_by_template.keys()))
+        .execute()
+        .data
+        or []
+    )
+    # (user_id, business_id) 조합 중 서류를 하나라도 작성한 것만 남긴다.
+    started_pairs = {
+        (s["user_id"], business_by_template[s["template_id"]])
+        for s in submissions
+        if s["template_id"] in business_by_template
+    }
+    if not started_pairs:
+        return {"ok": True, "notified": 0}
+
+    existing = (
+        db.table("notifications")
+        .select("user_id, business_id")
+        .eq("type", "deadline_soon")
+        .in_("business_id", list(soon.keys()))
+        .execute()
+        .data
+        or []
+    )
+    already_notified = {(n["user_id"], n["business_id"]) for n in existing}
+
+    to_notify = started_pairs - already_notified
+    for user_id, business_id in to_notify:
+        db.table("notifications").insert({
+            "user_id": user_id,
+            "business_id": business_id,
+            "type": "deadline_soon",
+            "message": f"[{soon[business_id]}] 접수 마감이 3일 이내로 다가왔어요. 작성 중인 서류를 확인해주세요.",
+        }).execute()
+
+    return {"ok": True, "notified": len(to_notify)}
+
+
+@app.post("/pubsub/deadline-check")
+def handle_deadline_check(body: dict = Body(...)):
+    return _run_deadline_check()
+
+
+# Cloud Scheduler가 매일 이 토픽에 발행하고, 아래 pull 구독으로 백엔드가 직접 받아서
+# _run_deadline_check()를 실행한다 - submission-events와 동일하게, 로컬 백엔드는 공인
+# 주소가 없어 Cloud Scheduler/Pub/Sub가 직접 호출(push)할 수 없으므로 pull로 받는다.
+DEADLINE_CHECK_SUBSCRIPTION = pubsub_subscriber.subscription_path(
+    VERTEX_AI_PROJECT_ID, os.environ.get("PUBSUB_DEADLINE_CHECK_SUBSCRIPTION", "deadline-check-trigger-sub")
+)
+
+
+def _handle_pulled_deadline_check(message):
+    try:
+        result = _run_deadline_check()
+        print(f"[pubsub] deadline-check 실행: {result}")
+    except Exception as e:
+        print(f"[pubsub] deadline-check 처리 실패: {e}")
+    finally:
+        message.ack()
+
+
+try:
+    pubsub_subscriber.subscribe(DEADLINE_CHECK_SUBSCRIPTION, callback=_handle_pulled_deadline_check)
+    print(f"[pubsub] pull 구독 시작: {DEADLINE_CHECK_SUBSCRIPTION}")
+except Exception as e:
+    print(f"[pubsub] deadline-check pull 구독 시작 실패: {e}")
+
+
+# --- 프론트엔드가 Supabase 테이블에 직접 쿼리하던 부분을 대체하는 REST 엔드포인트 ---
+# DB가 Supabase에서 Cloud SQL로 옮겨가면서, 브라우저가 RLS(row-level security)를 믿고 테이블에
+# 직접 접근하던 방식(supabase.from("...").select(...))은 더 이상 쓸 수 없다. 이 구간의
+# 엔드포인트들이 그 직접 접근을 대체하고, RLS가 하던 "본인 데이터만" 권한 체크를 여기서 한다.
+
+
+def _ids(value: str | None) -> list[str]:
+    """콤마로 구분된 id 목록 쿼리 파라미터(?id=a,b,c)를 리스트로 바꾼다."""
+    if not value:
+        return []
+    return [v for v in value.split(",") if v]
+
+
+def _is_admin(authorization: str | None) -> bool:
+    try:
+        require_admin(authorization)
+        return True
+    except HTTPException:
+        return False
+
+
+@app.get("/businesses")
+def list_businesses(id: str | None = None, order_by: str = "sort_order"):
+    q = db.table("businesses").select("*")
+    ids = _ids(id)
+    if ids:
+        q = q.in_("id", ids)
+    if order_by not in {"sort_order", "name", "created_at"}:
+        order_by = "sort_order"
+    rows = q.order(order_by).execute().data or []
+    return {"businesses": rows}
+
+
+@app.get("/businesses/{business_id}")
+def get_business(business_id: str):
+    row = db.table("businesses").select("*").eq("id", business_id).maybe_single().execute().data
+    if not row:
+        raise HTTPException(status_code=404, detail="해당 공고를 찾을 수 없습니다.")
+    return row
+
+
+@app.get("/templates")
+def list_templates(business_id: str | None = None, id: str | None = None, order_by: str = "sort_order"):
+    q = db.table("templates").select("*")
+    business_ids = _ids(business_id)
+    if len(business_ids) == 1:
+        q = q.eq("business_id", business_ids[0])
+    elif business_ids:
+        q = q.in_("business_id", business_ids)
+    ids = _ids(id)
+    if ids:
+        q = q.in_("id", ids)
+    if order_by not in {"sort_order", "form_number", "name", "created_at"}:
+        order_by = "sort_order"
+    rows = q.order(order_by).execute().data or []
+    return {"templates": rows}
+
+
+@app.get("/template_fields")
+def list_template_fields(template_id: str | None = None, field_key: str | None = None, id: str | None = None):
+    q = db.table("template_fields").select("*")
+    template_ids = _ids(template_id)
+    if template_ids:
+        q = q.in_("template_id", template_ids)
+    field_keys = _ids(field_key)
+    if field_keys:
+        q = q.in_("field_key", field_keys)
+    ids = _ids(id)
+    if ids:
+        q = q.in_("id", ids)
+    rows = q.execute().data or []
+    return {"fields": rows}
+
+
+@app.get("/submissions")
+def list_my_submissions(
+    template_id: str | None = None,
+    review_status: str | None = None,
+    authorization: str | None = Header(None),
+):
+    """로그인한 본인의 제출 내역만 반환한다. 관리자가 전체를 봐야 하면 /admin/submissions를 쓴다."""
+    user_id = require_user(authorization)
+    q = db.table("submissions").select("*").eq("user_id", user_id)
+    template_ids = _ids(template_id)
+    if template_ids:
+        q = q.in_("template_id", template_ids)
+    if review_status:
+        q = q.eq("review_status", review_status)
+    rows = q.order("created_at", desc=True).execute().data or []
+    return {"submissions": rows}
+
+
+@app.get("/submissions/submitted-template-ids")
+def list_submitted_template_ids():
+    """홈 화면 '인기 지원사업' 통계용 - 어떤 사용자가 제출했는지는 공개하지 않고, 신청이
+    한 건이라도 들어온 template_id 집합만 비로그인 방문자에게도 공개한다."""
+    rows = db.table("submissions").select("template_id").execute().data or []
+    return {"template_ids": list({r["template_id"] for r in rows})}
+
+
+@app.get("/admin/submissions")
+def list_all_submissions(authorization: str | None = Header(None)):
+    require_admin(authorization)
+    rows = db.table("submissions").select("*").order("created_at", desc=True).execute().data or []
+    return {"submissions": rows}
+
+
+@app.get("/admin/users")
+def list_users_by_id(id: str | None = None, authorization: str | None = Header(None)):
+    """신청자 표시용. 서식에 회사명 필드가 없어도 계정에 등록된 이름/회사명으로 보여줄 수 있게
+    관리자가 user_id 목록으로 계정 기본정보를 조회한다."""
+    require_admin(authorization)
+    ids = _ids(id)
+    if not ids:
+        return {"users": []}
+    rows = db.table("users").select("id,name,company").in_("id", ids).execute().data or []
+    return {"users": rows}
+
+
+def _owns_submissions(user_id: str, submission_ids: list[str]) -> bool:
+    if not submission_ids:
+        return True
+    owned = (
+        db.table("submissions").select("id").eq("user_id", user_id).in_("id", submission_ids).execute().data or []
+    )
+    return {r["id"] for r in owned} == set(submission_ids)
+
+
+@app.get("/submission_values")
+def list_submission_values(
+    submission_id: str | None = None,
+    field_id: str | None = None,
+    authorization: str | None = Header(None),
+):
+    """본인 제출 건이거나 관리자일 때만 조회를 허용한다 (submission_values 자체엔 user_id가 없어서
+    submission_id로 소유권을 거슬러 확인해야 한다)."""
+    user_id = require_user(authorization)
+    submission_ids = _ids(submission_id)
+    field_ids = _ids(field_id)
+    if not submission_ids and not field_ids:
+        raise HTTPException(status_code=400, detail="submission_id 또는 field_id가 필요합니다.")
+
+    if submission_ids and not _is_admin(authorization) and not _owns_submissions(user_id, submission_ids):
+        raise HTTPException(status_code=403, detail="본인 제출 내역만 조회할 수 있습니다.")
+
+    q = db.table("submission_values").select("*")
+    if submission_ids:
+        q = q.in_("submission_id", submission_ids)
+    if field_ids:
+        q = q.in_("field_id", field_ids)
+    rows = q.execute().data or []
+    return {"values": rows}
+
+
+_SIGNED_URL_BUCKETS = {"generated": GENERATED_BUCKET, "templates": TEMPLATES_BUCKET}
+
+
+@app.get("/generated-file-url")
+def get_generated_file_url(path: str, bucket: str = "generated", authorization: str | None = Header(None)):
+    """GCS(generated/templates 버킷)에 있는 파일의 서명 URL을 발급한다. 프론트는 GCS 자격증명이
+    없어서 직접 서명할 수 없으므로, 다운로드 버튼을 누를 때 이 엔드포인트를 거쳐야 한다."""
+    require_user(authorization)
+    if bucket not in _SIGNED_URL_BUCKETS:
+        raise HTTPException(status_code=400, detail="알 수 없는 버킷입니다.")
+    signed = gcs.from_(_SIGNED_URL_BUCKETS[bucket]).create_signed_url(path, 3600)
+    return {"url": signed.get("signedURL")}
+
+
+@app.get("/generated_documents")
+def list_generated_documents(submission_id: str | None = None, authorization: str | None = Header(None)):
+    require_admin(authorization)
+    q = db.table("generated_documents").select("submission_id,file_path")
+    submission_ids = _ids(submission_id)
+    if submission_ids:
+        q = q.in_("submission_id", submission_ids)
+    rows = q.execute().data or []
+    return {"documents": rows}
+
+
+class CreateSubmissionRequest(BaseModel):
+    template_id: str
+    status: str = "filled"
+
+
+@app.post("/submissions")
+def create_submission(req: CreateSubmissionRequest, authorization: str | None = Header(None)):
+    """AI 자동작성/정부지원사업 신청 폼을 최종 제출할 때 호출한다. 값(submission_values)은
+    이어서 /submission_values로 별도 저장한다 (프론트가 기존에 하던 2단계 저장과 동일한 흐름)."""
+    user_id = require_user(authorization)
+    row = (
+        db.table("submissions")
+        .insert({"template_id": req.template_id, "user_id": user_id, "status": req.status})
+        .execute()
+        .data[0]
+    )
+    return row
+
+
+class SubmissionValueIn(BaseModel):
+    field_id: str
+    value: str = ""
+    source: str | None = None
+    needs_review: bool = False
+    confidence_note: str | None = None
+
+
+class CreateSubmissionValuesRequest(BaseModel):
+    submission_id: str
+    values: list[SubmissionValueIn]
+
+
+@app.post("/submission_values")
+def create_submission_values(req: CreateSubmissionValuesRequest, authorization: str | None = Header(None)):
+    user_id = require_user(authorization)
+    if not _owns_submissions(user_id, [req.submission_id]):
+        raise HTTPException(status_code=403, detail="본인 제출 내역에만 값을 저장할 수 있습니다.")
+    rows = [{"submission_id": req.submission_id, **v.model_dump()} for v in req.values]
+    if rows:
+        db.table("submission_values").insert(rows).execute()
+    return {"saved": len(rows)}
+
+
+@app.get("/notifications")
+def list_notifications(
+    type: str | None = None,
+    is_read: bool | None = None,
+    count_only: bool = False,
+    authorization: str | None = Header(None),
+):
+    user_id = require_user(authorization)
+    q = db.table("notifications").select("*").eq("user_id", user_id)
+    if type:
+        q = q.eq("type", type)
+    if is_read is not None:
+        q = q.eq("is_read", is_read)
+    rows = q.order("created_at", desc=True).execute().data or []
+    if count_only:
+        return {"count": len(rows)}
+    return {"notifications": rows}
+
+
+@app.patch("/notifications/{notification_id}/read")
+def mark_notification_read(notification_id: str, authorization: str | None = Header(None)):
+    user_id = require_user(authorization)
+    row = db.table("notifications").select("id").eq("id", notification_id).eq("user_id", user_id).maybe_single().execute().data
+    if not row:
+        raise HTTPException(status_code=404, detail="알림을 찾을 수 없습니다.")
+    db.table("notifications").update({"is_read": True}).eq("id", notification_id).execute()
+    return {"ok": True}
+
+
+class CreateNotificationRequest(BaseModel):
+    user_id: str
+    submission_id: str | None = None
+    template_id: str | None = None
+    type: str
+    message: str
+
+
+@app.post("/admin/notifications")
+def create_notification(req: CreateNotificationRequest, authorization: str | None = Header(None)):
+    """관리자 페이지의 수동 '알림 보내기' 버튼용."""
+    require_admin(authorization)
+    row = db.table("notifications").insert(req.model_dump()).execute().data[0]
+    return row
+
+
+@app.get("/bookmarks")
+def list_bookmarks(authorization: str | None = Header(None)):
+    user_id = require_user(authorization)
+    rows = (
+        db.table("bookmarks").select("*").eq("user_id", user_id).order("created_at", desc=True).execute().data or []
+    )
+    return {"bookmarks": rows}
+
+
+class CreateBookmarkRequest(BaseModel):
+    business_id: str
+
+
+@app.post("/bookmarks")
+def create_bookmark(req: CreateBookmarkRequest, authorization: str | None = Header(None)):
+    user_id = require_user(authorization)
+    try:
+        row = db.table("bookmarks").insert({"user_id": user_id, "business_id": req.business_id}).execute().data[0]
+    except Exception as e:
+        raise HTTPException(status_code=409, detail=f"이미 북마크한 공고입니다: {e}")
+    return row
+
+
+@app.delete("/bookmarks/{bookmark_id}")
+def delete_bookmark(bookmark_id: str, authorization: str | None = Header(None)):
+    user_id = require_user(authorization)
+    row = db.table("bookmarks").select("id").eq("id", bookmark_id).eq("user_id", user_id).maybe_single().execute().data
+    if not row:
+        raise HTTPException(status_code=404, detail="북마크를 찾을 수 없습니다.")
+    db.table("bookmarks").delete().eq("id", bookmark_id).execute()
+    return {"deleted": True}
 
 
 class CreateBusinessRequest(BaseModel):
@@ -632,7 +1327,7 @@ def next_business_sort_order() -> int | None:
     아직 실행 전이라면 조회 자체가 에러이므로, None을 반환해 호출부가 그 컬럼 없이 진행하게 한다."""
     try:
         existing = (
-            supabase.table("businesses")
+            db.table("businesses")
             .select("sort_order")
             .order("sort_order", desc=True)
             .limit(1)
@@ -658,7 +1353,7 @@ def create_business(req: CreateBusinessRequest, authorization: str | None = Head
     if next_order is not None:
         payload["sort_order"] = next_order
 
-    row = supabase.table("businesses").insert(payload).execute().data[0]
+    row = db.table("businesses").insert(payload).execute().data[0]
     return row
 
 
@@ -671,7 +1366,7 @@ def reorder_business(business_id: str, req: UpdateOrderRequest, authorization: s
     require_admin(authorization)
     try:
         row = (
-            supabase.table("businesses")
+            db.table("businesses")
             .update({"sort_order": req.sort_order})
             .eq("id", business_id)
             .execute()
@@ -700,13 +1395,13 @@ def update_business_name(
         raise HTTPException(status_code=400, detail="사업명을 입력해주세요.")
 
     business = (
-        supabase.table("businesses").select("id").eq("id", business_id).maybe_single().execute().data
+        db.table("businesses").select("id").eq("id", business_id).maybe_single().execute().data
     )
     if not business:
         raise HTTPException(status_code=404, detail="해당 사업을 찾을 수 없습니다.")
 
     row = (
-        supabase.table("businesses")
+        db.table("businesses")
         .update({"name": req.name.strip()})
         .eq("id", business_id)
         .execute()
@@ -718,11 +1413,38 @@ def update_business_name(
 REFERENCE_DOC_ALLOWED_EXTENSIONS = {".pdf", ".docx", ".hwp", ".jpg", ".jpeg", ".png"}
 
 
+DOCUMENT_AI_MIME_TYPES = {"application/pdf", "image/jpeg", "image/png"}
+
+
+def extract_text_with_document_ai(file_bytes: bytes, mime_type: str) -> str:
+    """Document AI(Document OCR 프로세서)로 공고 원문의 텍스트를 추출한다. 표/스캔본이 섞인
+    공고문에서도 Gemini에 파일을 통째로 넣는 것보다 안정적인 원문 텍스트를 얻기 위한 1단계 OCR이다.
+    동기 처리라 최대 약 15페이지/20MB까지만 지원한다 — 그보다 큰 문서는 배치 처리가 별도로 필요하다."""
+    if not DOCUMENT_AI_PROCESSOR_ID:
+        raise RuntimeError(
+            "DOCUMENT_AI_PROCESSOR_ID가 설정되지 않았습니다. GCP 콘솔에서 Document AI > Document OCR "
+            "프로세서를 만들고 backend/.env에 DOCUMENT_AI_PROCESSOR_ID를 추가해주세요."
+        )
+    if mime_type not in DOCUMENT_AI_MIME_TYPES:
+        raise RuntimeError(f"Document AI가 지원하지 않는 파일 형식입니다: {mime_type}")
+
+    processor_name = document_ai_client.processor_path(
+        VERTEX_AI_PROJECT_ID, DOCUMENT_AI_LOCATION, DOCUMENT_AI_PROCESSOR_ID
+    )
+    request = documentai.ProcessRequest(
+        name=processor_name,
+        raw_document=documentai.RawDocument(content=file_bytes, mime_type=mime_type),
+    )
+    result = document_ai_client.process_document(request=request)
+    return result.document.text
+
+
 def build_basic_info_prompt(business_name):
     return f"""당신은 정부 지원사업 공고문(원본 서류)을 읽고, 신청자에게 보여줄 핵심 정보를 요약하는 어시스턴트입니다.
 사업명: {business_name}
 
-첨부된 문서를 읽고 아래 항목을 채워주세요:
+아래는 Document AI OCR로 추출한 공고문 원문입니다. OCR 특성상 줄바꿈/띄어쓰기가 다소 어긋날 수 있으니
+문맥으로 이해하고, 이 원문을 읽고 아래 항목을 채워주세요:
 - org: 주관기관 (예: 전북테크노파크)
 - period: 접수기간 (예: 2026.08.01 ~ 2026.08.31)
 - target: 지원대상
@@ -733,13 +1455,10 @@ def build_basic_info_prompt(business_name):
 """
 
 
-def call_gemini_basic_info(business_name, file_bytes, mime_type):
+def call_gemini_basic_info(business_name, document_text):
     response = gemini_client.models.generate_content(
         model="gemini-2.5-flash",
-        contents=[
-            types.Part.from_bytes(data=file_bytes, mime_type=mime_type),
-            build_basic_info_prompt(business_name),
-        ],
+        contents=[build_basic_info_prompt(business_name), f"\n\n[공고문 원문]\n{document_text}"],
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
             response_schema={
@@ -770,7 +1489,7 @@ def upload_reference_doc(
     require_admin(authorization)
 
     business = (
-        supabase.table("businesses").select("*").eq("id", business_id).maybe_single().execute().data
+        db.table("businesses").select("*").eq("id", business_id).maybe_single().execute().data
     )
     if not business:
         raise HTTPException(status_code=404, detail="해당 사업을 찾을 수 없습니다.")
@@ -783,7 +1502,7 @@ def upload_reference_doc(
     object_path = f"reference/{business_id}/{uuid.uuid4().hex}{ext}"
 
     try:
-        supabase.storage.from_(TEMPLATES_BUCKET).upload(object_path, file_bytes, {"upsert": "false"})
+        gcs.from_(TEMPLATES_BUCKET).upload(object_path, file_bytes, {"upsert": "false"})
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"파일 업로드에 실패했습니다: {e}")
 
@@ -796,7 +1515,7 @@ def upload_reference_doc(
                 pdf_path = convert_to_pdf(src_path, tmp_path)
                 gemini_bytes = pdf_path.read_bytes()
             except Exception as e:
-                supabase.table("businesses").update({"reference_file_path": object_path}).eq(
+                db.table("businesses").update({"reference_file_path": object_path}).eq(
                     "id", business_id
                 ).execute()
                 raise HTTPException(status_code=502, detail=f"파일은 업로드됐지만 문서 변환에 실패했습니다: {e}")
@@ -809,15 +1528,16 @@ def upload_reference_doc(
         gemini_mime = "image/jpeg" if ext in (".jpg", ".jpeg") else "image/png"
 
     try:
-        basic_info = call_gemini_basic_info(business["name"], gemini_bytes, gemini_mime)
+        document_text = extract_text_with_document_ai(gemini_bytes, gemini_mime)
+        basic_info = call_gemini_basic_info(business["name"], document_text)
     except Exception as e:
-        supabase.table("businesses").update({"reference_file_path": object_path}).eq("id", business_id).execute()
+        db.table("businesses").update({"reference_file_path": object_path}).eq("id", business_id).execute()
         raise HTTPException(
             status_code=502, detail=f"파일은 업로드됐지만 AI 정보 추출에 실패했습니다: {friendly_ai_error(e)}"
         )
 
     row = (
-        supabase.table("businesses")
+        db.table("businesses")
         .update({"reference_file_path": object_path, "basic_info": basic_info})
         .eq("id", business_id)
         .execute()
@@ -833,7 +1553,7 @@ def next_template_sort_order(business_id: str, user_upload_required: bool) -> in
     호출부가 그 컬럼 없이 진행하게 한다."""
     try:
         rows = (
-            supabase.table("templates")
+            db.table("templates")
             .select("sort_order")
             .eq("business_id", business_id)
             .execute()
@@ -854,16 +1574,19 @@ def create_template(
     name: str = Form(...),
     form_number: str | None = Form(None),
     user_upload_required: bool = Form(False),
+    linked_account_doc_type: str | None = Form(None),
     file: UploadFile | None = File(None),
     authorization: str | None = Header(None),
 ):
     require_admin(authorization)
 
     business = (
-        supabase.table("businesses").select("id").eq("id", business_id).maybe_single().execute().data
+        db.table("businesses").select("id").eq("id", business_id).maybe_single().execute().data
     )
     if not business:
         raise HTTPException(status_code=404, detail="해당 사업을 찾을 수 없습니다.")
+    if linked_account_doc_type and linked_account_doc_type not in ACCOUNT_DOC_TYPES:
+        raise HTTPException(status_code=400, detail="알 수 없는 마이페이지 서류 종류입니다.")
 
     object_path = None
     if not user_upload_required:
@@ -876,7 +1599,7 @@ def create_template(
         object_path = f"{business_id}/{uuid.uuid4().hex}.docx"
 
         try:
-            supabase.storage.from_(TEMPLATES_BUCKET).upload(
+            gcs.from_(TEMPLATES_BUCKET).upload(
                 object_path,
                 file_bytes,
                 {
@@ -893,13 +1616,14 @@ def create_template(
         "form_number": None if user_upload_required else form_number,
         "original_file_path": object_path,
         "user_upload_required": user_upload_required,
+        "linked_account_doc_type": linked_account_doc_type if user_upload_required else None,
     }
     sort_order = next_template_sort_order(business_id, user_upload_required)
     if sort_order is not None:
         payload["sort_order"] = sort_order
 
     try:
-        row = supabase.table("templates").insert(payload).execute().data[0]
+        row = db.table("templates").insert(payload).execute().data[0]
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"서류 양식 저장에 실패했습니다: {e}")
     return row
@@ -910,7 +1634,7 @@ def reorder_template(template_id: str, req: UpdateOrderRequest, authorization: s
     require_admin(authorization)
     try:
         row = (
-            supabase.table("templates")
+            db.table("templates")
             .update({"sort_order": req.sort_order})
             .eq("id", template_id)
             .execute()
@@ -930,23 +1654,26 @@ def update_template(
     template_id: str,
     name: str = Form(...),
     form_number: str | None = Form(None),
+    linked_account_doc_type: str | None = Form(None),
     file: UploadFile | None = File(None),
     authorization: str | None = Header(None),
 ):
     require_admin(authorization)
 
     template = (
-        supabase.table("templates").select("*").eq("id", template_id).maybe_single().execute().data
+        db.table("templates").select("*").eq("id", template_id).maybe_single().execute().data
     )
     if not template:
         raise HTTPException(status_code=404, detail="해당 서식을 찾을 수 없습니다.")
+    if linked_account_doc_type and linked_account_doc_type not in ACCOUNT_DOC_TYPES:
+        raise HTTPException(status_code=400, detail="알 수 없는 마이페이지 서류 종류입니다.")
 
     if file is not None and file.filename:
         if not file.filename.lower().endswith(".docx"):
             raise HTTPException(status_code=400, detail="docx 파일만 업로드할 수 있습니다.")
         file_bytes = file.file.read()
         try:
-            supabase.storage.from_(TEMPLATES_BUCKET).update(
+            gcs.from_(TEMPLATES_BUCKET).update(
                 template["original_file_path"],
                 file_bytes,
                 {"content-type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
@@ -954,9 +1681,13 @@ def update_template(
         except Exception as e:
             raise HTTPException(status_code=502, detail=f"파일 업로드에 실패했습니다: {e}")
 
+    update_payload = {"name": name, "form_number": form_number}
+    if template.get("user_upload_required"):
+        update_payload["linked_account_doc_type"] = linked_account_doc_type
+
     row = (
-        supabase.table("templates")
-        .update({"name": name, "form_number": form_number})
+        db.table("templates")
+        .update(update_payload)
         .eq("id", template_id)
         .execute()
         .data[0]
@@ -969,19 +1700,19 @@ def delete_template(template_id: str, authorization: str | None = Header(None)):
     require_admin(authorization)
 
     template = (
-        supabase.table("templates").select("*").eq("id", template_id).maybe_single().execute().data
+        db.table("templates").select("*").eq("id", template_id).maybe_single().execute().data
     )
     if not template:
         raise HTTPException(status_code=404, detail="해당 서식을 찾을 수 없습니다.")
 
     submissions = (
-        supabase.table("submissions").select("id").eq("template_id", template_id).execute().data or []
+        db.table("submissions").select("id").eq("template_id", template_id).execute().data or []
     )
     submission_ids = [s["id"] for s in submissions]
 
     if submission_ids:
         generated_docs = (
-            supabase.table("generated_documents")
+            db.table("generated_documents")
             .select("file_path")
             .in_("submission_id", submission_ids)
             .execute()
@@ -989,20 +1720,20 @@ def delete_template(template_id: str, authorization: str | None = Header(None)):
             or []
         )
         gen_paths = [g["file_path"] for g in generated_docs if g.get("file_path")]
-        supabase.table("generated_documents").delete().in_("submission_id", submission_ids).execute()
+        db.table("generated_documents").delete().in_("submission_id", submission_ids).execute()
         if gen_paths:
             try:
-                supabase.storage.from_(GENERATED_BUCKET).remove(gen_paths)
+                gcs.from_(GENERATED_BUCKET).remove(gen_paths)
             except Exception:
                 pass
 
-        supabase.table("submission_values").delete().in_("submission_id", submission_ids).execute()
-        supabase.table("submissions").delete().eq("template_id", template_id).execute()
+        db.table("submission_values").delete().in_("submission_id", submission_ids).execute()
+        db.table("submissions").delete().eq("template_id", template_id).execute()
 
-    supabase.table("template_fields").delete().eq("template_id", template_id).execute()
-    supabase.table("templates").delete().eq("id", template_id).execute()
+    db.table("template_fields").delete().eq("template_id", template_id).execute()
+    db.table("templates").delete().eq("id", template_id).execute()
     try:
-        supabase.storage.from_(TEMPLATES_BUCKET).remove([template["original_file_path"]])
+        gcs.from_(TEMPLATES_BUCKET).remove([template["original_file_path"]])
     except Exception:
         pass  # storage 파일 삭제 실패는 무시 — DB 정리가 우선이다.
 
@@ -1016,13 +1747,13 @@ def delete_business(business_id: str, authorization: str | None = Header(None)):
     require_admin(authorization)
 
     business = (
-        supabase.table("businesses").select("*").eq("id", business_id).maybe_single().execute().data
+        db.table("businesses").select("*").eq("id", business_id).maybe_single().execute().data
     )
     if not business:
         raise HTTPException(status_code=404, detail="해당 사업을 찾을 수 없습니다.")
 
     templates = (
-        supabase.table("templates")
+        db.table("templates")
         .select("id,original_file_path")
         .eq("business_id", business_id)
         .execute()
@@ -1033,13 +1764,13 @@ def delete_business(business_id: str, authorization: str | None = Header(None)):
 
     if template_ids:
         submissions = (
-            supabase.table("submissions").select("id").in_("template_id", template_ids).execute().data or []
+            db.table("submissions").select("id").in_("template_id", template_ids).execute().data or []
         )
         submission_ids = [s["id"] for s in submissions]
 
         if submission_ids:
             generated_docs = (
-                supabase.table("generated_documents")
+                db.table("generated_documents")
                 .select("file_path")
                 .in_("submission_id", submission_ids)
                 .execute()
@@ -1047,33 +1778,33 @@ def delete_business(business_id: str, authorization: str | None = Header(None)):
                 or []
             )
             gen_paths = [g["file_path"] for g in generated_docs if g.get("file_path")]
-            supabase.table("generated_documents").delete().in_("submission_id", submission_ids).execute()
+            db.table("generated_documents").delete().in_("submission_id", submission_ids).execute()
             if gen_paths:
                 try:
-                    supabase.storage.from_(GENERATED_BUCKET).remove(gen_paths)
+                    gcs.from_(GENERATED_BUCKET).remove(gen_paths)
                 except Exception:
                     pass
 
-            supabase.table("submission_values").delete().in_("submission_id", submission_ids).execute()
-            supabase.table("submissions").delete().in_("template_id", template_ids).execute()
+            db.table("submission_values").delete().in_("submission_id", submission_ids).execute()
+            db.table("submissions").delete().in_("template_id", template_ids).execute()
 
-        supabase.table("template_fields").delete().in_("template_id", template_ids).execute()
-        supabase.table("templates").delete().eq("business_id", business_id).execute()
+        db.table("template_fields").delete().in_("template_id", template_ids).execute()
+        db.table("templates").delete().eq("business_id", business_id).execute()
 
         template_paths = [t["original_file_path"] for t in templates if t.get("original_file_path")]
         if template_paths:
             try:
-                supabase.storage.from_(TEMPLATES_BUCKET).remove(template_paths)
+                gcs.from_(TEMPLATES_BUCKET).remove(template_paths)
             except Exception:
                 pass
 
     if business.get("reference_file_path"):
         try:
-            supabase.storage.from_(TEMPLATES_BUCKET).remove([business["reference_file_path"]])
+            gcs.from_(TEMPLATES_BUCKET).remove([business["reference_file_path"]])
         except Exception:
             pass
 
-    supabase.table("businesses").delete().eq("id", business_id).execute()
+    db.table("businesses").delete().eq("id", business_id).execute()
 
     return {"deleted": True}
 
@@ -1096,7 +1827,7 @@ def create_template_fields(
     require_admin(authorization)
 
     template = (
-        supabase.table("templates").select("id").eq("id", template_id).maybe_single().execute().data
+        db.table("templates").select("id").eq("id", template_id).maybe_single().execute().data
     )
     if not template:
         raise HTTPException(status_code=404, detail="해당 서식을 찾을 수 없습니다.")
@@ -1118,7 +1849,7 @@ def create_template_fields(
             "options": f.options,
         })
 
-    inserted = supabase.table("template_fields").insert(rows).execute().data
+    inserted = db.table("template_fields").insert(rows).execute().data
     return {"fields": inserted}
 
 
@@ -1217,7 +1948,7 @@ def call_gemini_blank_candidates(business_name, template_name, candidates):
         return []
 
     response = gemini_client.models.generate_content(
-        model="gemini-2.5-flash",
+        model=TUNED_BLANK_CANDIDATE_MODEL,
         contents=build_blank_candidate_prompt(business_name, template_name, candidates),
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
@@ -1288,16 +2019,16 @@ def suggest_template_fields(template_id: str, authorization: str | None = Header
     require_admin(authorization)
 
     template = (
-        supabase.table("templates").select("*").eq("id", template_id).maybe_single().execute().data
+        db.table("templates").select("*").eq("id", template_id).maybe_single().execute().data
     )
     if not template:
         raise HTTPException(status_code=404, detail="해당 서식을 찾을 수 없습니다.")
     business = (
-        supabase.table("businesses").select("name").eq("id", template["business_id"]).maybe_single().execute().data
+        db.table("businesses").select("name").eq("id", template["business_id"]).maybe_single().execute().data
     )
     business_name = business["name"] if business else template["name"]
 
-    file_bytes = supabase.storage.from_(TEMPLATES_BUCKET).download(template["original_file_path"])
+    file_bytes = gcs.from_(TEMPLATES_BUCKET).download(template["original_file_path"])
     doc = Document(io.BytesIO(file_bytes))
 
     if template["business_id"] == VIETNAM_EXPO_BUSINESS_ID and template["name"].strip() == "참가 신청서":
@@ -1307,12 +2038,12 @@ def suggest_template_fields(template_id: str, authorization: str | None = Header
         # 같은 Storage 경로를 덮어쓰면 CDN 캐시 때문에 직전 원본이 다시 내려올 수 있어
         # 고정 필드를 심은 파일은 새 경로로 올리고 template 포인터를 교체한다.
         patched_path = f"{template['business_id']}/{uuid.uuid4().hex}.docx"
-        supabase.storage.from_(TEMPLATES_BUCKET).upload(
+        gcs.from_(TEMPLATES_BUCKET).upload(
             patched_path,
             output.getvalue(),
             {"content-type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
         )
-        supabase.table("templates").update({"original_file_path": patched_path}).eq("id", template_id).execute()
+        db.table("templates").update({"original_file_path": patched_path}).eq("id", template_id).execute()
         return {"fields": VIETNAM_APPLICATION_FIELDS}
 
     field_keys, checkbox_options = extract_docx_fields(doc)
@@ -1357,7 +2088,7 @@ def suggest_template_fields(template_id: str, authorization: str | None = Header
         if fields:
             output = io.BytesIO()
             doc.save(output)
-            supabase.storage.from_(TEMPLATES_BUCKET).update(
+            gcs.from_(TEMPLATES_BUCKET).update(
                 template["original_file_path"],
                 output.getvalue(),
                 {"content-type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
@@ -1508,6 +2239,32 @@ DOC_PART_MIME_BY_EXT = {
 }
 
 
+def build_gemini_doc_parts(paths: list[str]) -> list:
+    """storage 경로들을 다운로드해 Gemini에 넣을 수 있는 PDF/이미지 Part로 변환한다.
+    docx/hwp는 PDF로 변환하고, 다운로드나 변환에 실패하는 파일은 건너뛴다."""
+    parts = []
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        for i, path in enumerate(paths):
+            ext = Path(path).suffix.lower()
+            try:
+                file_bytes = gcs.from_(TEMPLATES_BUCKET).download(path)
+            except Exception:
+                continue
+
+            if ext in (".docx", ".hwp"):
+                try:
+                    src_path = tmp_path / f"doc{i}{ext}"
+                    src_path.write_bytes(file_bytes)
+                    pdf_path = convert_to_pdf(src_path, tmp_path)
+                    parts.append(types.Part.from_bytes(data=pdf_path.read_bytes(), mime_type="application/pdf"))
+                except Exception:
+                    continue
+            elif ext in DOC_PART_MIME_BY_EXT:
+                parts.append(types.Part.from_bytes(data=file_bytes, mime_type=DOC_PART_MIME_BY_EXT[ext]))
+    return parts
+
+
 @app.post("/templates/{template_id}/extract-from-uploads")
 def extract_from_uploads(template_id: str, authorization: str | None = Header(None)):
     """작성 중인 서류 화면에서 '업로드한 서류에서 불러오기'를 누르면, 이 사용자가 예전에
@@ -1517,19 +2274,19 @@ def extract_from_uploads(template_id: str, authorization: str | None = Header(No
     user_id = require_user(authorization)
 
     template = (
-        supabase.table("templates").select("*").eq("id", template_id).maybe_single().execute().data
+        db.table("templates").select("*").eq("id", template_id).maybe_single().execute().data
     )
     if not template:
         raise HTTPException(status_code=404, detail="해당 서류를 찾을 수 없습니다.")
 
     fields = (
-        supabase.table("template_fields").select("*").eq("template_id", template_id).execute().data or []
+        db.table("template_fields").select("*").eq("template_id", template_id).execute().data or []
     )
     if not fields:
         return {"fields": []}
 
     all_submissions = (
-        supabase.table("submissions")
+        db.table("submissions")
         .select("id, template_id, file_path, created_at")
         .eq("user_id", user_id)
         .order("created_at", desc=True)
@@ -1552,28 +2309,7 @@ def extract_from_uploads(template_id: str, authorization: str | None = Header(No
         if len(picked) >= 5:
             break
 
-    parts = []
-    with tempfile.TemporaryDirectory() as tmp:
-        tmp_path = Path(tmp)
-        for row in picked:
-            path = row["file_path"]
-            ext = Path(path).suffix.lower()
-            try:
-                file_bytes = supabase.storage.from_(TEMPLATES_BUCKET).download(path)
-            except Exception:
-                continue
-
-            if ext in (".docx", ".hwp"):
-                try:
-                    src_path = tmp_path / f"{row['id']}{ext}"
-                    src_path.write_bytes(file_bytes)
-                    pdf_path = convert_to_pdf(src_path, tmp_path)
-                    parts.append(types.Part.from_bytes(data=pdf_path.read_bytes(), mime_type="application/pdf"))
-                except Exception:
-                    continue
-            elif ext in DOC_PART_MIME_BY_EXT:
-                parts.append(types.Part.from_bytes(data=file_bytes, mime_type=DOC_PART_MIME_BY_EXT[ext]))
-
+    parts = build_gemini_doc_parts([row["file_path"] for row in picked])
     if not parts:
         return {"fields": []}
 
@@ -1582,6 +2318,51 @@ def extract_from_uploads(template_id: str, authorization: str | None = Header(No
     except Exception as e:
         raise HTTPException(
             status_code=502, detail=f"업로드한 서류에서 정보를 불러오지 못했습니다: {friendly_ai_error(e)}"
+        )
+    return {"fields": results}
+
+
+@app.post("/templates/{template_id}/extract-from-account")
+def extract_from_account_docs(template_id: str, authorization: str | None = Header(None)):
+    """작성 중인 서류 화면에서 '마이페이지에서 가져오기'를 누르면, 마이페이지 서류 슬롯(사업자
+    등록증/상품 상세설명서)에 올려둔 파일을 AI(Gemini)가 읽어서 지금 서식의 빈 칸에 채울 수 있는
+    값을 뽑아 돌려준다. extract-from-uploads와 마찬가지로 미리보기 용도라 submission을 만들거나
+    저장하지 않는다."""
+    user_id = require_user(authorization)
+
+    template = (
+        db.table("templates").select("*").eq("id", template_id).maybe_single().execute().data
+    )
+    if not template:
+        raise HTTPException(status_code=404, detail="해당 서류를 찾을 수 없습니다.")
+
+    fields = (
+        db.table("template_fields").select("*").eq("template_id", template_id).execute().data or []
+    )
+    if not fields:
+        return {"fields": []}
+
+    paths = []
+    for doc_type in ACCOUNT_DOC_TYPES:
+        folder = _account_doc_folder(user_id, doc_type)
+        objects = [obj for obj in (gcs.from_(TEMPLATES_BUCKET).list(folder) or []) if obj.get("id")]
+        if not objects:
+            continue
+        objects.sort(key=lambda o: o.get("created_at") or "", reverse=True)
+        paths.append(f"{folder}/{objects[0]['name']}")
+
+    if not paths:
+        return {"fields": []}
+
+    parts = build_gemini_doc_parts(paths)
+    if not parts:
+        return {"fields": []}
+
+    try:
+        results = call_gemini_extract_from_docs(template["name"], fields, parts)
+    except Exception as e:
+        raise HTTPException(
+            status_code=502, detail=f"마이페이지 서류에서 정보를 불러오지 못했습니다: {friendly_ai_error(e)}"
         )
     return {"fields": results}
 
@@ -1678,14 +2459,14 @@ def preview_template_pdf(template_id: str):
     """공고 상세페이지에서 원본(빈) 서식을 PDF로 미리보기 위한 공개 엔드포인트.
     로그인 여부와 무관하게 볼 수 있어야 하므로 관리자 인증을 요구하지 않는다."""
     template = (
-        supabase.table("templates").select("*").eq("id", template_id).maybe_single().execute().data
+        db.table("templates").select("*").eq("id", template_id).maybe_single().execute().data
     )
     if not template:
         raise HTTPException(status_code=404, detail="해당 서식을 찾을 수 없습니다.")
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
-        docx_bytes = supabase.storage.from_(TEMPLATES_BUCKET).download(template["original_file_path"])
+        docx_bytes = gcs.from_(TEMPLATES_BUCKET).download(template["original_file_path"])
         docx_path = tmp_path / "template.docx"
         docx_path.write_bytes(docx_bytes)
         try:
@@ -1712,14 +2493,14 @@ def download_reference_doc(business_id: str):
     """공고 상세페이지의 '기본 정보'를 AI가 추출할 때 사용한 원본 공고 파일을
     그대로 다운로드한다. 로그인 여부와 무관하게 볼 수 있어야 하므로 인증을 요구하지 않는다."""
     business = (
-        supabase.table("businesses").select("reference_file_path,name").eq("id", business_id).maybe_single().execute().data
+        db.table("businesses").select("reference_file_path,name").eq("id", business_id).maybe_single().execute().data
     )
     if not business or not business.get("reference_file_path"):
         raise HTTPException(status_code=404, detail="등록된 기본서류가 없습니다.")
 
     object_path = business["reference_file_path"]
     ext = Path(object_path).suffix.lower()
-    file_bytes = supabase.storage.from_(TEMPLATES_BUCKET).download(object_path)
+    file_bytes = gcs.from_(TEMPLATES_BUCKET).download(object_path)
     media_type = REFERENCE_DOC_MIME_TYPES.get(ext, "application/octet-stream")
     filename = f"{business['name']}_기본서류{ext}"
 
@@ -1779,7 +2560,7 @@ def preview_reference_doc_pdf(business_id: str):
     이미지(jpg/png)는 그대로 반환하고, docx/hwp는 PDF로 변환한다.
     PDF/DOCX/HWP는 '기본 정보' 카드에 나온 내용을 원문에서 찾아 노란 형광펜으로 표시해서 돌려준다."""
     business = (
-        supabase.table("businesses")
+        db.table("businesses")
         .select("reference_file_path,name,basic_info")
         .eq("id", business_id)
         .maybe_single()
@@ -1791,7 +2572,7 @@ def preview_reference_doc_pdf(business_id: str):
 
     object_path = business["reference_file_path"]
     ext = Path(object_path).suffix.lower()
-    file_bytes = supabase.storage.from_(TEMPLATES_BUCKET).download(object_path)
+    file_bytes = gcs.from_(TEMPLATES_BUCKET).download(object_path)
     basic_info = business.get("basic_info")
 
     if ext == ".pdf":
@@ -1827,121 +2608,80 @@ class TranslateFieldsRequest(BaseModel):
     target_lang: str  # "en" | "th" | "vi"
 
 
-def build_translate_fields_prompt(fields, lang_name):
-    lines = "\n".join(f"- {k}: {v}" for k, v in fields.items())
-    return f"""다음은 한국어로 작성된 해외 이커머스 플랫폼(쇼피 등) 상품 등록 정보입니다.
-아래 각 항목의 값을 자연스럽고 상업적으로 매력적인 {lang_name}로 번역해주세요.
-브랜드명 등 고유명사는 발음을 살려 표기하고, 이커머스 상품 페이지에 바로 쓸 수 있는 문체로 작성하세요.
+def build_translation_review_prompt(fields_ko, fields_translated, lang_name):
+    lines = "\n".join(
+        f"- {k}\n  원문(한국어): {fields_ko[k]}\n  번역문({lang_name}): {fields_translated[k]}"
+        for k in fields_translated
+    )
+    return f"""다음은 해외 이커머스 플랫폼(쇼피 등) 상품 등록 정보를 기계번역(Cloud Translation API)으로
+{lang_name}로 번역한 결과입니다. 이미 번역은 끝났으니 다시 번역하지 말고, 아래 검수만 하세요.
+
+검수 기준:
+- 해당 언어권에서 정치·종교·왕실 관련 민감어, 인종·문화적 금기어, 욕설·비속어 등 현지인이
+  불쾌하게 받아들이거나 조심스러워할 만한 단어·표현이 있는지만 확인하세요.
+- 문제가 있으면 같은 의미를 전달하는 무난하고 안전한 표현으로 그 부분만 최소한으로 고치세요.
+- 문제가 없으면 번역문을 그대로 반환하세요. 문체나 표현을 임의로 바꾸지 마세요.
 
 {lines}
 
-반드시 원본과 동일한 키를 사용한 JSON 객체로만 응답하세요.
+반드시 원본과 동일한 키를 사용한 JSON 객체로, 각 항목의 최종 값만 응답하세요.
 """
+
+
+def call_translation_review(fields_ko, fields_translated, lang_name):
+    prompt = build_translation_review_prompt(fields_ko, fields_translated, lang_name)
+    response = gemini_client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=[prompt],
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_schema={
+                "type": "OBJECT",
+                "properties": {k: {"type": "STRING"} for k in fields_translated},
+                "required": list(fields_translated.keys()),
+            },
+        ),
+    )
+    return json.loads(response.text)
 
 
 @app.post("/translate-fields")
 def translate_fields(req: TranslateFieldsRequest):
-    """쇼피 입점 폼에 입력한 한국어 값들을 선택한 언어(영/태국/베트남)로 한번에 번역한다."""
-    lang_name = TRANSLATE_LANGUAGE_NAMES.get(req.target_lang)
-    if not lang_name:
+    """쇼피 입점 폼/AI 이미지 생성에 입력한 한국어 값들을 선택한 언어(영/태국/베트남)로 번역한다.
+    1차로 Cloud Translation API(NMT)가 빠르게 직역하고, 2차로 Gemini가 그 결과에서 현지 문화권
+    민감어·금기어만 검수해서 고친다 - 전체를 Gemini가 새로 번역하는 것보다 빠르면서도 안전장치는
+    유지하기 위한 구조. 검수 단계가 실패해도 기계번역 결과는 그대로 돌려준다(전체 요청을 막지 않음)."""
+    if req.target_lang not in TRANSLATE_LANGUAGE_NAMES:
         raise HTTPException(status_code=400, detail="지원하지 않는 언어입니다.")
 
     non_empty = {k: v for k, v in req.fields.items() if (v or "").strip()}
     if not non_empty:
         return {"translated": {k: "" for k in req.fields}}
 
-    prompt = build_translate_fields_prompt(non_empty, lang_name)
+    keys = list(non_empty.keys())
     try:
-        response = gemini_client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=[prompt],
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema={
-                    "type": "OBJECT",
-                    "properties": {k: {"type": "STRING"} for k in non_empty},
-                    "required": list(non_empty.keys()),
-                },
-            ),
+        response = translate_client.translate_text(
+            request={
+                "parent": TRANSLATE_PARENT,
+                "contents": [non_empty[k] for k in keys],
+                "mime_type": "text/plain",
+                "source_language_code": "ko",
+                "target_language_code": req.target_lang,
+            }
         )
-        translated = json.loads(response.text)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"번역에 실패했습니다: {friendly_ai_error(e)}")
+        raise HTTPException(status_code=502, detail=f"번역에 실패했습니다: {e}")
+
+    translated = {k: t.translated_text for k, t in zip(keys, response.translations)}
+
+    try:
+        lang_name = TRANSLATE_LANGUAGE_NAMES[req.target_lang]
+        reviewed = call_translation_review(non_empty, translated, lang_name)
+        translated = {k: reviewed.get(k) or translated[k] for k in translated}
+    except Exception:
+        pass  # 검수 실패해도 기계번역 결과는 그대로 반환한다
 
     return {"translated": {k: translated.get(k, "") for k in req.fields}}
-
-
-PRICE_MARKET_INFO = {
-    "en": {"currency": "USD", "label": "Global (English-speaking markets)"},
-    "th": {"currency": "THB", "label": "Thailand"},
-    "vi": {"currency": "VND", "label": "Vietnam"},
-}
-
-
-class PriceSuggestionRequest(BaseModel):
-    product_name: str
-    category: str = ""
-    description: str = ""
-    brand: str = ""
-    krw_price: str = ""
-    target_market: str  # "en" | "th" | "vi"
-
-
-def build_price_suggestion_prompt(req: PriceSuggestionRequest, market):
-    krw_note = f"현재 국내(원화) 판매가: {req.krw_price}원" if req.krw_price else "국내 판매가 정보 없음"
-    return f"""당신은 한국 소상공인의 상품을 해외 이커머스 플랫폼(쇼피 등)에 등록하는 것을 돕는 가격 책정 전문가입니다.
-아래 상품을 {market['label']} 시장에 판매할 때 적정한 Global SKU Price를 {market['currency']} 통화로 추천해주세요.
-
-상품명: {req.product_name}
-카테고리: {req.category}
-브랜드: {req.brand}
-상품 설명: {req.description}
-{krw_note}
-
-고려 사항:
-- 원화 가격이 있다면 최근 환율 감각으로 환산한 금액을 기준으로, 현지 동종 상품 시세와 구매력을 반영해 조정하세요.
-- 플랫폼 수수료, 배송비, 관세 등을 고려해 판매자에게 남는 마진이 있도록 다소 여유있게 책정하세요.
-- suggestedPrice는 숫자만(콤마 없이) 문자열로 반환하세요.
-
-아래 JSON으로 응답하세요:
-- suggestedPrice: 추천 가격(숫자 문자열)
-- currency: "{market['currency']}"
-- reasoning: 추천 근거를 2~3문장의 한국어로 설명
-"""
-
-
-@app.post("/price-suggestion")
-def suggest_price(req: PriceSuggestionRequest):
-    """쇼피 입점 폼의 Global SKU Price 필드에서, 선택한 시장 통화 기준 적정가를 AI가 추천한다."""
-    market = PRICE_MARKET_INFO.get(req.target_market)
-    if not market:
-        raise HTTPException(status_code=400, detail="지원하지 않는 시장입니다.")
-    if not req.product_name.strip():
-        raise HTTPException(status_code=400, detail="상품명을 먼저 입력해주세요.")
-
-    prompt = build_price_suggestion_prompt(req, market)
-    try:
-        response = gemini_client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=[prompt],
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema={
-                    "type": "OBJECT",
-                    "properties": {
-                        "suggestedPrice": {"type": "STRING"},
-                        "currency": {"type": "STRING"},
-                        "reasoning": {"type": "STRING"},
-                    },
-                    "required": ["suggestedPrice", "currency", "reasoning"],
-                },
-            ),
-        )
-        data = json.loads(response.text)
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"가격 추천에 실패했습니다: {friendly_ai_error(e)}")
-
-    return data
 
 
 @app.post("/marketing/ai-fill")
@@ -2018,17 +2758,17 @@ def ai_fill_template(template_id: str, req: AiFillRequest, authorization: str | 
     require_user(authorization)
 
     template = (
-        supabase.table("templates").select("*").eq("id", template_id).maybe_single().execute().data
+        db.table("templates").select("*").eq("id", template_id).maybe_single().execute().data
     )
     if not template:
         raise HTTPException(status_code=404, detail="해당 서류를 찾을 수 없습니다.")
     business = (
-        supabase.table("businesses").select("name").eq("id", template["business_id"]).maybe_single().execute().data
+        db.table("businesses").select("name").eq("id", template["business_id"]).maybe_single().execute().data
     )
     business_name = business["name"] if business else template["name"]
 
     fields = (
-        supabase.table("template_fields").select("*").eq("template_id", template_id).execute().data or []
+        db.table("template_fields").select("*").eq("template_id", template_id).execute().data or []
     )
     ai_fields = [
         f for f in fields
@@ -2116,24 +2856,24 @@ def generate(req: GenerateRequest):
     submission_id = req.submission_id
 
     submission = (
-        supabase.table("submissions").select("*").eq("id", submission_id).single().execute().data
+        db.table("submissions").select("*").eq("id", submission_id).single().execute().data
     )
     if not submission:
         raise HTTPException(status_code=404, detail="submission을 찾을 수 없습니다.")
 
     template = (
-        supabase.table("templates").select("*").eq("id", submission["template_id"]).single().execute().data
+        db.table("templates").select("*").eq("id", submission["template_id"]).single().execute().data
     )
     business = (
-        supabase.table("businesses").select("*").eq("id", template["business_id"]).single().execute().data
+        db.table("businesses").select("*").eq("id", template["business_id"]).single().execute().data
     )
     fields = (
-        supabase.table("template_fields").select("*").eq("template_id", template["id"]).execute().data
+        db.table("template_fields").select("*").eq("template_id", template["id"]).execute().data
     )
     field_by_id = {f["id"]: f for f in fields}
 
     existing_values = (
-        supabase.table("submission_values").select("*").eq("submission_id", submission_id).execute().data
+        db.table("submission_values").select("*").eq("submission_id", submission_id).execute().data
     )
 
     user_values = {}
@@ -2180,7 +2920,7 @@ def generate(req: GenerateRequest):
             review_fields.add(field["field_key"])
 
     if new_rows:
-        supabase.table("submission_values").insert(new_rows).execute()
+        db.table("submission_values").insert(new_rows).execute()
 
     values = {}
     checkbox_selections = {}
@@ -2196,7 +2936,7 @@ def generate(req: GenerateRequest):
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
 
-        template_bytes = supabase.storage.from_(TEMPLATES_BUCKET).download(template["original_file_path"])
+        template_bytes = gcs.from_(TEMPLATES_BUCKET).download(template["original_file_path"])
         template_path = tmp_path / "template.docx"
         template_path.write_bytes(template_bytes)
 
@@ -2207,14 +2947,14 @@ def generate(req: GenerateRequest):
 
         storage_path = f"{submission_id}/document.pdf"
         with open(pdf_path, "rb") as fh:
-            supabase.storage.from_(GENERATED_BUCKET).upload(
+            gcs.from_(GENERATED_BUCKET).upload(
                 storage_path,
                 fh.read(),
                 {"content-type": "application/pdf", "upsert": "true"},
             )
 
     generated_doc = (
-        supabase.table("generated_documents")
+        db.table("generated_documents")
         .insert({
             "submission_id": submission_id,
             "file_path": storage_path,
@@ -2224,7 +2964,7 @@ def generate(req: GenerateRequest):
         .data[0]
     )
 
-    supabase.table("submissions").update({"status": "generated"}).eq("id", submission_id).execute()
+    db.table("submissions").update({"status": "generated"}).eq("id", submission_id).execute()
 
     return {
         "submission_id": submission_id,
@@ -2238,24 +2978,24 @@ def review(req: ReviewRequest):
     submission_id = req.submission_id
 
     submission = (
-        supabase.table("submissions").select("*").eq("id", submission_id).single().execute().data
+        db.table("submissions").select("*").eq("id", submission_id).single().execute().data
     )
     if not submission:
         raise HTTPException(status_code=404, detail="submission을 찾을 수 없습니다.")
 
     template = (
-        supabase.table("templates").select("*").eq("id", submission["template_id"]).single().execute().data
+        db.table("templates").select("*").eq("id", submission["template_id"]).single().execute().data
     )
     business = (
-        supabase.table("businesses").select("*").eq("id", template["business_id"]).single().execute().data
+        db.table("businesses").select("*").eq("id", template["business_id"]).single().execute().data
     )
     fields = (
-        supabase.table("template_fields").select("*").eq("template_id", template["id"]).execute().data
+        db.table("template_fields").select("*").eq("template_id", template["id"]).execute().data
     )
     field_by_id = {f["id"]: f for f in fields}
 
     existing_values = (
-        supabase.table("submission_values").select("*").eq("submission_id", submission_id).execute().data
+        db.table("submission_values").select("*").eq("submission_id", submission_id).execute().data
     )
     user_values = {}
     for v in existing_values:
@@ -2275,7 +3015,7 @@ def review(req: ReviewRequest):
         note = "AI 검토 중 오류가 발생했습니다. 관리자가 직접 확인해주세요."
 
     updated = (
-        supabase.table("submissions")
+        db.table("submissions")
         .update({
             "review_status": status,
             "review_note": note,
@@ -2288,7 +3028,7 @@ def review(req: ReviewRequest):
 
     if status == "needs_revision":
         message = f"[{template['name']}] 제출하신 서류에 보완이 필요합니다.{f' ({note})' if note else ''}"
-        supabase.table("notifications").insert({
+        db.table("notifications").insert({
             "user_id": submission["user_id"],
             "submission_id": submission_id,
             "template_id": template["id"],
@@ -2366,10 +3106,10 @@ def _generate_copy_json(prompt: str, schema: dict) -> dict:
 def _upload_generated_image(user_id: str, gen_id: str, slot: str, image_bytes: bytes, mime_type: str) -> dict:
     ext = "png" if "png" in mime_type else "jpg"
     path = f"marketing-images/{user_id}/{gen_id}/{slot}.{ext}"
-    supabase.storage.from_(GENERATED_BUCKET).upload(
+    gcs.from_(GENERATED_BUCKET).upload(
         path, image_bytes, {"content-type": mime_type, "upsert": "true"}
     )
-    signed = supabase.storage.from_(GENERATED_BUCKET).create_signed_url(path, 3600)
+    signed = gcs.from_(GENERATED_BUCKET).create_signed_url(path, 3600)
     return {"slot": slot, "path": path, "url": signed.get("signedURL")}
 
 
@@ -3762,7 +4502,7 @@ def generate_marketing_images(
         brand_name = ""
         if (layout == "poster" and template_id == "tpl-poster-luxury") or layout == "card-news":
             profile = (
-                supabase.table("profiles").select("company").eq("id", user_id).maybe_single().execute().data
+                db.table("users").select("company").eq("id", user_id).maybe_single().execute().data
             ) or {}
             brand_name = profile.get("company") or ""
 
@@ -3839,7 +4579,7 @@ def edit_marketing_images(payload: MarketingEditRequest, authorization: str | No
     try:
         edited_images = []
         for img in payload.images:
-            existing_bytes = supabase.storage.from_(GENERATED_BUCKET).download(img.path)
+            existing_bytes = gcs.from_(GENERATED_BUCKET).download(img.path)
             existing_mime = "image/png" if img.path.lower().endswith(".png") else "image/jpeg"
             aspect_ratio = SLOT_ASPECT_RATIO.get(img.slot, "1:1")
             image_bytes, mime = _generate_image(edit_prompt, [(existing_bytes, existing_mime)], aspect_ratio)

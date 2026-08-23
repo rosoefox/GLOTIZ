@@ -5,19 +5,18 @@ import { Badge, Card, Button, TextField, CONTROL_CLASS } from "../components/ui"
 import Modal from "../components/Modal";
 import { brand, adminPanel as ap } from "../data/mockData";
 import { useAuth } from "../context/AuthContext";
-import { supabase } from "../lib/supabase";
+import { api, idsParam } from "../lib/api";
 import { readErrorMessage } from "../lib/apiError";
-import { orderedSelect } from "../lib/supabaseOrder";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
 const FIELD_TYPE_OPTIONS = ["text", "number", "date", "select", "checkbox", "textarea", "long_text"];
-
-const STATUS_META = {
-  approved: { label: ap.reviewStatusLabels.approved, tone: "success" },
-  needs_revision: { label: ap.reviewStatusLabels.needsRevision, tone: "warning" },
-  reviewing: { label: ap.reviewStatusLabels.reviewing, tone: "neutral" },
-  not_submitted: { label: ap.reviewStatusLabels.notSubmitted, tone: "neutral" },
-};
+// 마이페이지 서류 슬롯(사업자 등록증/상품 상세설명서)과 업로드형 서식을 연결할 때 쓰는 선택지.
+// 값은 backend main.py의 ACCOUNT_DOC_TYPES 키와 일치해야 한다.
+const ACCOUNT_DOC_TYPE_OPTIONS = [
+  { value: "", label: "연결 안 함" },
+  { value: "biz_reg", label: "사업자 등록증" },
+  { value: "product_spec", label: "상품 상세설명서" },
+];
 
 const COMPANY_NAME_KEYS = ["company_name_kr", "company_name"];
 
@@ -33,7 +32,6 @@ function SubmissionRow({
   notified,
   downloadingId,
 }) {
-  const meta = STATUS_META[item.statusKey];
   const key = item.submission ? item.submission.id : `${applicantUserId}:${item.templateId}`;
   const canNotify = item.statusKey === "not_submitted" || item.statusKey === "needs_revision";
   const isDownloading = item.submission && downloadingId === item.submission.id;
@@ -48,9 +46,17 @@ function SubmissionRow({
         )}
       </div>
       <div className="flex items-center gap-2">
-        <Badge tone={meta.tone} className={item.statusKey === "needs_revision" ? "animate-blink" : ""}>
-          {meta.label}
-        </Badge>
+        {!isHistory && canNotify && (
+          <Button
+            variant="primary"
+            className="px-3 py-1.5 text-xs"
+            disabled={notifying[key] || notified[key]}
+            onClick={() => onNotify(applicant, item)}
+          >
+            <Icon name="send" className="w-5 h-5" />
+            {notified[key] ? ap.notifiedLabel : ap.notifyLabel}
+          </Button>
+        )}
         {item.submission && (
           <Button
             variant="secondary"
@@ -81,17 +87,6 @@ function SubmissionRow({
             <Icon name="check" className="w-5 h-5" />
             {ap.markApprovedLabel}
           </button>
-        )}
-        {!isHistory && canNotify && (
-          <Button
-            variant="secondary"
-            className="px-3 py-1.5 text-xs"
-            disabled={notifying[key] || notified[key]}
-            onClick={() => onNotify(applicant, item)}
-          >
-            <Icon name="send" className="w-5 h-5" />
-            {notified[key] ? ap.notifiedLabel : ap.notifyLabel}
-          </Button>
         )}
       </div>
     </div>
@@ -241,7 +236,7 @@ function ProgramRow({
 function NewBusinessModal({ session, onClose, onCreated }) {
   const bf = ap.businessManager.businessForm;
   const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
+  const [file, setFile] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
@@ -253,10 +248,23 @@ function NewBusinessModal({ session, onClose, onCreated }) {
       const res = await fetch(`${BACKEND_URL}/admin/businesses`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({ name, description }),
+        body: JSON.stringify({ name }),
       });
       if (!res.ok) throw new Error(await readErrorMessage(res, "사업 등록에 실패했습니다."));
-      const data = await res.json();
+      let data = await res.json();
+
+      if (file) {
+        const form = new FormData();
+        form.append("file", file);
+        const docRes = await fetch(`${BACKEND_URL}/admin/businesses/${data.id}/reference-doc`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${session.access_token}` },
+          body: form,
+        });
+        if (!docRes.ok) throw new Error(await readErrorMessage(docRes, "공고문 업로드에 실패했습니다."));
+        data = await docRes.json();
+      }
+
       onCreated(data);
       onClose();
     } catch (err) {
@@ -277,14 +285,14 @@ function NewBusinessModal({ session, onClose, onCreated }) {
             onChange={(e) => setName(e.target.value)}
           />
           <label className="block">
-            <span className="mb-1.5 block text-sm font-medium text-slate-700">{bf.descriptionLabel}</span>
-            <textarea
-              rows={4}
-              placeholder={bf.descriptionPlaceholder}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
+            <span className="mb-1.5 block text-sm font-medium text-slate-700">{bf.referenceDocLabel}</span>
+            <input
+              type="file"
+              accept=".pdf,.docx,.hwp,.jpg,.jpeg,.png"
+              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-50 file:px-3.5 file:py-2 file:text-sm file:font-medium file:text-brand-600 hover:file:bg-brand-100"
             />
+            <p className="mt-1.5 text-xs text-slate-400">{bf.referenceDocHint}</p>
           </label>
           {error && <p className="text-xs font-medium text-red-500">{error}</p>}
           <Button type="submit" className="w-full justify-center" disabled={saving}>
@@ -301,6 +309,7 @@ function NewTemplateModal({ session, business, onClose, onCreated }) {
   const [formNumber, setFormNumber] = useState("");
   const [file, setFile] = useState(null);
   const [userUploadRequired, setUserUploadRequired] = useState(false);
+  const [linkedAccountDocType, setLinkedAccountDocType] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
@@ -320,6 +329,8 @@ function NewTemplateModal({ session, business, onClose, onCreated }) {
       if (!userUploadRequired) {
         form.append("form_number", formNumber);
         form.append("file", file);
+      } else if (linkedAccountDocType) {
+        form.append("linked_account_doc_type", linkedAccountDocType);
       }
       const res = await fetch(`${BACKEND_URL}/admin/templates`, {
         method: "POST",
@@ -357,9 +368,26 @@ function NewTemplateModal({ session, business, onClose, onCreated }) {
             <span className="text-sm font-medium text-slate-700">{tf.userUploadCheckboxLabel}</span>
           </label>
           {userUploadRequired ? (
-            <p className="rounded-lg bg-slate-50 px-3.5 py-2.5 text-xs leading-relaxed text-slate-500">
-              {tf.userUploadHint}
-            </p>
+            <>
+              <p className="rounded-lg bg-slate-50 px-3.5 py-2.5 text-xs leading-relaxed text-slate-500">
+                {tf.userUploadHint}
+              </p>
+              <label className="block">
+                <span className="mb-1.5 block text-sm font-medium text-slate-700">{tf.linkedDocLabel}</span>
+                <select
+                  value={linkedAccountDocType}
+                  onChange={(e) => setLinkedAccountDocType(e.target.value)}
+                  className={CONTROL_CLASS}
+                >
+                  {ACCOUNT_DOC_TYPE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.value ? opt.label : tf.linkedDocNoneOption}
+                    </option>
+                  ))}
+                </select>
+                <span className="mt-1.5 block text-xs leading-relaxed text-slate-400">{tf.linkedDocHint}</span>
+              </label>
+            </>
           ) : (
             <>
               <TextField
@@ -395,6 +423,7 @@ function EditTemplateModal({ session, template, onClose, onUpdated }) {
   const ef = ap.businessManager.editTemplateForm;
   const [name, setName] = useState(template.name || "");
   const [formNumber, setFormNumber] = useState(template.form_number || "");
+  const [linkedAccountDocType, setLinkedAccountDocType] = useState(template.linked_account_doc_type || "");
   const [file, setFile] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -407,6 +436,7 @@ function EditTemplateModal({ session, template, onClose, onUpdated }) {
       const form = new FormData();
       form.append("name", name);
       form.append("form_number", formNumber);
+      if (template.user_upload_required) form.append("linked_account_doc_type", linkedAccountDocType);
       if (file) form.append("file", file);
       const res = await fetch(`${BACKEND_URL}/admin/templates/${template.id}`, {
         method: "PATCH",
@@ -434,21 +464,40 @@ function EditTemplateModal({ session, template, onClose, onUpdated }) {
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
-          <TextField
-            label={ef.formNumberLabel}
-            placeholder={ef.formNumberPlaceholder}
-            value={formNumber}
-            onChange={(e) => setFormNumber(e.target.value)}
-          />
-          <label className="block">
-            <span className="mb-1.5 block text-sm font-medium text-slate-700">{ef.fileLabel}</span>
-            <input
-              type="file"
-              accept=".docx"
-              onChange={(e) => setFile(e.target.files?.[0] || null)}
-              className="w-full text-sm text-slate-600"
-            />
-          </label>
+          {template.user_upload_required ? (
+            <label className="block">
+              <span className="mb-1.5 block text-sm font-medium text-slate-700">{ef.linkedDocLabel}</span>
+              <select
+                value={linkedAccountDocType}
+                onChange={(e) => setLinkedAccountDocType(e.target.value)}
+                className={CONTROL_CLASS}
+              >
+                {ACCOUNT_DOC_TYPE_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.value ? opt.label : ef.linkedDocNoneOption}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <>
+              <TextField
+                label={ef.formNumberLabel}
+                placeholder={ef.formNumberPlaceholder}
+                value={formNumber}
+                onChange={(e) => setFormNumber(e.target.value)}
+              />
+              <label className="block">
+                <span className="mb-1.5 block text-sm font-medium text-slate-700">{ef.fileLabel}</span>
+                <input
+                  type="file"
+                  accept=".docx"
+                  onChange={(e) => setFile(e.target.files?.[0] || null)}
+                  className="w-full text-sm text-slate-600"
+                />
+              </label>
+            </>
+          )}
           {error && <p className="text-xs font-medium text-red-500">{error}</p>}
           <Button type="submit" className="w-full justify-center" disabled={saving}>
             {saving ? "저장 중..." : ef.submitLabel}
@@ -826,9 +875,9 @@ function BusinessManager({ session }) {
 
   async function loadBusinessManager() {
     setLoadingBM(true);
-    const [{ data: biz }, { data: tpl }] = await Promise.all([
-      orderedSelect(() => supabase.from("businesses").select("*"), "created_at", { ascending: false }),
-      orderedSelect(() => supabase.from("templates").select("*"), "form_number"),
+    const [{ businesses: biz }, { templates: tpl }] = await Promise.all([
+      api.get("/businesses"),
+      api.get("/templates?order_by=form_number"),
     ]);
     setBusinesses(biz || []);
     const grouped = {};
@@ -1086,19 +1135,14 @@ export default function AdminPage() {
   async function load() {
     setLoading(true);
 
-    const [{ data: businesses }, templatesRes, { data: submissions }, { data: generatedDocs }, { data: allFields }] =
+    const [{ businesses }, { templates }, { submissions }, { documents: generatedDocs }, { fields: allFields }] =
       await Promise.all([
-        supabase.from("businesses").select("id,name"),
-        supabase.from("templates").select("id,name,business_id,sort_order"),
-        supabase.from("submissions").select("*").order("created_at", { ascending: false }),
-        supabase.from("generated_documents").select("submission_id,file_path"),
-        supabase.from("template_fields").select("id,template_id"),
+        api.get("/businesses"),
+        api.get("/templates"),
+        api.get("/admin/submissions", session?.access_token),
+        api.get("/generated_documents", session?.access_token),
+        api.get("/template_fields"),
       ]);
-    // sort_order 컬럼이 아직 마이그레이션되지 않았으면 위 select가 에러를 반환하므로,
-    // 그 컬럼 없이 다시 조회해 화면 자체는 계속 정상 동작하게 한다.
-    const templates = templatesRes.error
-      ? (await supabase.from("templates").select("id,name,business_id")).data
-      : templatesRes.data;
 
     const businessNameById = Object.fromEntries((businesses || []).map((b) => [b.id, b.name]));
     const templateById = Object.fromEntries((templates || []).map((t) => [t.id, t]));
@@ -1117,29 +1161,34 @@ export default function AdminPage() {
       fieldCountByTemplate[f.template_id] = (fieldCountByTemplate[f.template_id] || 0) + 1;
     });
     const submissionIds = (submissions || []).map((s) => s.id);
-    const { data: allValues } = submissionIds.length
-      ? await supabase.from("submission_values").select("submission_id,value").in("submission_id", submissionIds)
-      : { data: [] };
+    const { values: allValues } = submissionIds.length
+      ? await api.get(`/submission_values?${idsParam("submission_id", submissionIds)}`, session?.access_token)
+      : { values: [] };
     const filledCountBySubmission = {};
     (allValues || []).forEach((v) => {
       if (v.value) filledCountBySubmission[v.submission_id] = (filledCountBySubmission[v.submission_id] || 0) + 1;
     });
 
     let companyNameBySubmission = {};
-    const companyFieldRes = await supabase
-      .from("template_fields")
-      .select("id")
-      .in("field_key", COMPANY_NAME_KEYS);
-    const companyFieldIds = (companyFieldRes.data || []).map((f) => f.id);
+    const { fields: companyFields } = await api.get(`/template_fields?${idsParam("field_key", COMPANY_NAME_KEYS)}`);
+    const companyFieldIds = (companyFields || []).map((f) => f.id);
     if (companyFieldIds.length) {
-      const { data: companyValues } = await supabase
-        .from("submission_values")
-        .select("submission_id,value")
-        .in("field_id", companyFieldIds);
+      const { values: companyValues } = await api.get(
+        `/submission_values?${idsParam("field_id", companyFieldIds)}`,
+        session?.access_token
+      );
       companyNameBySubmission = Object.fromEntries(
         (companyValues || []).filter((v) => v.value).map((v) => [v.submission_id, v.value])
       );
     }
+
+    // 서식 자체에 회사명 필드가 없는 경우(예: 짧은 신청서)를 대비해, 계정에 등록된
+    // 이름/회사명도 보조 표시용으로 같이 가져온다.
+    const submitterIds = [...new Set((submissions || []).map((s) => s.user_id).filter(Boolean))];
+    const { users: submitterAccounts } = submitterIds.length
+      ? await api.get(`/admin/users?${idsParam("id", submitterIds)}`, session?.access_token)
+      : { users: [] };
+    const accountById = Object.fromEntries((submitterAccounts || []).map((u) => [u.id, u]));
 
     const byUser = {};
     for (const submission of submissions || []) {
@@ -1147,9 +1196,10 @@ export default function AdminPage() {
       if (!template) continue;
       const uid = submission.user_id;
       if (!byUser[uid]) {
+        const account = accountById[uid];
         byUser[uid] = {
           userId: uid,
-          name: companyNameBySubmission[submission.id] || null,
+          name: companyNameBySubmission[submission.id] || account?.company || account?.name || null,
           submissions: [],
           byBusiness: {},
           lastUpdated: submission.created_at,
@@ -1254,19 +1304,18 @@ export default function AdminPage() {
 
   useEffect(() => {
     load();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.access_token]);
 
+  // Cloud SQL엔 Supabase Realtime 같은 실시간 구독이 없어서, 다른 관리자의 승인/반려 처리나
+  // 새 제출을 놓치지 않도록 짧은 주기로 다시 불러오는 폴링으로 대체한다. session이 바뀌면(예:
+  // 토큰 갱신) 새 session을 캡처한 인터벌로 다시 걸어야 한다 - 안 그러면 오래된(무효화된)
+  // 토큰을 계속 들고 있는 클로저가 갇혀서 일정 시간 뒤부터 401이 나기 시작한다.
   useEffect(() => {
-    const channel = supabase
-      .channel("admin-submissions-changes")
-      .on("postgres_changes", { event: "*", schema: "public", table: "submissions" }, () => {
-        load();
-      })
-      .subscribe();
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
+    const interval = setInterval(load, 15000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.access_token]);
 
   const summary = useMemo(() => {
     const programCount = applicants.reduce((sum, a) => sum + a.programs.length, 0);
@@ -1317,8 +1366,15 @@ export default function AdminPage() {
   }, [programGroups, search]);
 
   const handleDownload = async (filePath, bucket = "generated") => {
-    const { data, error } = await supabase.storage.from(bucket).createSignedUrl(filePath, 3600);
-    if (!error && data) window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+    try {
+      const { url } = await api.get(
+        `/generated-file-url?path=${encodeURIComponent(filePath)}&bucket=${bucket}`,
+        session?.access_token
+      );
+      if (url) window.open(url, "_blank", "noopener,noreferrer");
+    } catch {
+      // 다운로드 실패는 조용히 무시 - 버튼을 다시 누르면 재시도된다.
+    }
   };
 
   // "제출 내용 보기"를 누르면 사용자가 입력한 값이 채워진 문서를 바로 다운로드한다.
@@ -1364,50 +1420,46 @@ export default function AdminPage() {
             item.submission?.review_note ? ` (${item.submission.review_note})` : ""
           }`;
 
-    const { error } = await supabase.from("notifications").insert({
-      user_id: applicant.userId,
-      submission_id: item.submission?.id ?? null,
-      template_id: item.templateId,
-      type,
-      message,
-    });
+    let ok = true;
+    try {
+      await api.post(
+        "/admin/notifications",
+        {
+          user_id: applicant.userId,
+          submission_id: item.submission?.id ?? null,
+          template_id: item.templateId,
+          type,
+          message,
+        },
+        session?.access_token
+      );
+    } catch {
+      ok = false;
+    }
 
     setNotifying((prev) => ({ ...prev, [key]: false }));
-    if (!error) setNotified((prev) => ({ ...prev, [key]: true }));
+    if (ok) setNotified((prev) => ({ ...prev, [key]: true }));
   };
 
+  // 상태 변경 + 알림 생성을 백엔드(/admin/submissions/{id}/review-status)에 맡긴다. 백엔드가
+  // DB를 갱신한 뒤 Pub/Sub에 이벤트를 발행하고, 그 이벤트를 구독하는 쪽(/pubsub/submission-events)이
+  // notifications 행을 만든다 - 승인/반려 알림을 같은 방식으로 통일하기 위해서다.
   const handleSetReviewStatus = async (applicant, item, reviewStatus) => {
     if (!item.submission) return;
     setReviewStatusError(null);
-    const { data, error } = await supabase
-      .from("submissions")
-      .update({ review_status: reviewStatus, reviewed_at: new Date().toISOString() })
-      .eq("id", item.submission.id)
-      .select();
-    if (error) {
-      setReviewStatusError(error.message);
+    try {
+      const res = await fetch(`${BACKEND_URL}/admin/submissions/${item.submission.id}/review-status`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ status: reviewStatus }),
+      });
+      if (!res.ok) throw new Error(await readErrorMessage(res, "심사 상태 변경에 실패했습니다."));
+    } catch (err) {
+      setReviewStatusError(err.message);
       return;
-    }
-    // RLS 정책이 막으면 PostgREST는 에러 없이 빈 배열을 반환한다 — 이 경우를 명시적으로 감지해서
-    // 버튼을 눌러도 조용히 아무 일도 안 일어나는 것처럼 보이지 않게 한다.
-    if (!data || data.length === 0) {
-      setReviewStatusError("권한이 없어 상태를 변경하지 못했습니다. (submissions 테이블의 관리자 UPDATE 정책을 확인하세요)");
-      return;
-    }
-
-    // 반려(서류 보완 필요)일 때는 사용자에게 실시간 알림이 뜨도록 notifications에도 남긴다.
-    if (reviewStatus === "needs_revision") {
-      try {
-        await supabase.from("notifications").insert({
-          user_id: applicant.userId,
-          submission_id: item.submission.id,
-          template_id: item.templateId,
-          type: "needs_revision",
-          message: `[${item.templateName}] 제출하신 서류에 보완이 필요합니다. 확인 후 다시 제출해주세요.`,
-        });
-      } catch {
-        // 알림 생성에 실패해도 심사 상태 변경 자체는 이미 반영됐다.
-      }
     }
 
     await load();
@@ -1453,37 +1505,39 @@ export default function AdminPage() {
           </div>
         </div>
 
-        <div className="mb-6 inline-flex gap-2 rounded-lg bg-slate-100 p-1">
-          <button
-            type="button"
-            onClick={() => setActiveTab("submissions")}
-            className={`rounded-md px-4 py-2 text-sm font-semibold transition-colors ${
-              activeTab === "submissions" ? "bg-white text-brand-700 shadow-sm" : "text-slate-500 hover:text-slate-700"
-            }`}
-          >
-            {ap.tabs.submissions}
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab("businesses")}
-            className={`rounded-md px-4 py-2 text-sm font-semibold transition-colors ${
-              activeTab === "businesses" ? "bg-white text-brand-700 shadow-sm" : "text-slate-500 hover:text-slate-700"
-            }`}
-          >
-            {ap.tabs.businesses}
-          </button>
+        <div className="mb-6 flex items-center justify-between gap-3">
+          <div className="inline-flex gap-2 rounded-lg bg-slate-100 p-1">
+            <button
+              type="button"
+              onClick={() => setActiveTab("submissions")}
+              className={`rounded-md px-4 py-2 text-sm font-semibold transition-colors ${
+                activeTab === "submissions" ? "bg-white text-brand-700 shadow-sm" : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              {ap.tabs.submissions}
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("businesses")}
+              className={`rounded-md px-4 py-2 text-sm font-semibold transition-colors ${
+                activeTab === "businesses" ? "bg-white text-brand-700 shadow-sm" : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              {ap.tabs.businesses}
+            </button>
+          </div>
+          {activeTab !== "businesses" && (
+            <Button onClick={() => setShowBusinessModal(true)}>
+              <Icon name="plus" className="w-5 h-5" />
+              {ap.businessManager.newBusinessButtonLabel}
+            </Button>
+          )}
         </div>
 
         {activeTab === "businesses" ? (
           <BusinessManager session={session} />
         ) : (
           <>
-            <div className="mb-4 flex justify-end">
-              <Button onClick={() => setShowBusinessModal(true)}>
-                <Icon name="plus" className="w-5 h-5" />
-                {ap.businessManager.newBusinessButtonLabel}
-              </Button>
-            </div>
             {showBusinessModal && (
               <NewBusinessModal
                 session={session}

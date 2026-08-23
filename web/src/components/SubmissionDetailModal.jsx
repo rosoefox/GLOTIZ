@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import Modal from "./Modal";
-import { supabase } from "../lib/supabase";
+import { api } from "../lib/api";
+import { useAuth } from "../context/AuthContext";
 
 // 제출된 서류(submission)의 필드/값을 읽기 전용으로 보여준다.
 // 관리자 페이지와 "나의 지원사업 현황" 양쪽에서 재사용한다.
@@ -8,14 +9,15 @@ export default function SubmissionDetailModal({ submissionId, templateId, templa
   const [fields, setFields] = useState([]);
   const [values, setValues] = useState({});
   const [loading, setLoading] = useState(true);
+  const { session } = useAuth();
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
       setLoading(true);
-      const [{ data: fieldRows }, { data: valueRows }] = await Promise.all([
-        supabase.from("template_fields").select("*").eq("template_id", templateId),
-        supabase.from("submission_values").select("*").eq("submission_id", submissionId),
+      const [{ fields: fieldRows }, { values: valueRows }] = await Promise.all([
+        api.get(`/template_fields?template_id=${templateId}`),
+        api.get(`/submission_values?submission_id=${submissionId}`, session?.access_token),
       ]);
       if (cancelled) return;
       setFields(fieldRows || []);
@@ -26,7 +28,7 @@ export default function SubmissionDetailModal({ submissionId, templateId, templa
     return () => {
       cancelled = true;
     };
-  }, [submissionId, templateId]);
+  }, [submissionId, templateId, session?.access_token]);
 
   return (
     <Modal title={templateName} onClose={onClose} width="max-w-lg">

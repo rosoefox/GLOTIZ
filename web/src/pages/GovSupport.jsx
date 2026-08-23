@@ -3,9 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { Card, Button } from "../components/ui";
 import Icon from "../components/Icon";
 import { govSupport as gs, dashboard, govAnnouncementDetails, login } from "../data/mockData";
-import { displayPeriod, isDemoOngoingBusiness, periodEndDate } from "../lib/period";
-import { supabase } from "../lib/supabase";
-import { orderedSelect } from "../lib/supabaseOrder";
+import { displayPeriod, isClosed, periodEndDate } from "../lib/period";
+import { api } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 
 const PAGE_SIZE = 6;
@@ -363,7 +362,7 @@ function WizardShell({ title, subtitle, onBack, backLabel, onSkipAll, children, 
 
 export default function GovSupport() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, session } = useAuth();
 
   const [announcements, setAnnouncements] = useState([]);
   const [loadingAnnouncements, setLoadingAnnouncements] = useState(true);
@@ -386,7 +385,7 @@ export default function GovSupport() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
 
-  const [bookmarkedIds, setBookmarkedIds] = useState(new Set());
+  const [bookmarkedIds, setBookmarkedIds] = useState(new Map());
 
   useEffect(() => {
     const raw = localStorage.getItem(wizardStorageKey(user?.id));
@@ -436,12 +435,8 @@ export default function GovSupport() {
   useEffect(() => {
     async function loadAnnouncements() {
       setLoadingAnnouncements(true);
-      const { data } = await orderedSelect(
-        () => supabase.from("businesses").select("*"),
-        "created_at",
-        { ascending: false }
-      );
-      setAnnouncements(data || []);
+      const { businesses } = await api.get("/businesses").catch(() => ({ businesses: [] }));
+      setAnnouncements(businesses || []);
       setLoadingAnnouncements(false);
     }
     loadAnnouncements();
@@ -449,21 +444,20 @@ export default function GovSupport() {
 
   useEffect(() => {
     if (!user?.id) {
-      setBookmarkedIds(new Set());
+      setBookmarkedIds(new Map());
       return;
     }
     let cancelled = false;
-    supabase
-      .from("bookmarks")
-      .select("business_id")
-      .eq("user_id", user.id)
-      .then(({ data, error }) => {
-        if (!cancelled && !error) setBookmarkedIds(new Set((data || []).map((r) => r.business_id)));
-      });
+    api
+      .get("/bookmarks", session?.access_token)
+      .then(({ bookmarks }) => {
+        if (!cancelled) setBookmarkedIds(new Map((bookmarks || []).map((r) => [r.business_id, r.id])));
+      })
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
-  }, [user?.id]);
+  }, [user?.id, session?.access_token]);
 
   useEffect(() => {
     setPage(1);
@@ -495,21 +489,21 @@ export default function GovSupport() {
       navigate("/login");
       return;
     }
-    const isBookmarked = bookmarkedIds.has(business.id);
+    const bookmarkId = bookmarkedIds.get(business.id);
     try {
-      if (isBookmarked) {
-        await supabase.from("bookmarks").delete().eq("user_id", user.id).eq("business_id", business.id);
+      if (bookmarkId) {
+        await api.delete(`/bookmarks/${bookmarkId}`, session?.access_token);
         setBookmarkedIds((prev) => {
-          const next = new Set(prev);
+          const next = new Map(prev);
           next.delete(business.id);
           return next;
         });
       } else {
-        await supabase.from("bookmarks").insert({ user_id: user.id, business_id: business.id });
-        setBookmarkedIds((prev) => new Set(prev).add(business.id));
+        const row = await api.post("/bookmarks", { business_id: business.id }, session?.access_token);
+        setBookmarkedIds((prev) => new Map(prev).set(business.id, row.id));
       }
     } catch {
-      // bookmarks 테이블 마이그레이션이 아직 반영되지 않았을 수 있음 - 조용히 무시
+      // bookmarks 저장에 실패해도 화면 흐름은 막지 않는다 - 조용히 무시
     }
   };
 
@@ -552,10 +546,10 @@ export default function GovSupport() {
               .map((x) => x.b)
           : withEnd.map((x) => x.b);
     } else if (sortFilter === "closed") {
-      list = withEnd.filter(({ b }) => !isDemoOngoingBusiness(b)).map((x) => x.b);
+      list = withEnd.filter(({ b }) => isClosed(b, govAnnouncementDetails)).map((x) => x.b);
     } else if (sortFilter === "deadline") {
       list = withEnd
-        .filter(({ b }) => isDemoOngoingBusiness(b))
+        .filter(({ b }) => !isClosed(b, govAnnouncementDetails))
         .sort((a, b) => {
           if (!a.end) return 1;
           if (!b.end) return -1;
@@ -563,7 +557,7 @@ export default function GovSupport() {
         })
         .map((x) => x.b);
     } else {
-      list = withEnd.filter(({ b }) => isDemoOngoingBusiness(b)).map((x) => x.b);
+      list = withEnd.filter(({ b }) => !isClosed(b, govAnnouncementDetails)).map((x) => x.b);
     }
 
     return list;
@@ -818,7 +812,7 @@ export default function GovSupport() {
                   business={b}
                   highlighted={hasActiveFilter || (matchedIds ? matchedIds.has(b.id) : false)}
                   bookmarked={bookmarkedIds.has(b.id)}
-                  closed={!isDemoOngoingBusiness(b)}
+                  closed={isClosed(b, govAnnouncementDetails)}
                   onClick={() => handleAnnouncementClick(b)}
                   onToggleBookmark={toggleBookmark}
                 />

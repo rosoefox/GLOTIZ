@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Icon from "./Icon";
 import { helpAndFaq } from "../data/mockData";
 import { useChatbot } from "../context/ChatbotContext";
@@ -11,29 +11,17 @@ export default function FloatingChatbot() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [expanded, setExpanded] = useState(false);
-  const [lastAsked, setLastAsked] = useState("");
   const { floatingChatbot: fc, faqs } = helpAndFaq;
+  const scrollRef = useRef(null);
 
-  const relatedFaqs = useMemo(() => {
-    const basis = (lastAsked || messages.filter((m) => m.role === "user").slice(-1)[0]?.message || "").toLowerCase();
-    const tokens = basis
-      .split(/[\s,.;!?/()]+/)
-      .map((token) => token.trim())
-      .filter((token) => token.length >= 2);
-    return [...faqs]
-      .map((faq) => {
-        const haystack = `${faq.question} ${faq.answer}`.toLowerCase();
-        const score = tokens.reduce((acc, token) => acc + (haystack.includes(token) ? 1 : 0), 0);
-        return { ...faq, score };
-      })
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 3);
-  }, [faqs, lastAsked, messages]);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [messages, loading]);
 
   const ask = async (question) => {
     const trimmed = question.trim();
     if (!trimmed) return;
-    setLastAsked(trimmed);
     setInput("");
 
     const exact = faqs.find((f) => f.question === trimmed);
@@ -93,7 +81,7 @@ export default function FloatingChatbot() {
             </div>
           </div>
 
-          <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50 p-4">
+          <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto bg-slate-50 p-4">
             <div className="max-w-[85%] rounded-2xl rounded-tl-sm bg-white px-3 py-2 text-sm text-slate-700 shadow-sm">
               {fc.greeting}
             </div>
@@ -115,28 +103,6 @@ export default function FloatingChatbot() {
                 ))}
               </div>
             </div>
-
-            {lastAsked && relatedFaqs.length > 0 && (
-              <div className="rounded-2xl border border-brand-100 bg-brand-50/60 p-3">
-                <div className="mb-2">
-                  <p className="text-xs font-bold text-brand-700">관련 질문 추천</p>
-                  <p className="mt-1 text-[11px] leading-relaxed text-brand-700/70">
-                    {relatedFaqs[0]?.answer || fc.fallbackAnswer}
-                  </p>
-                </div>
-                <div className="space-y-1.5">
-                  {relatedFaqs.map((faq) => (
-                    <button
-                      key={faq.question}
-                      onClick={() => ask(faq.question)}
-                      className="block w-full rounded-xl border border-brand-200 bg-white px-3 py-2 text-left text-sm text-slate-700 shadow-sm hover:bg-brand-50"
-                    >
-                      {faq.question}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
 
             {messages.map((turn, i) => (
               <div

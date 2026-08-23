@@ -56,12 +56,14 @@ export const myPage = {
   exportItemsSubtitle: "수출 진행 현황과 서류 제출 현황을 확인하세요.",
   viewAllLabel: "전체 보기",
   docStatusLabel: "서류 제출 현황",
-  needsRevisionAlert: "보완이 필요한 서류가 {count}건 있어요. 나의 지원사업 현황에서 확인해주세요.",
+  docsCardTitle: "사업 서류",
+  docsCardSubtitle: "사업자 등록증과 상품 상세설명서를 등록해두면 서류 작성 시 활용할 수 있어요.",
 };
 
 export const myApplicationStatus = {
   title: "나의 지원사업 현황",
   subtitle: "제출한 서류의 심사 진행 상황을 확인하세요.",
+  needsRevisionAlert: "보완이 필요한 서류가 {count}건 있어요. 아래에서 확인해주세요.",
   emptyMessage: "아직 서류를 제출한 지원사업이 없습니다.",
   documentsEmptyMessage: "제출한 서류가 없습니다.",
   statusLabels: {
@@ -214,7 +216,7 @@ export const dashboard = {
   caseStudiesTitle: "AI · 디자인 진행 사례",
   caseStudiesDescription: "GLOTIZ AI가 함께 완성한 서류와 디자인 결과물을 만나보세요.",
   caseStudies: [
-    { id: "case-01", title: "AURELIA 워터 에센스 세럼 디자인 포스터", tag: "패키지 디자인", tone: "sunrise", icon: "sparkle", image: "/case-studies/case-01.jpg" },
+    { id: "case-01", title: "워터 에센스 세럼 디자인 포스터", tag: "패키지 디자인", tone: "sunrise", icon: "sparkle", image: "/case-studies/case-01.jpg" },
     { id: "case-02", title: "전통 발효 고추장 세트 브랜드 포스터", tag: "브랜드 무드보드", tone: "forest", icon: "formulation", image: "/case-studies/case-02.jpg" },
     { id: "case-03", title: "글로벌 마켓 플랫폼 앱 상세페이지", tag: "상세페이지", tone: "ocean", icon: "electronics", image: "/case-studies/case-03.jpg" },
     { id: "case-04", title: "워터젤 선크림 SPF50+ 포스터", tag: "배너 디자인", tone: "grape", icon: "sparkle", image: "/case-studies/case-04.jpg" },
@@ -521,6 +523,8 @@ export const documentChecklist = {
   uploadButtonLabel: "파일 업로드",
   reuploadButtonLabel: "다시 업로드",
   issueLinkLabel: "발급 바로가기",
+  importButtonLabel: "마이페이지에서 가져오기",
+  importingLabel: "가져오는 중...",
   overallTitle: "필수 서류 준비 현황",
   overallDescription: "모든 필수 서류가 등록되어야 다음 통관 단계로 진행할 수 있습니다.",
   overallSuffix: "완료",
@@ -1055,15 +1059,13 @@ export const shopeeListing = {
   imagePickerLabel: "AI 이미지 생성에서 불러오기",
   imagePickerEmpty: "AI 이미지 생성에서 만든 이미지가 아직 없어요.",
   imageUploadLabel: "직접 업로드",
-  priceSuggestLabel: "AI 적정가 추천",
-  priceSuggestPendingLabel: "추천받는 중...",
   fields: [
     { key: "productName", label: "Product Name", ko: "상품명", placeholder: "예: Dalba Waterjel Sun Cream SPF50+" },
     { key: "category", label: "Category", ko: "카테고리", placeholder: "예: Beauty > Skincare > Face Sunscreen" },
     { key: "description", label: "Product Description", ko: "상품 설명", placeholder: "최소 20자 이상 입력하세요.", multiline: true, aiFillable: true },
     { key: "brand", label: "Brand", ko: "브랜드", placeholder: "예: Dalba" },
     { key: "shelfLife", label: "Shelf life", ko: "유통기한", placeholder: "예: 24 Months" },
-    { key: "price", label: "Global SKU Price", ko: "글로벌 판매가", placeholder: "예: 15000", priceSuggestable: true },
+    { key: "price", label: "Global SKU Price", ko: "글로벌 판매가", placeholder: "예: 15000" },
     { key: "stock", label: "Stock", ko: "재고 수량", placeholder: "예: 100" },
     { key: "weight", label: "Weight (kg)", ko: "무게(kg)", placeholder: "예: 0.3" },
     { key: "daysToShip", label: "Days to ship", ko: "배송 준비 일수", placeholder: "예: 2" },
@@ -1130,8 +1132,8 @@ export const adminPanel = {
       title: "새 사업 등록",
       nameLabel: "사업명",
       namePlaceholder: "예: 2026년 전북 수출바우처 지원사업",
-      descriptionLabel: "사업 안내",
-      descriptionPlaceholder: "사업 개요를 입력하세요.",
+      referenceDocLabel: "공고문 업로드",
+      referenceDocHint: "PDF/DOCX/HWP/이미지 파일을 올리면 AI가 기본 정보를 자동으로 채워요.",
       submitLabel: "등록하기",
     },
 
@@ -1152,6 +1154,11 @@ export const adminPanel = {
       userUploadHint:
         "체크하면 AI 자동완성 서식 없이 서류 이름만 등록됩니다. 신청자 화면에는 이 서류가 " +
         "'발급 바로가기'로 발급받아 직접 업로드하는 서류로 표시됩니다.",
+      linkedDocLabel: "마이페이지 서류와 연결",
+      linkedDocHint:
+        "연결하면 신청자가 마이페이지에 미리 올려둔 파일을 다시 고를 필요 없이 " +
+        "'마이페이지에서 가져오기' 버튼으로 바로 제출할 수 있습니다.",
+      linkedDocNoneOption: "연결 안 함",
     },
 
     editTemplateForm: {
@@ -1162,6 +1169,8 @@ export const adminPanel = {
       formNumberPlaceholder: "예: 1 또는 별지1호",
       fileLabel: "DOCX 파일 (선택, 새로 올리면 기존 파일을 대체합니다)",
       submitLabel: "수정 저장",
+      linkedDocLabel: "마이페이지 서류와 연결",
+      linkedDocNoneOption: "연결 안 함",
     },
 
     fieldsForm: {

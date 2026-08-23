@@ -4,7 +4,7 @@ import Icon from "../components/Icon";
 import { Button, CONTROL_CLASS, StepIndicator, SectionCardHeader } from "../components/ui";
 import Modal from "../components/Modal";
 import { useAuth } from "../context/AuthContext";
-import { supabase } from "../lib/supabase";
+import { api, idsParam } from "../lib/api";
 import { readErrorMessage } from "../lib/apiError";
 import { draftKey, readDraft } from "../lib/draft";
 import { documentPreview } from "../data/mockData";
@@ -168,10 +168,13 @@ export default function DocumentFill() {
   const [values, setValues] = useState({});
   const [aiReviewByField, setAiReviewByField] = useState({});
   const [isEditing, setIsEditing] = useState(false);
+  const [isApproved, setIsApproved] = useState(false);
   const [isVietnamDemoApplication, setIsVietnamDemoApplication] = useState(false);
 
   const [transferring, setTransferring] = useState(false);
   const [extractingUploads, setExtractingUploads] = useState(false);
+  const [hasAccountDocs, setHasAccountDocs] = useState(false);
+  const [importingAccountDocs, setImportingAccountDocs] = useState(false);
   const [aiFilling, setAiFilling] = useState(false);
   const [oneTouchFilling, setOneTouchFilling] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -188,9 +191,9 @@ export default function DocumentFill() {
     let cancelled = false;
     async function load() {
       setLoading(true);
-      const [{ data: fieldRows }, { data: templateRow }] = await Promise.all([
-        supabase.from("template_fields").select("*").eq("template_id", templateId),
-        supabase.from("templates").select("business_id,name").eq("id", templateId).maybeSingle(),
+      const [{ fields: fieldRows }, templateRow] = await Promise.all([
+        api.get(`/template_fields?template_id=${templateId}`),
+        api.get(`/templates?id=${templateId}`).then((r) => r.templates?.[0] || null),
       ]);
       if (cancelled) return;
       setFields(fieldRows || []);
@@ -198,16 +201,16 @@ export default function DocumentFill() {
         templateRow?.business_id === VIETNAM_EXPO_BUSINESS_ID && templateRow?.name?.trim() === "참가 신청서";
       setIsVietnamDemoApplication(isVietnamApplication);
 
-      const { data: subs } = await supabase
-        .from("submissions")
-        .select("id")
-        .eq("template_id", templateId)
-        .eq("user_id", authUser.id)
-        .order("created_at", { ascending: false })
-        .limit(1);
-      const latest = subs?.[0];
+      const { submissions: subs } = await api.get(
+        `/submissions?template_id=${templateId}`,
+        session?.access_token
+      );
+      const latest = (subs || [])[0];
 
-      if (latest) setIsEditing(true);
+      if (latest) {
+        setIsEditing(true);
+        setIsApproved(latest.review_status === "approved");
+      }
 
       // 임시저장(draft)이 있으면 항상 그 내용을 최우선으로 보여준다 — 제출 이후에도
       // "임시저장"으로 남겨둔 최신 수정 내용이 있으면 그게 화면에 보여야 하기 때문.
@@ -221,10 +224,10 @@ export default function DocumentFill() {
           setAiReviewByField({});
         }
       } else if (latest) {
-        const { data: valueRows } = await supabase
-          .from("submission_values")
-          .select("field_id, value, needs_review, confidence_note")
-          .eq("submission_id", latest.id);
+        const { values: valueRows } = await api.get(
+          `/submission_values?submission_id=${latest.id}`,
+          session?.access_token
+        );
         if (cancelled) return;
         setValues(Object.fromEntries((valueRows || []).map((v) => [v.field_id, v.value])));
         setAiReviewByField(
@@ -244,6 +247,31 @@ export default function DocumentFill() {
       cancelled = true;
     };
   }, [templateId, authUser?.id]);
+
+  // 마이페이지 서류 슬롯(사업자 등록증/상품 상세설명서)에 파일이 하나라도 있어야
+  // "마이페이지에서 가져오기" 버튼을 보여준다.
+  useEffect(() => {
+    if (!session) {
+      setHasAccountDocs(false);
+      return;
+    }
+    let cancelled = false;
+    Promise.all(
+      ["biz_reg", "product_spec"].map((docType) =>
+        fetch(`${BACKEND_URL}/account/documents?doc_type=${docType}`, {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        })
+          .then((res) => (res.ok ? res.json() : { documents: [] }))
+          .then((data) => Boolean(data.documents?.[0]))
+      )
+    ).then((flags) => {
+      if (!cancelled) setHasAccountDocs(flags.some(Boolean));
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.access_token]);
 
   const categorizedFields = useMemo(() => {
     const groups = {};
@@ -305,24 +333,21 @@ export default function DocumentFill() {
         if (guess) next[f.id] = guess;
       });
 
-      const { data: mySubs } = await supabase
-        .from("submissions")
-        .select("id, created_at")
-        .eq("user_id", authUser.id)
-        .neq("template_id", templateId)
-        .order("created_at", { ascending: false });
-      const submissionIds = (mySubs || []).map((s) => s.id);
+      const { submissions: allMySubs } = await api.get("/submissions", session?.access_token);
+      const submissionIds = (allMySubs || [])
+        .filter((s) => s.template_id !== templateId)
+        .map((s) => s.id);
 
       if (submissionIds.length) {
         const orderRank = Object.fromEntries(submissionIds.map((id, idx) => [id, idx]));
-        const { data: valueRows } = await supabase
-          .from("submission_values")
-          .select("submission_id, field_id, value")
-          .in("submission_id", submissionIds);
+        const { values: valueRows } = await api.get(
+          `/submission_values?${idsParam("submission_id", submissionIds)}`,
+          session?.access_token
+        );
         const fieldIds = [...new Set((valueRows || []).map((v) => v.field_id))];
-        const { data: otherFields } = fieldIds.length
-          ? await supabase.from("template_fields").select("id, field_key").in("id", fieldIds)
-          : { data: [] };
+        const { fields: otherFields } = fieldIds.length
+          ? await api.get(`/template_fields?${idsParam("id", fieldIds)}`)
+          : { fields: [] };
         const keyByFieldId = Object.fromEntries((otherFields || []).map((f) => [f.id, f.field_key]));
 
         const valueByKey = {};
@@ -395,6 +420,36 @@ export default function DocumentFill() {
       setError(err.message);
     } finally {
       setExtractingUploads(false);
+    }
+  };
+
+  // 예전에 다른 서식으로 제출한 적 없어도, 마이페이지에 미리 올려둔 사업자등록증/
+  // 상품 상세설명서 파일을 AI가 직접 읽어서 아직 안 채운 칸만 채운다.
+  const handleImportFromAccountDocs = async () => {
+    if (!session) return;
+    setImportingAccountDocs(true);
+    setError(null);
+    try {
+      const res = await fetch(`${BACKEND_URL}/templates/${templateId}/extract-from-account`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (!res.ok) throw new Error(await readErrorMessage(res, "마이페이지 서류에서 정보를 불러오지 못했습니다."));
+      const data = await res.json();
+      const fieldIdByKey = Object.fromEntries(fields.map((f) => [f.field_key, f.id]));
+      setValues((prev) => {
+        const next = { ...prev };
+        (data.fields || []).forEach((item) => {
+          if (!item.value) return;
+          const fieldId = fieldIdByKey[item.field_key];
+          if (fieldId && !next[fieldId]) next[fieldId] = item.value;
+        });
+        return next;
+      });
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setImportingAccountDocs(false);
     }
   };
 
@@ -502,6 +557,10 @@ export default function DocumentFill() {
       setError("로그인이 필요합니다.");
       return;
     }
+    if (isApproved) {
+      setError("이미 승인된 서류는 수정 및 재제출할 수 없습니다.");
+      return;
+    }
     if (!allFilled) {
       setError("모든 항목을 입력해야 제출할 수 있습니다.");
       return;
@@ -509,23 +568,16 @@ export default function DocumentFill() {
     setSubmitting(true);
     setError(null);
     try {
-      const { data: submission, error: subErr } = await supabase
-        .from("submissions")
-        .insert({ template_id: templateId, user_id: authUser.id, status: "filled" })
-        .select()
-        .single();
-      if (subErr) throw subErr;
+      const submission = await api.post("/submissions", { template_id: templateId }, session?.access_token);
 
       const rows = fields.map((f) => ({
-        submission_id: submission.id,
         field_id: f.id,
         value: values[f.id] ?? "",
         source: aiReviewByField[f.id] ? "ai_generated" : "user_input",
         needs_review: Boolean(aiReviewByField[f.id]),
         confidence_note: aiReviewByField[f.id] || null,
       }));
-      const { error: valuesErr } = await supabase.from("submission_values").insert(rows);
-      if (valuesErr) throw valuesErr;
+      await api.post("/submission_values", { submission_id: submission.id, values: rows }, session?.access_token);
 
       localStorage.removeItem(draftKey(authUser.id, templateId));
       localStorage.removeItem(aiReviewDraftKey(authUser.id, templateId));
@@ -552,14 +604,15 @@ export default function DocumentFill() {
         });
         if (!genRes.ok) throw new Error(await readErrorMessage(genRes, "완성된 서류를 만드는 데 실패했습니다."));
         const genData = await genRes.json();
-        const { data: signedData, error: signedErr } = await supabase.storage
-          .from("generated")
-          .createSignedUrl(genData.file_path, 3600);
-        if (signedErr || !signedData) throw new Error("완성된 서류 다운로드 링크를 만드는 데 실패했습니다.");
-        setGeneratedDocUrl(signedData.signedUrl);
+        const { url: signedUrl } = await api.get(
+          `/generated-file-url?path=${encodeURIComponent(genData.file_path)}`,
+          session?.access_token
+        );
+        if (!signedUrl) throw new Error("완성된 서류 다운로드 링크를 만드는 데 실패했습니다.");
+        setGeneratedDocUrl(signedUrl);
         // 준비되는 즉시 바로 다운로드까지 시도한다 — 브라우저가 막으면 모달의 버튼으로 받으면 된다.
         const a = document.createElement("a");
-        a.href = signedData.signedUrl;
+        a.href = signedUrl;
         a.download = `${templateName || "제출서류"}.pdf`;
         document.body.appendChild(a);
         a.click();
@@ -615,6 +668,18 @@ export default function DocumentFill() {
           <Icon name="upload" className="w-3.5 h-3.5" />
           {extractingUploads ? "서류 읽는 중..." : "업로드한 서류에서 불러오기"}
         </Button>
+        {hasAccountDocs && (
+          <Button
+            type="button"
+            variant="outlineBrand"
+            className="px-3.5 py-2 text-xs"
+            onClick={handleImportFromAccountDocs}
+            disabled={importingAccountDocs}
+          >
+            <Icon name="documents" className="w-3.5 h-3.5" />
+            {importingAccountDocs ? "서류 읽는 중..." : "마이페이지에서 가져오기"}
+          </Button>
+        )}
         <Button type="button" variant="outlineBrand" className="px-3.5 py-2 text-xs" onClick={handleAiFill} disabled={aiFilling}>
           <Icon name="sparkle" className="w-3.5 h-3.5" />
           {aiFilling ? "AI가 채우는 중..." : "AI 채우기"}
@@ -725,7 +790,12 @@ export default function DocumentFill() {
 
       <div className="sticky bottom-0 z-10 mt-8 -mx-6 border-t border-slate-200 bg-white/95 px-6 py-4 backdrop-blur sm:-mx-8 sm:px-8">
         <div className="flex flex-wrap items-center justify-end gap-3">
-          {!loading && fields.length > 0 && !allFilled && (
+          {!loading && isApproved && (
+            <p className="mr-auto text-xs font-medium text-emerald-600">
+              이미 승인된 서류입니다. 수정 및 재제출할 수 없습니다.
+            </p>
+          )}
+          {!loading && !isApproved && fields.length > 0 && !allFilled && (
             <p className="mr-auto text-xs font-medium text-amber-600">모든 항목을 입력해야 제출할 수 있습니다.</p>
           )}
           <Button
@@ -733,7 +803,7 @@ export default function DocumentFill() {
             variant="secondary"
             className="px-5 py-2.5 text-sm"
             onClick={handleTempSave}
-            disabled={submitting || loading}
+            disabled={submitting || loading || isApproved}
           >
             임시 저장
           </Button>
@@ -741,7 +811,7 @@ export default function DocumentFill() {
             type="button"
             className="px-5 py-2.5 text-sm"
             onClick={handleSubmitDocument}
-            disabled={submitting || loading || !allFilled}
+            disabled={submitting || loading || !allFilled || isApproved}
           >
             {submitting ? "제출하는 중..." : isEditing ? "수정 제출하기" : "작성 완료"}
           </Button>
