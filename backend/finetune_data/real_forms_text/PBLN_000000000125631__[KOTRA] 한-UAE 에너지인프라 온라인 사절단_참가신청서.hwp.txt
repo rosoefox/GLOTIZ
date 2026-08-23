@@ -1,0 +1,13 @@
+<첨부1><><참가신청서 (한글·영문 병기)>
+<Compay Name (회사명)>< >
+<President (대표자명)><(예 : Hong, gil-dong)>
+<TEL (전화번호)><82><><><><Country code(82)><Area code><Number><Number>
+<FAX (팩스번호)><82><><><><Country code(82)><Area code><Number><Number>
+<Contect Person (담당자명)><(예 : Hong, gil-dong)>
+<Position (직책)><><DEPT (부서명)><>
+<E-MAIL (전자메일)><>
+<Website (홈페이지)><>
+<Established Year (설립연도)><><Employee (종업원수)><>
+<Annual Sales (연간매출액 *2025년도)><><Export Amount (수출실적  *2025년도)><>
+<Certifications (보유인증)><>
+<Product (제품)><Product Name 1><Description(최대 100자 이내)  ><Product Name 2><Description(최대 100자 이내)  ><Product Name 3><Description(최대 100자 이내)  >

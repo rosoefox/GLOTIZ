@@ -1,0 +1,14 @@
+fastapi
+python-multipart
+uvicorn[standard]
+python-docx
+google-genai
+python-dotenv
+pymupdf
+google-cloud-translate
+google-cloud-pubsub
+google-cloud-documentai
+google-cloud-storage
+psycopg2-binary
+pyjwt
+bcrypt

@@ -1,0 +1,153 @@
+import { useState } from "react";
+import { Link, NavLink, useNavigate } from "react-router-dom";
+import Icon from "./Icon";
+import NavUserMenu from "./NavUserMenu";
+import { brand, nav, login } from "../data/mockData";
+import { useAuth } from "../context/AuthContext";
+import logoImage from "../../로고최종1.png";
+
+// 홈 화면을 포함한 모든 페이지가 공유하는 단일 상단 네비게이션.
+// (예전엔 홈만 상단 가로 메뉴, 나머지 페이지는 왼쪽 사이드바를 썼는데 전부 이걸로 통일한다.)
+//
+// overlay=true (홈 화면 히어로 전용): 처음엔 투명한 배경으로 이미지 위에 떠 있다가,
+// 스크롤(scrolled prop)하거나 마우스를 올리면 부드럽게 불투명+블러 배경으로 전환된다.
+// 다른 페이지는 overlay를 안 넘기므로 기존과 동일하게 항상 불투명한 흰 배경을 쓴다.
+export default function Header({ overlay = false, scrolled = false }) {
+  const { isLoggedIn } = useAuth();
+  const navigate = useNavigate();
+  const [hovered, setHovered] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  const solid = !overlay || scrolled || hovered || mobileOpen;
+  const transparent = overlay && !solid;
+
+  const goToLogin = () => {
+    setMobileOpen(false);
+    window.alert(login.requiredMessage);
+    navigate("/login");
+  };
+
+  return (
+    <header
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      className={`flex h-16 shrink-0 items-center justify-between px-4 transition-all duration-300 sm:px-6 ${
+        overlay ? "fixed inset-x-0 top-0 z-40" : "relative"
+      } ${
+        solid
+          ? "border-b border-slate-100 bg-white/95 backdrop-blur-md shadow-sm"
+          : "border-b border-transparent bg-transparent"
+      }`}
+    >
+      <Link to="/" className="flex min-w-0 shrink-0 items-center" onClick={() => setMobileOpen(false)}>
+        {/* brand.logo(정사각 캔버스, 위아래 여백이 커서 작게 보임) 대신 이 헤더 전용으로 꽉 차게
+            잘라낸 로고를 쓴다. 이미지 자체에 GLOTIZ 워드마크가 들어있어서 별도 텍스트 라벨은 없앴다.
+            투명 헤더(홈 히어로 위에 뜬 상태)에서는 원본이 남색이라 어두운 배경에 묻히므로,
+            흰색으로 반전시켜 배경 위에서도 잘 보이게 한다. */}
+        <img
+          src={logoImage}
+          alt={brand.name}
+          className={`h-9 w-auto shrink-0 object-contain transition sm:h-10 ${transparent ? "brightness-0 invert" : ""}`}
+        />
+      </Link>
+
+      {/* 메뉴는 좌우 요소 너비와 무관하게 헤더 정중앙에 오도록 절대 위치로 고정한다. */}
+      <nav className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-8 md:flex">
+        {nav.top.map((item) => {
+          const locked = item.requiresAuth && !isLoggedIn;
+          if (locked) {
+            return (
+              <button
+                key={item.path}
+                type="button"
+                onClick={goToLogin}
+                className={`flex items-center gap-1.5 text-sm font-medium transition-colors ${
+                  transparent ? "text-white/70 hover:text-white" : "text-slate-400 hover:text-slate-600"
+                }`}
+              >
+                {item.label}
+                <Icon name="lock" className="w-3.5 h-3.5" />
+              </button>
+            );
+          }
+          return (
+            <NavLink
+              key={item.path}
+              to={item.path}
+              className={({ isActive }) =>
+                `text-sm font-medium transition-colors ${
+                  transparent
+                    ? isActive
+                      ? "text-white"
+                      : "text-white/80 hover:text-white"
+                    : isActive
+                      ? "text-brand-700"
+                      : "text-slate-500 hover:text-slate-900"
+                }`
+              }
+            >
+              {item.label}
+            </NavLink>
+          );
+        })}
+      </nav>
+
+      <div className="flex shrink-0 items-center gap-1">
+        <div className="hidden md:block">
+          <NavUserMenu light={transparent} />
+        </div>
+        <button
+          type="button"
+          onClick={() => setMobileOpen((v) => !v)}
+          aria-label={mobileOpen ? "메뉴 닫기" : "메뉴 열기"}
+          aria-expanded={mobileOpen}
+          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors md:hidden ${
+            transparent ? "text-white hover:bg-white/10" : "text-slate-700 hover:bg-slate-100"
+          }`}
+        >
+          <Icon name={mobileOpen ? "x" : "menu"} className="h-5 w-5" />
+        </button>
+      </div>
+
+      {mobileOpen && (
+        <div className="absolute inset-x-0 top-full z-50 max-h-[calc(100dvh-4rem)] overflow-y-auto border-b border-slate-100 bg-white shadow-lg md:hidden">
+          <nav className="flex flex-col px-4 py-2">
+            {nav.top.map((item) => {
+              const locked = item.requiresAuth && !isLoggedIn;
+              if (locked) {
+                return (
+                  <button
+                    key={item.path}
+                    type="button"
+                    onClick={goToLogin}
+                    className="flex items-center gap-1.5 border-b border-slate-50 py-3 text-left text-sm font-medium text-slate-400 last:border-b-0"
+                  >
+                    {item.label}
+                    <Icon name="lock" className="w-3.5 h-3.5" />
+                  </button>
+                );
+              }
+              return (
+                <NavLink
+                  key={item.path}
+                  to={item.path}
+                  onClick={() => setMobileOpen(false)}
+                  className={({ isActive }) =>
+                    `border-b border-slate-50 py-3 text-sm font-medium last:border-b-0 ${
+                      isActive ? "text-brand-700" : "text-slate-700"
+                    }`
+                  }
+                >
+                  {item.label}
+                </NavLink>
+              );
+            })}
+          </nav>
+          <div className="border-t border-slate-100 px-4 py-3">
+            <NavUserMenu mobile onNavigate={() => setMobileOpen(false)} />
+          </div>
+        </div>
+      )}
+    </header>
+  );
+}

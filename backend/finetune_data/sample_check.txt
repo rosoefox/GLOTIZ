@@ -1,0 +1,25 @@
+=== USER PROMPT ===
+당신은 정부지원사업 신청서 원본 서식(빈칸이 {{}}로 표시돼있지 않은 순수 양식)을 분석해서,
+어디가 신청자가 채워야 할 빈칸인지 판단하는 어시스턴트입니다.
+사업명: 2026년 전북 소상공인 해외수출 지원사업
+서식명: 사업 신청서
+
+아래는 문서에서 자동으로 찾아낸 빈칸 후보 목록입니다. 각 줄은 "번호. 주변 문맥"이고,
+[[빈칸]]은 실제로 비어있는 위치를 나타냅니다 (표 형식은 "라벨1 > 라벨2 > ..." 로 표시됨):
+0. 웹사이트 > [[빈칸]]
+1. 연락처
+2. ※ [[빈칸]]
+3. 주력제품 > [[빈칸]]
+4. 설립일자 > [[빈칸]]
+
+각 번호에 대해 판단하세요:
+- 정말 신청자가 채워야 할 정보(회사명, 날짜, 금액, 담당자 정보 등)면 skip=false로 하고
+  field_key(영문 snake_case, 예: company_name), 한국어 field_label, field_type을 제안하세요.
+- 장식용 공백, 표 레이아웃상 의미 없는 빈칸, 이미 다른 후보와 중복되는 항목이면 skip=true로 하세요.
+- field_type은 text/number/date/select/checkbox/textarea/long_text 중 하나여야 합니다.
+- 모든 field_key는 서로 달라야 합니다 (겹치면 뒤에 번호를 붙이세요, 예: contact_phone_2).
+
+반드시 입력된 후보 개수와 같은 개수의 결과를, 같은 순서(index)로 반환하세요.
+
+=== MODEL RESPONSE ===
+[{"index": 0, "skip": false, "field_key": "website", "field_label": "홈페이지", "field_type": "text", "options": []}, {"index": 1, "skip": false, "field_key": "phone_number", "field_label": "연락처", "field_type": "text", "options": []}, {"index": 2, "skip": true}, {"index": 3, "skip": false, "field_key": "main_product", "field_label": "주요제품", "field_type": "text", "options": []}, {"index": 4, "skip": false, "field_key": "founded_date", "field_label": "설립일", "field_type": "date", "options": []}]
