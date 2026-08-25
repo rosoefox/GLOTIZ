@@ -9,6 +9,7 @@ google-cloud-translate
 google-cloud-pubsub
 google-cloud-documentai
 google-cloud-storage
+google-cloud-secret-manager
 psycopg2-binary
 pyjwt
 bcrypt

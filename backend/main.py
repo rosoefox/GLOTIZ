@@ -22,6 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from google import genai
 from google.cloud import documentai_v1 as documentai, pubsub_v1, translate_v3 as translate
+from google.cloud import secretmanager
 from google.cloud import storage as gcs_sdk
 from google.genai import types
 from pydantic import BaseModel
@@ -34,6 +35,17 @@ load_dotenv()
 # GOOGLE_APPLICATION_CREDENTIALS(서비스 계정 키 경로)는 google-auth ADC가 자동으로 읽는다.
 VERTEX_AI_PROJECT_ID = os.environ["VERTEX_AI_PROJECT_ID"]
 VERTEX_AI_LOCATION = os.environ.get("VERTEX_AI_LOCATION", "us-central1")
+
+_secret_manager_client = secretmanager.SecretManagerServiceClient()
+
+
+def _get_secret(secret_id: str) -> str:
+    """DB 비밀번호/JWT 시크릿처럼 진짜 민감한 값은 .env 평문 대신 Secret Manager에서 읽는다."""
+    name = f"projects/{VERTEX_AI_PROJECT_ID}/secrets/{secret_id}/versions/latest"
+    response = _secret_manager_client.access_secret_version(request={"name": name})
+    return response.payload.data.decode("utf-8")
+
+
 IMAGE_GEN_MODEL = os.environ.get("IMAGE_GEN_MODEL", "gemini-2.5-flash-image")
 # 실제 전북/전국 수출지원사업 서식 56개(필드 460개)로 파인튜닝한 모델. 검증셋 기준
 # field_key 정확일치율이 46.7% -> 95.5%로 개선됨 (backend/finetune_data 참고).
@@ -49,7 +61,7 @@ DOCUMENT_AI_PROCESSOR_ID = os.environ.get("DOCUMENT_AI_PROCESSOR_ID")
 CLOUD_SQL_HOST = os.environ["CLOUD_SQL_HOST"]
 CLOUD_SQL_DB = os.environ["CLOUD_SQL_DB"]
 CLOUD_SQL_USER = os.environ["CLOUD_SQL_USER"]
-CLOUD_SQL_PASSWORD = os.environ["CLOUD_SQL_PASSWORD"]
+CLOUD_SQL_PASSWORD = _get_secret("jbxport-cloud-sql-password")
 
 TEMPLATES_BUCKET = os.environ.get("GCS_TEMPLATES_BUCKET", "team-01-504502-templates")
 GENERATED_BUCKET = os.environ.get("GCS_GENERATED_BUCKET", "team-01-504502-generated")
@@ -259,45 +271,55 @@ class _PgQuery:
         return " WHERE " + " AND ".join(clauses), params
 
     def execute(self):
+        global _pg_conn
         where_sql, where_params = self._where()
-        with _pg_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            if self._op == "select":
-                sql = f'SELECT {self._columns} FROM "{self._table}"{where_sql}'
-                if self._order_col:
-                    sql += f' ORDER BY "{self._order_col}" {"DESC" if self._order_desc else "ASC"}'
-                if self._limit_n is not None:
-                    sql += f" LIMIT {int(self._limit_n)}"
-                cur.execute(sql, where_params)
-                rows = [_pg_row(dict(r)) for r in cur.fetchall()]
-                if self._single_mode:
-                    return _PgResult(rows[0] if rows else None)
-                return _PgResult(rows)
+        # 전역 커넥션 하나를 계속 재사용하는데, 네트워크 순단이나 Cloud SQL 쪽에서 idle
+        # 커넥션을 끊는 경우 이 프로세스는 재시작 전까지 계속 죽어있었다. 끊긴 채로
+        # 잡히면(InterfaceError/OperationalError) 한 번 재연결해서 다시 시도한다.
+        for attempt in range(2):
+            try:
+                with _pg_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                    if self._op == "select":
+                        sql = f'SELECT {self._columns} FROM "{self._table}"{where_sql}'
+                        if self._order_col:
+                            sql += f' ORDER BY "{self._order_col}" {"DESC" if self._order_desc else "ASC"}'
+                        if self._limit_n is not None:
+                            sql += f" LIMIT {int(self._limit_n)}"
+                        cur.execute(sql, where_params)
+                        rows = [_pg_row(dict(r)) for r in cur.fetchall()]
+                        if self._single_mode:
+                            return _PgResult(rows[0] if rows else None)
+                        return _PgResult(rows)
 
-            if self._op == "insert":
-                rows_in = self._payload if isinstance(self._payload, list) else [self._payload]
-                inserted = []
-                for row in rows_in:
-                    cols = list(row.keys())
-                    col_sql = ", ".join(f'"{c}"' for c in cols)
-                    placeholders = ", ".join(["%s"] * len(cols))
-                    vals = [_pg_value(row[c]) for c in cols]
-                    cur.execute(f'INSERT INTO "{self._table}" ({col_sql}) VALUES ({placeholders}) RETURNING *', vals)
-                    inserted.append(_pg_row(dict(cur.fetchone())))
-                return _PgResult(inserted)
+                    if self._op == "insert":
+                        rows_in = self._payload if isinstance(self._payload, list) else [self._payload]
+                        inserted = []
+                        for row in rows_in:
+                            cols = list(row.keys())
+                            col_sql = ", ".join(f'"{c}"' for c in cols)
+                            placeholders = ", ".join(["%s"] * len(cols))
+                            vals = [_pg_value(row[c]) for c in cols]
+                            cur.execute(f'INSERT INTO "{self._table}" ({col_sql}) VALUES ({placeholders}) RETURNING *', vals)
+                            inserted.append(_pg_row(dict(cur.fetchone())))
+                        return _PgResult(inserted)
 
-            if self._op == "update":
-                set_cols = list(self._payload.keys())
-                set_sql = ", ".join(f'"{c}" = %s' for c in set_cols)
-                set_vals = [_pg_value(self._payload[c]) for c in set_cols]
-                cur.execute(f'UPDATE "{self._table}" SET {set_sql}{where_sql} RETURNING *', set_vals + where_params)
-                rows = [_pg_row(dict(r)) for r in cur.fetchall()]
-                return _PgResult(rows)
+                    if self._op == "update":
+                        set_cols = list(self._payload.keys())
+                        set_sql = ", ".join(f'"{c}" = %s' for c in set_cols)
+                        set_vals = [_pg_value(self._payload[c]) for c in set_cols]
+                        cur.execute(f'UPDATE "{self._table}" SET {set_sql}{where_sql} RETURNING *', set_vals + where_params)
+                        rows = [_pg_row(dict(r)) for r in cur.fetchall()]
+                        return _PgResult(rows)
 
-            if self._op == "delete":
-                cur.execute(f'DELETE FROM "{self._table}"{where_sql}', where_params)
-                return _PgResult(None)
+                    if self._op == "delete":
+                        cur.execute(f'DELETE FROM "{self._table}"{where_sql}', where_params)
+                        return _PgResult(None)
 
-            raise RuntimeError("execute() 전에 select/insert/update/delete 중 하나를 호출해야 합니다.")
+                    raise RuntimeError("execute() 전에 select/insert/update/delete 중 하나를 호출해야 합니다.")
+            except (psycopg2.InterfaceError, psycopg2.OperationalError):
+                if attempt == 1:
+                    raise
+                _pg_conn = _pg_connect()
 
 
 class _PgClient:
@@ -349,7 +371,7 @@ app.add_middleware(
     ],
     # vite는 5173 포트가 이미 쓰이고 있으면 5174, 5175...로 자동으로 옮겨간다 — 매번 여기
     # 목록을 손으로 늘리지 않도록 로컬 개발 포트는 통째로 정규식으로 허용한다.
-    allow_origin_regex=r"http://localhost:\d+",
+    allow_origin_regex=r"http://(localhost|127\.0\.0\.1):\d+",
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -393,12 +415,13 @@ AI: 접수기간은 2026년 3월 1일부터 31일까지고요, 수출 초보·�
 솔직히 말한 뒤 담당 기관에 직접 문의해보라고 안내하세요."""
 
 
-def fetch_business_context() -> str:
+def fetch_business_context(include_closed: bool = False) -> str:
     """챗봇이 실제 공고 데이터에 근거해 답하도록, 등록된 공고들의 기본 정보(주관기관/접수기간/
     지원대상/지원내용/문의처)를 프롬프트에 넣을 텍스트로 요약한다. 공고 수가 적어(전북 지역 한정)
-    벡터 검색 없이 전체를 프롬프트에 그대로 넣는다."""
+    벡터 검색 없이 전체를 프롬프트에 그대로 넣는다. 사용자가 마감 여부를 따로 물어본 게 아니면
+    이미 마감된 공고는 답변에서 자연히 빠지도록 목록에서 제외한다."""
     rows = (
-        db.table("businesses").select("name,basic_info").order("created_at", desc=True).execute().data
+        db.table("businesses").select("id,name,basic_info").order("created_at", desc=True).execute().data
         or []
     )
     lines = []
@@ -406,10 +429,13 @@ def fetch_business_context() -> str:
         info = row.get("basic_info") or {}
         if not any((info.get(k) or "").strip() for k in ("org", "period", "target", "support", "contact")):
             continue
+        closed = is_business_closed(row)
+        if closed and not include_closed:
+            continue
         lines.append(
-            f"- {row['name']} | 주관기관: {info.get('org', '')} | 접수기간: {info.get('period', '')} "
-            f"| 지원대상: {info.get('target', '')} | 지원내용: {info.get('support', '')} "
-            f"| 문의처: {info.get('contact', '')}"
+            f"- {row['name']}{' [마감됨]' if closed else ''} | 주관기관: {info.get('org', '')} "
+            f"| 접수기간: {info.get('period', '')} | 지원대상: {info.get('target', '')} "
+            f"| 지원내용: {info.get('support', '')} | 문의처: {info.get('contact', '')}"
         )
     return "\n".join(lines)
 
@@ -419,7 +445,10 @@ def chat(req: ChatRequest):
     history_text = "\n".join(
         f"{'사용자' if h.role == 'user' else 'AI'}: {h.message}" for h in req.history[-6:]
     )
-    business_context = fetch_business_context()
+    # 사용자가 이번 메시지나 최근 대화에서 "마감"을 직접 언급한 경우에만 마감된 공고까지
+    # 포함시킨다 - 그 외엔 이미 지난 공고를 추천/언급하지 않는다.
+    include_closed = "마감" in req.message or any("마감" in h.message for h in req.history[-6:])
+    business_context = fetch_business_context(include_closed=include_closed)
     context_block = f"[등록된 공고 목록]\n{business_context}" if business_context else "[등록된 공고 목록]\n(현재 등록된 공고 정보 없음)"
     prompt = f"{CHATBOT_SYSTEM_PROMPT}\n\n{context_block}\n\n{history_text}\n사용자: {req.message}\nAI:"
 
@@ -436,7 +465,7 @@ def chat(req: ChatRequest):
 # Management API가 "the caller does not have permission"로 막음 - 브라우저 로그인이 필요해서
 # 이 세션에선 넘을 수 없었다) 그래서 자체 JWT 발급 방식으로 구현했다. bcrypt로 비밀번호를
 # 해시하고, HS256 JWT를 발급해서 Authorization: Bearer로 검증한다.
-AUTH_JWT_SECRET = os.environ["AUTH_JWT_SECRET"]
+AUTH_JWT_SECRET = _get_secret("jbxport-auth-jwt-secret")
 AUTH_TOKEN_TTL_DAYS = 30
 
 
@@ -889,37 +918,37 @@ except Exception as e:
     print(f"[pubsub] pull 구독 시작 실패 (구독이 아직 없거나 권한 문제일 수 있음): {e}")
 
 
-# web/src/lib/period.js의 데모용 오버라이드와 맞춘다 - 시연 중에는 이 세 공고만 마감을
-# 2026-09-30으로 고정해서 보여주기 때문에, 마감임박 판정도 화면에 보이는 것과 일치해야 한다.
-DEMO_SEPTEMBER_BUSINESS_IDS = {
-    "5090843f-cf8e-4945-a51d-69e1aa8e61e6",
-    "da530822-7707-44b6-b3b8-93dba472815c",
-    "bb7ab51f-5978-43f7-8f3e-bc85add54153",
-}
-DEMO_SEPTEMBER_PERIOD_END = datetime(2026, 9, 30, tzinfo=timezone.utc)
-
-
 def business_period_end(business: dict) -> datetime | None:
-    """web/src/lib/period.js의 periodEndDate와 같은 로직의 파이썬 버전 - 접수기간 텍스트
-    ("2026. 8. 3. ~ 2026. 8. 7." 같은 형식)에서 마감일만 뽑아낸다. 요일/시각 표기나 연도 누락 등
-    형식이 어긋나면(예: "6. 5.(금)") 조용히 None을 반환한다 - 프론트도 이런 값은 무시하기 때문."""
-    if business.get("id") in DEMO_SEPTEMBER_BUSINESS_IDS:
-        return DEMO_SEPTEMBER_PERIOD_END
-
+    """web/src/lib/period.js의 periodEndDate와 같은 로직의 파이썬 버전 - 접수기간 텍스트에서
+    마감일만 뽑아낸다. "2026. 7. 30.(목)~8. 18.(화) 자정까지"처럼 끝 날짜에 연도가 없는
+    표기가 흔해서(요일/시각 표기 제거 후 숫자가 월/일 2개뿐인 경우), 그럴 땐 시작 날짜의
+    연도를 그대로 물려받는다. 그마저도 없으면 조용히 None을 반환한다(상시 접수로 취급)."""
     period = ((business.get("basic_info") or {}).get("period")) or ""
     if "~" not in period:
         return None
-    end_str = period.split("~", 1)[1]
+    start_str, end_str = period.split("~", 1)
     end_str = re.sub(r"\([^)]*\)", "", end_str)  # "(수)" 같은 요일 표기 제거
     end_str = re.sub(r"\d{1,2}:\d{2}", "", end_str)  # "17:00" 같은 시각 제거
     numbers = re.findall(r"\d+", end_str)
-    if len(numbers) < 3:
+    if len(numbers) >= 3:
+        year, month, day = (int(n) for n in numbers[:3])
+    elif len(numbers) == 2:
+        start_year = re.search(r"\d{4}", start_str)
+        if not start_year:
+            return None
+        year = int(start_year.group())
+        month, day = (int(n) for n in numbers[:2])
+    else:
         return None
-    year, month, day = (int(n) for n in numbers[:3])
     try:
         return datetime(year, month, day, tzinfo=timezone.utc)
     except ValueError:
         return None
+
+
+def is_business_closed(business: dict) -> bool:
+    end = business_period_end(business)
+    return bool(end) and end < datetime.now(timezone.utc)
 
 
 def _run_deadline_check() -> dict:
@@ -1088,6 +1117,10 @@ def list_template_fields(template_id: str | None = None, field_key: str | None =
     if ids:
         q = q.in_("id", ids)
     rows = q.execute().data or []
+    for row in rows:
+        row["field_label"] = clean_blank_field_label(
+            row.get("field_label"), "", row.get("field_key", "")
+        ) or row.get("field_key", "")
     return {"fields": rows}
 
 
@@ -1574,11 +1607,20 @@ def create_template(
     name: str = Form(...),
     form_number: str | None = Form(None),
     user_upload_required: bool = Form(False),
+    reference_only: bool = Form(False),
     linked_account_doc_type: str | None = Form(None),
     file: UploadFile | None = File(None),
     authorization: str | None = Header(None),
 ):
+    """서식은 세 종류 중 하나다:
+    - 자동완성 서류(기본): {{field_key}} 자리표시자가 있는 docx를 올리면 AI가 채운다.
+    - 사용자 제출서류(user_upload_required): 신청자가 자기 파일(사업자등록증 등)을 직접 올린다.
+    - 참고자료(reference_only): 제출/자동채움 대상이 아니라 다운로드용으로만 올려두는 파일.
+    셋은 동시에 성립할 수 없다."""
     require_admin(authorization)
+
+    if user_upload_required and reference_only:
+        raise HTTPException(status_code=400, detail="사용자 제출서류와 참고자료는 동시에 선택할 수 없습니다.")
 
     business = (
         db.table("businesses").select("id").eq("id", business_id).maybe_single().execute().data
@@ -1589,7 +1631,19 @@ def create_template(
         raise HTTPException(status_code=400, detail="알 수 없는 마이페이지 서류 종류입니다.")
 
     object_path = None
-    if not user_upload_required:
+    if reference_only:
+        if not file or not file.filename:
+            raise HTTPException(status_code=400, detail="참고자료로 올릴 파일을 선택해주세요.")
+        ext = Path(file.filename).suffix.lower()
+        if ext not in REFERENCE_DOC_ALLOWED_EXTENSIONS:
+            raise HTTPException(status_code=400, detail="PDF, DOCX, HWP, JPG, PNG 파일만 업로드할 수 있습니다.")
+        file_bytes = file.file.read()
+        object_path = f"{business_id}/{uuid.uuid4().hex}{ext}"
+        try:
+            gcs.from_(TEMPLATES_BUCKET).upload(object_path, file_bytes, {"upsert": "false"})
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"파일 업로드에 실패했습니다: {e}")
+    elif not user_upload_required:
         if not file or not file.filename or not file.filename.lower().endswith(".docx"):
             raise HTTPException(status_code=400, detail="docx 파일만 업로드할 수 있습니다.")
 
@@ -1613,9 +1667,10 @@ def create_template(
     payload = {
         "business_id": business_id,
         "name": name,
-        "form_number": None if user_upload_required else form_number,
+        "form_number": form_number if not user_upload_required and not reference_only else None,
         "original_file_path": object_path,
         "user_upload_required": user_upload_required,
+        "reference_only": reference_only,
         "linked_account_doc_type": linked_account_doc_type if user_upload_required else None,
     }
     sort_order = next_template_sort_order(business_id, user_upload_required)
@@ -1814,6 +1869,8 @@ class TemplateFieldIn(BaseModel):
     field_label: str
     field_type: str
     options: list | None = None
+    section: str | None = None
+    hint: str | None = None
 
 
 class CreateFieldsRequest(BaseModel):
@@ -1839,16 +1896,26 @@ def create_template_fields(
     for f in req.fields:
         if f.field_type not in VALID_FIELD_TYPES:
             raise HTTPException(status_code=400, detail=f"알 수 없는 field_type: {f.field_type}")
-        if not f.field_key.strip():
+        key = f.field_key.strip()
+        label = clean_blank_field_label(f.field_label, "", key)
+        if not key:
             raise HTTPException(status_code=400, detail="field_key는 비워둘 수 없습니다.")
+        if not label:
+            continue
         rows.append({
             "template_id": template_id,
-            "field_key": f.field_key.strip(),
-            "field_label": f.field_label,
+            "field_key": key,
+            "field_label": label,
             "field_type": f.field_type,
             "options": f.options,
+            "section": f.section,
+            "hint": f.hint,
         })
 
+    if not rows:
+        raise HTTPException(status_code=400, detail="저장할 수 있는 필드가 없습니다.")
+
+    db.table("template_fields").delete().eq("template_id", template_id).execute()
     inserted = db.table("template_fields").insert(rows).execute().data
     return {"fields": inserted}
 
@@ -1919,6 +1986,20 @@ def call_gemini_field_suggestions(business_name, template_name, field_keys, chec
 
 MAX_BLANK_CANDIDATES = 150
 FIELD_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+BLANK_MARKER_RE = re.compile(r"\[\[(?:빈칸|鍮덉뭏)\]\]")
+
+
+def clean_blank_field_label(label: str | None, context: str, key: str) -> str | None:
+    """Keep the internal [[blank]] marker out of user-facing field labels."""
+    raw_label = (label or "").strip()
+    for candidate in (raw_label, context or "", key or ""):
+        cleaned = BLANK_MARKER_RE.sub(" ", str(candidate))
+        cleaned = re.sub(r"\s*>\s*", " ", cleaned)
+        cleaned = re.sub(r"\s*[-:]\s*$", "", cleaned)
+        cleaned = re.sub(r"\s+", " ", cleaned).strip(" -:>|\t\r\n")
+        if cleaned and not BLANK_MARKER_RE.search(cleaned):
+            return cleaned[:60]
+    return None
 
 
 def build_blank_candidate_prompt(business_name, template_name, candidates):
@@ -2069,14 +2150,18 @@ def suggest_template_fields(template_id: str, authorization: str | None = Header
             key = (d.get("field_key") or "").strip()
             if not key or not FIELD_KEY_RE.match(key) or key in seen_keys:
                 continue
+            field_label = clean_blank_field_label(d.get("field_label"), candidates[idx].get("context", ""), key)
+            if not field_label:
+                continue
             field_type = d.get("field_type") if d.get("field_type") in VALID_FIELD_TYPES else "text"
             seen_keys.add(key)
             apply_blank_field(candidates[idx], key)
             field_meta[key] = {
                 "field_key": key,
-                "field_label": d.get("field_label") or key,
+                "field_label": field_label,
                 "field_type": field_type,
                 "options": d.get("options") or None,
+                "section": candidates[idx].get("section"),
             }
 
         # 표 병합이 불규칙한 문서는 서로 다른 후보가 실제로는 같은 셀/문단을 가리킬 수 있어,
@@ -2111,13 +2196,17 @@ def suggest_template_fields(template_id: str, authorization: str | None = Header
         key = (s.get("field_key") or "").strip()
         if not key or key in seen_keys:
             continue
+        field_label = clean_blank_field_label(s.get("field_label"), "", key)
+        if not field_label:
+            continue
         field_type = s.get("field_type") if s.get("field_type") in VALID_FIELD_TYPES else "text"
         seen_keys.add(key)
         fields.append({
             "field_key": key,
-            "field_label": s.get("field_label") or key,
+            "field_label": field_label,
             "field_type": field_type,
             "options": s.get("options") or None,
+            "section": None,
         })
 
     return {"fields": fields}

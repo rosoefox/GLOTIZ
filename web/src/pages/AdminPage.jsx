@@ -49,7 +49,7 @@ function SubmissionRow({
         {!isHistory && canNotify && (
           <Button
             variant="primary"
-            className="px-3 py-1.5 text-xs"
+            className="w-[11.5rem] justify-center px-3 py-1.5 text-xs"
             disabled={notifying[key] || notified[key]}
             onClick={() => onNotify(applicant, item)}
           >
@@ -68,21 +68,29 @@ function SubmissionRow({
             {isDownloading ? ap.generatingLabel : ap.viewDocumentLabel}
           </Button>
         )}
-        {!isHistory && item.submission && item.statusKey !== "needs_revision" && (
+        {!isHistory && item.submission && (
           <button
             type="button"
             onClick={() => onSetReviewStatus(applicant, item, "needs_revision")}
-            className="flex items-center gap-1 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700"
+            className={`flex w-[5.5rem] items-center justify-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+              item.statusKey === "needs_revision"
+                ? "bg-slate-200 text-slate-500"
+                : "bg-red-600 text-white hover:bg-red-700"
+            }`}
           >
             <Icon name="x" className="w-5 h-5" />
             {ap.markNeedsRevisionLabel}
           </button>
         )}
-        {!isHistory && item.submission && item.statusKey !== "approved" && (
+        {!isHistory && item.submission && (
           <button
             type="button"
             onClick={() => onSetReviewStatus(applicant, item, "approved")}
-            className="flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+            className={`flex w-[5.5rem] items-center justify-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+              item.statusKey === "approved"
+                ? "bg-slate-200 text-slate-500"
+                : "bg-emerald-600 text-white hover:bg-emerald-700"
+            }`}
           >
             <Icon name="check" className="w-5 h-5" />
             {ap.markApprovedLabel}
@@ -306,17 +314,26 @@ function NewBusinessModal({ session, onClose, onCreated }) {
 function NewTemplateModal({ session, business, onClose, onCreated }) {
   const tf = ap.businessManager.templateForm;
   const [name, setName] = useState("");
-  const [formNumber, setFormNumber] = useState("");
   const [file, setFile] = useState(null);
-  const [userUploadRequired, setUserUploadRequired] = useState(false);
+  const [docKind, setDocKind] = useState("auto_fill"); // auto_fill | user_upload | reference
   const [linkedAccountDocType, setLinkedAccountDocType] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  // 자동완성 서류는 업로드가 끝나자마자 같은 흐름으로 바로 "필드 추가" 단계로 넘어간다 -
+  // 따로 목록에서 다시 찾아 클릭할 필요 없게.
+  const [createdAutoFillTemplate, setCreatedAutoFillTemplate] = useState(null);
+
+  const userUploadRequired = docKind === "user_upload";
+  const referenceOnly = docKind === "reference";
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!userUploadRequired && !file) {
+    if (docKind === "auto_fill" && !file) {
       setError("DOCX 파일을 선택해주세요.");
+      return;
+    }
+    if (referenceOnly && !file) {
+      setError("참고자료로 올릴 파일을 선택해주세요.");
       return;
     }
     setSaving(true);
@@ -326,8 +343,8 @@ function NewTemplateModal({ session, business, onClose, onCreated }) {
       form.append("business_id", business.id);
       form.append("name", name);
       form.append("user_upload_required", userUploadRequired ? "true" : "false");
-      if (!userUploadRequired) {
-        form.append("form_number", formNumber);
+      form.append("reference_only", referenceOnly ? "true" : "false");
+      if (docKind === "auto_fill" || referenceOnly) {
         form.append("file", file);
       } else if (linkedAccountDocType) {
         form.append("linked_account_doc_type", linkedAccountDocType);
@@ -339,14 +356,24 @@ function NewTemplateModal({ session, business, onClose, onCreated }) {
       });
       if (!res.ok) throw new Error(await readErrorMessage(res, "서류 양식 업로드에 실패했습니다."));
       const data = await res.json();
-      onCreated(data);
-      onClose();
+      if (docKind === "auto_fill") {
+        setCreatedAutoFillTemplate(data);
+      } else {
+        onCreated(data);
+        onClose();
+      }
     } catch (err) {
       setError(err.message);
     } finally {
       setSaving(false);
     }
   };
+
+  if (createdAutoFillTemplate) {
+    return (
+      <NewFieldsModal session={session} template={createdAutoFillTemplate} onClose={onClose} onSaved={onCreated} />
+    );
+  }
 
   return (
     <Modal title={`${tf.title} · ${business.name}`} onClose={onClose}>
@@ -358,44 +385,18 @@ function NewTemplateModal({ session, business, onClose, onCreated }) {
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
-          <label className="flex items-start gap-2">
-            <input
-              type="checkbox"
-              checked={userUploadRequired}
-              onChange={(e) => setUserUploadRequired(e.target.checked)}
-              className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-100"
-            />
-            <span className="text-sm font-medium text-slate-700">{tf.userUploadCheckboxLabel}</span>
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium text-slate-700">{tf.docKindLabel}</span>
+            <select value={docKind} onChange={(e) => setDocKind(e.target.value)} className={`${CONTROL_CLASS} py-3`}>
+              {tf.docKindOptions.map((opt) => (
+                <option key={opt.id} value={opt.id}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
           </label>
-          {userUploadRequired ? (
+          {docKind === "auto_fill" && (
             <>
-              <p className="rounded-lg bg-slate-50 px-3.5 py-2.5 text-xs leading-relaxed text-slate-500">
-                {tf.userUploadHint}
-              </p>
-              <label className="block">
-                <span className="mb-1.5 block text-sm font-medium text-slate-700">{tf.linkedDocLabel}</span>
-                <select
-                  value={linkedAccountDocType}
-                  onChange={(e) => setLinkedAccountDocType(e.target.value)}
-                  className={CONTROL_CLASS}
-                >
-                  {ACCOUNT_DOC_TYPE_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.value ? opt.label : tf.linkedDocNoneOption}
-                    </option>
-                  ))}
-                </select>
-                <span className="mt-1.5 block text-xs leading-relaxed text-slate-400">{tf.linkedDocHint}</span>
-              </label>
-            </>
-          ) : (
-            <>
-              <TextField
-                label={tf.formNumberLabel}
-                placeholder={tf.formNumberPlaceholder}
-                value={formNumber}
-                onChange={(e) => setFormNumber(e.target.value)}
-              />
               <label className="block">
                 <span className="mb-1.5 block text-sm font-medium text-slate-700">{tf.fileLabel}</span>
                 <input
@@ -410,9 +411,51 @@ function NewTemplateModal({ session, business, onClose, onCreated }) {
               </p>
             </>
           )}
+          {userUploadRequired && (
+            <>
+              <p className="rounded-lg bg-slate-50 px-3.5 py-2.5 text-xs leading-relaxed text-slate-500">
+                {tf.userUploadHint}
+              </p>
+              <label className="block">
+                <span className="mb-1.5 block text-sm font-medium text-slate-700">{tf.linkedDocLabel}</span>
+                <select
+                  value={linkedAccountDocType}
+                  onChange={(e) => setLinkedAccountDocType(e.target.value)}
+                  className={`${CONTROL_CLASS} py-3`}
+                >
+                  {ACCOUNT_DOC_TYPE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.value ? opt.label : tf.linkedDocNoneOption}
+                    </option>
+                  ))}
+                </select>
+                <span className="mt-1.5 block text-xs leading-relaxed text-slate-400">{tf.linkedDocHint}</span>
+              </label>
+            </>
+          )}
+          {referenceOnly && (
+            <>
+              <label className="block">
+                <span className="mb-1.5 block text-sm font-medium text-slate-700">{tf.referenceFileLabel}</span>
+                <input
+                  type="file"
+                  accept=".pdf,.docx,.hwp,.jpg,.jpeg,.png"
+                  onChange={(e) => setFile(e.target.files?.[0] || null)}
+                  className="w-full text-sm text-slate-600"
+                />
+              </label>
+              <p className="rounded-lg bg-slate-50 px-3.5 py-2.5 text-xs leading-relaxed text-slate-500">
+                {tf.referenceHint}
+              </p>
+            </>
+          )}
           {error && <p className="text-xs font-medium text-red-500">{error}</p>}
           <Button type="submit" className="w-full justify-center" disabled={saving}>
-            {saving ? "업로드 중..." : tf.submitLabel}
+            {saving
+              ? "업로드 중..."
+              : docKind === "auto_fill"
+                ? "업로드하고 필드 추가하기"
+                : tf.submitLabel}
           </Button>
       </form>
     </Modal>
@@ -531,6 +574,7 @@ function NewFieldsModal({ session, template, onClose, onSaved }) {
           field_label: f.field_label,
           field_type: f.field_type,
           options: (f.options || []).join(", "),
+          section: f.section ?? null,
         }));
         if (suggested.length) setRows(suggested);
       })
@@ -562,6 +606,7 @@ function NewFieldsModal({ session, template, onClose, onSaved }) {
           (r.field_type === "select" || r.field_type === "checkbox") && r.options.trim()
             ? r.options.split(",").map((s) => s.trim()).filter(Boolean)
             : null,
+        section: r.section ?? null,
       }));
       const res = await fetch(`${BACKEND_URL}/admin/templates/${template.id}/fields`, {
         method: "POST",
@@ -652,12 +697,11 @@ function NewFieldsModal({ session, template, onClose, onSaved }) {
   );
 }
 
-function BusinessManager({ session }) {
+function BusinessManager({ session, reloadKey }) {
   const bm = ap.businessManager;
   const [businesses, setBusinesses] = useState([]);
   const [templatesByBusiness, setTemplatesByBusiness] = useState({});
   const [loadingBM, setLoadingBM] = useState(true);
-  const [showBusinessModal, setShowBusinessModal] = useState(false);
   const [templateModalBusiness, setTemplateModalBusiness] = useState(null);
   const [fieldsModalTemplate, setFieldsModalTemplate] = useState(null);
   const [editTemplateTarget, setEditTemplateTarget] = useState(null);
@@ -670,6 +714,7 @@ function BusinessManager({ session }) {
   const [nameError, setNameError] = useState(null);
   const [expandedBusinessId, setExpandedBusinessId] = useState(null);
   const [bmSearch, setBmSearch] = useState("");
+  const [dragIndex, setDragIndex] = useState(null);
 
   const filteredBusinesses = useMemo(() => {
     const query = bmSearch.trim().toLowerCase();
@@ -758,84 +803,73 @@ function BusinessManager({ session }) {
     }
   };
 
-  const swapOrder = async (kind, current, neighbor) => {
-    const path = kind === "business" ? "businesses" : "templates";
+  // 그립 아이콘을 눌러서 끄는 동안 dragIndex에 원래 위치를 담아뒀다가, 다른 카드
+  // 위에 놓으면(drop) businesses 배열에서 그 위치로 옮기고 순서 전체를 다시 매긴다.
+  // 화면은 서버 응답을 기다리지 않고 바로 새 순서로 갱신하고(낙관적 업데이트),
+  // PATCH는 뒤에서 조용히 반영한다 — 실패하면 그때만 서버 상태로 되돌린다.
+  const reorderBusinesses = async (newOrder) => {
     setActionError(null);
+    setBusinesses(newOrder);
     try {
-      await Promise.all([
-        fetch(`${BACKEND_URL}/admin/${path}/${current.id}/order`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
-          body: JSON.stringify({ sort_order: neighbor.sort_order }),
-        }),
-        fetch(`${BACKEND_URL}/admin/${path}/${neighbor.id}/order`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
-          body: JSON.stringify({ sort_order: current.sort_order }),
-        }),
-      ]);
-      await loadBusinessManager();
+      await Promise.all(
+        newOrder.map((biz, i) =>
+          fetch(`${BACKEND_URL}/admin/businesses/${biz.id}/order`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+            body: JSON.stringify({ sort_order: i }),
+          })
+        )
+      );
     } catch (err) {
       setActionError(err.message);
+      await loadBusinessManager();
     }
   };
 
-  const moveBusiness = (index, direction) => {
-    const neighborIndex = index + direction;
-    if (neighborIndex < 0 || neighborIndex >= businesses.length) return;
-    swapOrder("business", businesses[index], businesses[neighborIndex]);
+  const handleBusinessDragStart = (index) => (e) => {
+    setDragIndex(index);
+    e.dataTransfer.effectAllowed = "move";
   };
 
-  const moveTemplate = (list, index, direction) => {
-    const neighborIndex = index + direction;
-    if (neighborIndex < 0 || neighborIndex >= list.length) return;
-    swapOrder("template", list[index], list[neighborIndex]);
+  const handleBusinessDragOver = (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
   };
 
-  // 사업자등록증처럼 신청자가 직접 발급받아 올리는 "사용자 업로드형"과, AI가 자동으로 채워주는
-  // "제출 서식"은 성격이 달라서 목록을 둘로 나눈다 — 업로드형이 위, 그 아래 서식은 서식 번호순.
+  const handleBusinessDrop = (index) => (e) => {
+    e.preventDefault();
+    const from = dragIndex;
+    setDragIndex(null);
+    if (from === null || from === index) return;
+    const reordered = [...businesses];
+    const [moved] = reordered.splice(from, 1);
+    reordered.splice(index, 0, moved);
+    reorderBusinesses(reordered);
+  };
+
+  // 신청자 화면과 동일하게 참고자료 → 사용자 제출서류 → 자동완성 서식 순으로 나눈다.
   function splitTemplates(templates) {
-    const uploadTemplates = templates.filter((t) => t.user_upload_required);
-    const formTemplates = templates
-      .filter((t) => !t.user_upload_required)
-      .slice()
-      .sort((a, b) => {
-        const an = parseFloat(a.form_number);
-        const bn = parseFloat(b.form_number);
-        const aValid = !Number.isNaN(an);
-        const bValid = !Number.isNaN(bn);
-        if (aValid && bValid && an !== bn) return an - bn;
-        if (aValid !== bValid) return aValid ? -1 : 1;
-        return (a.form_number || "").localeCompare(b.form_number || "");
-      });
-    return { uploadTemplates, formTemplates };
+    const referenceTemplates = templates.filter((t) => t.reference_only);
+    const uploadTemplates = templates.filter((t) => t.user_upload_required && !t.reference_only);
+    const formTemplates = templates.filter((t) => !t.user_upload_required && !t.reference_only);
+    return { referenceTemplates, uploadTemplates, formTemplates };
   }
 
-  function renderTemplateRow(t, reorderControls) {
+  function renderTemplateRow(t) {
     return (
       <div key={t.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
-        <div>
-          <p className="text-sm font-semibold text-slate-900">{t.name}</p>
-          {t.user_upload_required ? (
-            <Badge tone="brand" className="mt-1">
-              {bm.userUploadBadgeLabel}
-            </Badge>
-          ) : (
-            t.form_number && <p className="text-xs text-slate-400">서식 번호 {t.form_number}</p>
-          )}
-        </div>
+        <p className="text-sm font-semibold text-slate-900">{t.name}</p>
         <div className="flex shrink-0 items-center gap-2">
-          {reorderControls}
           <Button variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => setEditTemplateTarget(t)}>
             {bm.editTemplateButtonLabel}
           </Button>
-          {!t.user_upload_required && (
+          {!t.user_upload_required && !t.reference_only && (
             <Button variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => setFieldsModalTemplate(t)}>
               {bm.addFieldsButtonLabel}
             </Button>
           )}
           <Button
-            variant="secondary"
+            variant="ghost"
             className="px-3 py-1.5 text-xs text-red-500 hover:bg-red-50"
             disabled={deletingTemplateId === t.id}
             onClick={() => handleDeleteTemplate(t)}
@@ -848,36 +882,11 @@ function BusinessManager({ session }) {
     );
   }
 
-  function reorderArrows(list, index, onMove) {
-    return (
-      <div className="flex flex-col">
-        <button
-          type="button"
-          aria-label="서식 순서 위로"
-          disabled={index === 0}
-          onClick={() => onMove(list, index, -1)}
-          className="flex h-5 w-5 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30"
-        >
-          <Icon name="chevronDown" className="w-3.5 h-3.5 rotate-180" />
-        </button>
-        <button
-          type="button"
-          aria-label="서식 순서 아래로"
-          disabled={index === list.length - 1}
-          onClick={() => onMove(list, index, 1)}
-          className="flex h-5 w-5 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30"
-        >
-          <Icon name="chevronDown" className="w-3.5 h-3.5" />
-        </button>
-      </div>
-    );
-  }
-
   async function loadBusinessManager() {
     setLoadingBM(true);
     const [{ businesses: biz }, { templates: tpl }] = await Promise.all([
       api.get("/businesses"),
-      api.get("/templates?order_by=form_number"),
+      api.get("/templates"),
     ]);
     setBusinesses(biz || []);
     const grouped = {};
@@ -888,17 +897,11 @@ function BusinessManager({ session }) {
 
   useEffect(() => {
     loadBusinessManager();
-  }, []);
+  }, [reloadKey]);
 
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between gap-4">
-        {actionError ? <p className="text-xs font-medium text-red-500">{actionError}</p> : <span />}
-        <Button onClick={() => setShowBusinessModal(true)}>
-          <Icon name="plus" className="w-5 h-5" />
-          {bm.newBusinessButtonLabel}
-        </Button>
-      </div>
+      {actionError && <p className="mb-4 text-xs font-medium text-red-500">{actionError}</p>}
 
       <div className="relative mb-4">
         <Icon
@@ -925,8 +928,17 @@ function BusinessManager({ session }) {
             const templates = templatesByBusiness[biz.id] || [];
             const bizIndex = businesses.findIndex((b) => b.id === biz.id);
             return (
-              <Card key={biz.id} className="p-5">
-                <div className="mb-3 flex items-start justify-between gap-4">
+              <Card
+                key={biz.id}
+                className={`p-5 transition-opacity ${dragIndex === bizIndex ? "opacity-40" : ""}`}
+                onDragOver={handleBusinessDragOver}
+                onDrop={handleBusinessDrop(bizIndex)}
+              >
+                <div
+                  className={`flex items-center justify-between gap-4 ${
+                    expandedBusinessId === biz.id ? "mb-3" : ""
+                  }`}
+                >
                   <div>
                     {editingBusinessId === biz.id ? (
                       <div className="flex items-center gap-1.5">
@@ -989,33 +1001,24 @@ function BusinessManager({ session }) {
                       <p className="mt-1 text-xs font-medium text-red-500">{nameError}</p>
                     )}
                     {biz.description && <p className="mt-1 text-sm text-slate-500">{biz.description}</p>}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
                     {biz.basic_info && (
-                      <Badge tone="success" className="mt-2">
+                      <Badge tone="success">
                         <Icon name="checkCircle" className="w-3.5 h-3.5" /> 기본 정보 완료
                       </Badge>
                     )}
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <div className="flex flex-col">
-                      <button
-                        type="button"
-                        aria-label="사업 순서 위로"
-                        disabled={bizIndex === 0}
-                        onClick={() => moveBusiness(bizIndex, -1)}
-                        className="flex h-5 w-5 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30"
-                      >
-                        <Icon name="chevronDown" className="w-3.5 h-3.5 rotate-180" />
-                      </button>
-                      <button
-                        type="button"
-                        aria-label="사업 순서 아래로"
-                        disabled={bizIndex === businesses.length - 1}
-                        onClick={() => moveBusiness(bizIndex, 1)}
-                        className="flex h-5 w-5 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30"
-                      >
-                        <Icon name="chevronDown" className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      draggable
+                      onDragStart={handleBusinessDragStart(bizIndex)}
+                      onDragEnd={() => setDragIndex(null)}
+                      aria-label="꾹 눌러서 끌면 순서 변경"
+                      title="꾹 눌러서 끌면 순서 변경"
+                      className="flex h-8 w-8 cursor-grab items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-600 active:cursor-grabbing"
+                    >
+                      <Icon name="grip" className="w-4 h-4" />
+                    </button>
                     <Button
                       variant="secondary"
                       className="px-3 py-1.5 text-xs"
@@ -1025,8 +1028,8 @@ function BusinessManager({ session }) {
                       {bm.uploadTemplateButtonLabel}
                     </Button>
                     <Button
-                      variant="secondary"
-                      className="px-3 py-1.5 text-xs text-red-500 hover:bg-red-50"
+                      variant="ghost"
+                      className="border border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-600 hover:bg-red-100"
                       disabled={deletingBusinessId === biz.id}
                       onClick={() => handleDeleteBusiness(biz)}
                     >
@@ -1046,31 +1049,36 @@ function BusinessManager({ session }) {
                       <p className="text-xs text-slate-400">{bm.templateListEmptyMessage}</p>
                     ) : (
                       (() => {
-                        const { uploadTemplates, formTemplates } = splitTemplates(templates);
+                        const { referenceTemplates, uploadTemplates, formTemplates } = splitTemplates(templates);
                         return (
                           <div className="space-y-4">
+                            {referenceTemplates.length > 0 && (
+                              <div>
+                                <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-black">
+                                  {bm.referenceGroupLabel}
+                                </p>
+                                <div className="divide-y divide-slate-100 rounded-xl border border-slate-200">
+                                  {referenceTemplates.map((t) => renderTemplateRow(t))}
+                                </div>
+                              </div>
+                            )}
                             {uploadTemplates.length > 0 && (
                               <div>
-                                <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                                <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-emerald-600">
                                   {bm.userUploadGroupLabel}
                                 </p>
                                 <div className="divide-y divide-slate-100 rounded-xl border border-slate-200">
-                                  {uploadTemplates.map((t, tIndex) =>
-                                    renderTemplateRow(
-                                      t,
-                                      reorderArrows(uploadTemplates, tIndex, moveTemplate)
-                                    )
-                                  )}
+                                  {uploadTemplates.map((t) => renderTemplateRow(t))}
                                 </div>
                               </div>
                             )}
                             {formTemplates.length > 0 && (
                               <div>
-                                <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                                <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-black">
                                   {bm.formTemplateGroupLabel}
                                 </p>
                                 <div className="divide-y divide-slate-100 rounded-xl border border-slate-200">
-                                  {formTemplates.map((t) => renderTemplateRow(t, null))}
+                                  {formTemplates.map((t) => renderTemplateRow(t))}
                                 </div>
                               </div>
                             )}
@@ -1086,9 +1094,6 @@ function BusinessManager({ session }) {
         </div>
       )}
 
-      {showBusinessModal && (
-        <NewBusinessModal session={session} onClose={() => setShowBusinessModal(false)} onCreated={loadBusinessManager} />
-      )}
       {templateModalBusiness && (
         <NewTemplateModal
           session={session}
@@ -1131,18 +1136,17 @@ export default function AdminPage() {
   const [downloadingId, setDownloadingId] = useState(null);
   const [search, setSearch] = useState("");
   const [showBusinessModal, setShowBusinessModal] = useState(false);
+  const [businessReloadKey, setBusinessReloadKey] = useState(0);
 
   async function load() {
     setLoading(true);
 
-    const [{ businesses }, { templates }, { submissions }, { documents: generatedDocs }, { fields: allFields }] =
-      await Promise.all([
-        api.get("/businesses"),
-        api.get("/templates"),
-        api.get("/admin/submissions", session?.access_token),
-        api.get("/generated_documents", session?.access_token),
-        api.get("/template_fields"),
-      ]);
+    const [{ businesses }, { templates }, { submissions }, { documents: generatedDocs }] = await Promise.all([
+      api.get("/businesses"),
+      api.get("/templates"),
+      api.get("/admin/submissions", session?.access_token),
+      api.get("/generated_documents", session?.access_token),
+    ]);
 
     const businessNameById = Object.fromEntries((businesses || []).map((b) => [b.id, b.name]));
     const templateById = Object.fromEntries((templates || []).map((t) => [t.id, t]));
@@ -1153,21 +1157,6 @@ export default function AdminPage() {
     const generatedPathBySubmission = Object.fromEntries(
       (generatedDocs || []).map((g) => [g.submission_id, g.file_path])
     );
-
-    // 퍼센티지는 "서류를 제출했는지"가 아니라 사용자 화면(DocumentChecklist)과 동일하게
-    // "실제로 채워진 필드 수 / 전체 필드 수"로 계산한다 — 그래야 두 화면의 숫자가 일치한다.
-    const fieldCountByTemplate = {};
-    (allFields || []).forEach((f) => {
-      fieldCountByTemplate[f.template_id] = (fieldCountByTemplate[f.template_id] || 0) + 1;
-    });
-    const submissionIds = (submissions || []).map((s) => s.id);
-    const { values: allValues } = submissionIds.length
-      ? await api.get(`/submission_values?${idsParam("submission_id", submissionIds)}`, session?.access_token)
-      : { values: [] };
-    const filledCountBySubmission = {};
-    (allValues || []).forEach((v) => {
-      if (v.value) filledCountBySubmission[v.submission_id] = (filledCountBySubmission[v.submission_id] || 0) + 1;
-    });
 
     let companyNameBySubmission = {};
     const { fields: companyFields } = await api.get(`/template_fields?${idsParam("field_key", COMPANY_NAME_KEYS)}`);
@@ -1252,7 +1241,8 @@ export default function AdminPage() {
         });
 
         const submittedTemplateIds = new Set(program.items.map((i) => i.templateId));
-        const allTemplates = templatesByBusiness[program.businessId] || [];
+        // 참고자료(reference_only)는 신청자가 제출할 대상이 아니라서 체크리스트/완료율 계산에서 뺀다.
+        const allTemplates = (templatesByBusiness[program.businessId] || []).filter((t) => !t.reference_only);
         for (const t of allTemplates) {
           if (!submittedTemplateIds.has(t.id)) {
             program.items.push({
@@ -1269,30 +1259,25 @@ export default function AdminPage() {
         program.items.sort(
           (a, b) => (templateById[a.templateId]?.sort_order ?? 0) - (templateById[b.templateId]?.sort_order ?? 0)
         );
-        const totalFields = allTemplates.reduce((sum, t) => sum + (fieldCountByTemplate[t.id] || 0), 0);
-        const filledFields = program.items.reduce(
-          (sum, item) => sum + (item.submission ? filledCountBySubmission[item.submission.id] || 0 : 0),
-          0
-        );
         program.totalTemplates = allTemplates.length;
         program.submittedCount = submittedTemplateIds.size;
-        program.totalFields = totalFields;
-        program.filledFields = filledFields;
-        program.percent = totalFields ? Math.round((filledFields / totalFields) * 100) : 0;
+        // "완료율"은 필드 채움 정도가 아니라 서식 제출 여부(문서 기준)로 센다 - 관리자
+        // 화면에서 보는 단위가 "서류 몇 개 중 몇 개 냈는지"라 그게 더 직관적이다.
+        program.percent = program.totalTemplates ? Math.round((program.submittedCount / program.totalTemplates) * 100) : 0;
       }
     }
 
     const list = Object.values(byUser)
       .map((bucket) => {
         const programs = Object.values(bucket.byBusiness);
-        const totalFields = programs.reduce((s, p) => s + p.totalFields, 0);
-        const filledFields = programs.reduce((s, p) => s + p.filledFields, 0);
+        const totalTemplates = programs.reduce((s, p) => s + p.totalTemplates, 0);
+        const submittedCount = programs.reduce((s, p) => s + p.submittedCount, 0);
         return {
           userId: bucket.userId,
           name: bucket.name || `${ap.applicantFallbackName} (${bucket.userId.slice(0, 8)})`,
           submissions: bucket.submissions,
           programs,
-          percent: totalFields ? Math.round((filledFields / totalFields) * 100) : 0,
+          percent: totalTemplates ? Math.round((submittedCount / totalTemplates) * 100) : 0,
           lastUpdated: new Date(bucket.lastUpdated).toLocaleDateString("ko-KR"),
         };
       })
@@ -1304,16 +1289,6 @@ export default function AdminPage() {
 
   useEffect(() => {
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.access_token]);
-
-  // Cloud SQL엔 Supabase Realtime 같은 실시간 구독이 없어서, 다른 관리자의 승인/반려 처리나
-  // 새 제출을 놓치지 않도록 짧은 주기로 다시 불러오는 폴링으로 대체한다. session이 바뀌면(예:
-  // 토큰 갱신) 새 session을 캡처한 인터벌로 다시 걸어야 한다 - 안 그러면 오래된(무효화된)
-  // 토큰을 계속 들고 있는 클로저가 갇혀서 일정 시간 뒤부터 401이 나기 시작한다.
-  useEffect(() => {
-    const interval = setInterval(load, 15000);
-    return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.access_token]);
 
@@ -1526,29 +1501,28 @@ export default function AdminPage() {
               {ap.tabs.businesses}
             </button>
           </div>
-          {activeTab !== "businesses" && (
-            <Button onClick={() => setShowBusinessModal(true)}>
-              <Icon name="plus" className="w-5 h-5" />
-              {ap.businessManager.newBusinessButtonLabel}
-            </Button>
-          )}
+          <Button onClick={() => setShowBusinessModal(true)}>
+            <Icon name="plus" className="w-5 h-5" />
+            {ap.businessManager.newBusinessButtonLabel}
+          </Button>
         </div>
 
+        {showBusinessModal && (
+          <NewBusinessModal
+            session={session}
+            onClose={() => setShowBusinessModal(false)}
+            onCreated={() => {
+              setShowBusinessModal(false);
+              setActiveTab("businesses");
+              setBusinessReloadKey((k) => k + 1);
+            }}
+          />
+        )}
+
         {activeTab === "businesses" ? (
-          <BusinessManager session={session} />
+          <BusinessManager session={session} reloadKey={businessReloadKey} />
         ) : (
           <>
-            {showBusinessModal && (
-              <NewBusinessModal
-                session={session}
-                onClose={() => setShowBusinessModal(false)}
-                onCreated={() => {
-                  setShowBusinessModal(false);
-                  setActiveTab("businesses");
-                }}
-              />
-            )}
-
             <div className="relative mb-6">
               <Icon
                 name="search"

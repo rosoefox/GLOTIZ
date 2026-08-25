@@ -3,15 +3,11 @@ import { useNavigate } from "react-router-dom";
 import { Card, Button } from "../components/ui";
 import Icon from "../components/Icon";
 import { govSupport as gs, dashboard, govAnnouncementDetails, login } from "../data/mockData";
-import { displayPeriod, isClosed, periodEndDate } from "../lib/period";
+import { displayPeriod, isClosed, periodEndDate, periodStartDate } from "../lib/period";
 import { api } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 
 const PAGE_SIZE = 6;
-
-// 히어로의 "인기 지원분야" 퀵 태그 — 클릭하면 검색어로 그대로 들어가 지원내용에 해당
-// 키워드가 포함된 공고만 즉시 걸러진다.
-const POPULAR_TOPICS = ["물류비", "전시회", "바우처"];
 
 function orgNameFor(business) {
   const detail = govAnnouncementDetails[business.id];
@@ -104,10 +100,9 @@ function AnnouncementCard({ business, highlighted, bookmarked, closed, onClick, 
 
   return (
     <Card
-      onClick={closed ? undefined : onClick}
-      aria-disabled={closed || undefined}
-      className={`group relative flex h-full flex-col overflow-hidden p-6 transition-transform duration-200 ${
-        closed ? "cursor-not-allowed border-slate-200 grayscale" : "cursor-pointer hover:-translate-y-0.5"
+      onClick={onClick}
+      className={`group relative flex h-full flex-col overflow-hidden p-6 transition-transform duration-200 cursor-pointer hover:-translate-y-0.5 ${
+        closed ? "border-slate-200 grayscale" : ""
       } ${
         highlighted && !closed ? "border-brand-400 ring-2 ring-brand-100" : ""
       }`}
@@ -228,7 +223,7 @@ function FilterDropdown({ label, count, isOpen, onToggle, children }) {
   );
 }
 
-// "진행상태" 드롭다운: 진행중 / 마감일 빠른순 / 마감 세 가지를 하나로 묶는다.
+// "진행상태" 드롭다운: 진행중 / 전체 / 마감 세 가지. 정렬은 항상 마감일 빠른순 하나뿐이다.
 function SortDropdown({ value, options, onChange }) {
   const [open, setOpen] = useState(false);
   const current = options.find((o) => o.id === value) || options[0];
@@ -379,8 +374,7 @@ export default function GovSupport() {
 
   const [selectedRegions, setSelectedRegions] = useState([]);
   const [selectedCategories, setSelectedCategories] = useState([]);
-  const [sortFilter, setSortFilter] = useState("ongoing"); // ongoing | deadline | closed
-  const [showAllStatus, setShowAllStatus] = useState(false); // true면 진행중/마감 구분 없이 전체를 보여준다
+  const [sortFilter, setSortFilter] = useState("ongoing"); // ongoing | all | closed — 정렬은 항상 마감일 빠른순
   const [openFilter, setOpenFilter] = useState(null); // null | "region" | "category"
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
@@ -461,7 +455,7 @@ export default function GovSupport() {
 
   useEffect(() => {
     setPage(1);
-  }, [selectedRegions, selectedCategories, sortFilter, showAllStatus, matchedIds, search]);
+  }, [selectedRegions, selectedCategories, sortFilter, matchedIds, search]);
 
   const toggleRegion = (region) => {
     setSelectedRegions((prev) => (prev.includes(region) ? prev.filter((r) => r !== region) : [...prev, region]));
@@ -514,7 +508,6 @@ export default function GovSupport() {
     setSelectedRegions([]);
     setSelectedCategories([]);
     setSortFilter("ongoing");
-    setShowAllStatus(false);
   };
 
   const visibleAnnouncements = useMemo(() => {
@@ -532,36 +525,29 @@ export default function GovSupport() {
       return true;
     });
 
-    const withEnd = list.map((b) => ({ b, end: periodEndDate(b, govAnnouncementDetails) }));
-    if (showAllStatus) {
-      // "전체" 체크 시 진행중/마감 구분 없이 다 보여준다 — 정렬만 마감일 빠른순을 고를 수 있다.
-      list =
-        sortFilter === "deadline"
-          ? [...withEnd]
-              .sort((a, b) => {
-                if (!a.end) return 1;
-                if (!b.end) return -1;
-                return a.end - b.end;
-              })
-              .map((x) => x.b)
-          : withEnd.map((x) => x.b);
-    } else if (sortFilter === "closed") {
-      list = withEnd.filter(({ b }) => isClosed(b, govAnnouncementDetails)).map((x) => x.b);
-    } else if (sortFilter === "deadline") {
-      list = withEnd
-        .filter(({ b }) => !isClosed(b, govAnnouncementDetails))
-        .sort((a, b) => {
-          if (!a.end) return 1;
-          if (!b.end) return -1;
-          return a.end - b.end;
-        })
-        .map((x) => x.b);
-    } else {
-      list = withEnd.filter(({ b }) => !isClosed(b, govAnnouncementDetails)).map((x) => x.b);
-    }
+    // 공고는 항상 접수기간 시작일 최신순으로 정렬한다(등록일이 아니라 공고 자체의
+    // 접수기간 기준). "전체"를 골랐을 때는 마감된 공고를 진행중인 공고들 뒤로 전부
+    // 밀어내고, 그 안에서도 각각 최신순을 유지한다.
+    const withMeta = list.map((b) => ({ b, closed: isClosed(b, govAnnouncementDetails) }));
+    const filtered =
+      sortFilter === "closed"
+        ? withMeta.filter((x) => x.closed)
+        : sortFilter === "all"
+          ? withMeta
+          : withMeta.filter((x) => !x.closed);
 
-    return list;
-  }, [announcements, selectedRegions, selectedCategories, sortFilter, showAllStatus, matchedIds, search]);
+    return filtered
+      .sort((a, b) => {
+        if (sortFilter === "all" && a.closed !== b.closed) return a.closed ? 1 : -1;
+        const as = periodStartDate(a.b, govAnnouncementDetails);
+        const bs = periodStartDate(b.b, govAnnouncementDetails);
+        if (!as && !bs) return 0;
+        if (!as) return 1;
+        if (!bs) return -1;
+        return bs - as;
+      })
+      .map((x) => x.b);
+  }, [announcements, selectedRegions, selectedCategories, sortFilter, matchedIds, search]);
 
   const totalPages = Math.max(1, Math.ceil(visibleAnnouncements.length / PAGE_SIZE));
   const pagedAnnouncements = visibleAnnouncements.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -700,24 +686,8 @@ export default function GovSupport() {
             </button>
           </div>
 
-          <div className="w-full shrink-0 sm:w-auto">
-            <p className="mb-2 text-xs font-semibold text-slate-500">인기 지원분야</p>
-            <div className="flex flex-wrap gap-2">
-              {POPULAR_TOPICS.map((topic) => (
-                <button
-                  key={topic}
-                  type="button"
-                  onClick={() => setSearch((prev) => (prev === topic ? "" : topic))}
-                  className={`rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors ${
-                    search === topic
-                      ? "border-brand-500 bg-brand-600 text-white"
-                      : "border-brand-100 bg-white text-brand-700 hover:bg-brand-50"
-                  }`}
-                >
-                  #{topic}
-                </button>
-              ))}
-            </div>
+          <div className="flex w-full shrink-0 items-center justify-center sm:w-auto">
+            <Icon name="documents" className="h-24 w-24 text-brand-600" />
           </div>
         </div>
       </div>
@@ -762,15 +732,7 @@ export default function GovSupport() {
 
         <div className="flex shrink-0 flex-wrap items-center gap-3">
           <span className="text-sm font-bold text-slate-700">{gs.filters.statusLabel}</span>
-          <CheckboxRow label="전체" checked={showAllStatus} onChange={() => setShowAllStatus((v) => !v)} />
-          <SortDropdown
-            value={sortFilter}
-            options={gs.filters.statusOptions}
-            onChange={(value) => {
-              setSortFilter(value);
-              setShowAllStatus(false);
-            }}
-          />
+          <SortDropdown value={sortFilter} options={gs.filters.statusOptions} onChange={setSortFilter} />
           {hasActiveFilter && (
             <button
               type="button"
@@ -789,8 +751,11 @@ export default function GovSupport() {
         <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-700">
           <span className="flex items-center gap-1.5 font-medium">
             <Icon name="sparkle" className="w-5 h-5" />
-            {wizardRegions.join(", ")} · {selectedCategoryObjs.map((c) => c.label).join(", ")} 조건에 맞는 맞춤 공고{" "}
-            {visibleAnnouncements.length}건을 보여드리고 있어요.
+            <span className="font-bold text-brand-900">{wizardRegions.join(", ")}</span> ·{" "}
+            <span className="font-bold text-brand-900">
+              {selectedCategoryObjs.map((c) => c.label).join(", ")}
+            </span>{" "}
+            조건에 맞는 맞춤 공고 {visibleAnnouncements.length}건을 보여드리고 있어요.
           </span>
           <button type="button" onClick={() => setMatchedIds(null)} className="font-semibold hover:underline">
             전체 공고 보기

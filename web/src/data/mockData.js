@@ -124,38 +124,7 @@ export const myExportItems = {
     needs_revision: "보완 필요",
   },
   revisionBannerLabel: "건의 서류에 보완이 필요합니다. 아래에서 확인해주세요.",
-  items: [
-    {
-      id: "item-001",
-      name: "AeroTherm Pro 스마트 보틀",
-      category: "생활용품",
-      destination: "미국",
-      status: "submitted",
-      basicInfoDone: true,
-      govPrograms: [],
-      updatedAt: "2024. 10. 20",
-    },
-    {
-      id: "item-002",
-      name: "워터젤 선크림 SPF50+",
-      category: "화장품",
-      destination: "베트남",
-      status: "ready",
-      basicInfoDone: true,
-      govPrograms: [],
-      updatedAt: "2024. 10. 18",
-    },
-    {
-      id: "item-003",
-      name: "전통 발효 고추장 세트",
-      category: "식품",
-      destination: "태국",
-      status: "inProgress",
-      basicInfoDone: false,
-      govPrograms: [],
-      updatedAt: "2024. 10. 12",
-    },
-  ],
+  items: [],
 };
 
 export const dashboard = {
@@ -389,7 +358,7 @@ export const govSupport = {
     ],
     statusOptions: [
       { id: "ongoing", label: "진행중" },
-      { id: "deadline", label: "마감일 빠른순" },
+      { id: "all", label: "전체" },
       { id: "closed", label: "마감" },
     ],
   },
@@ -1120,13 +1089,13 @@ export const adminPanel = {
     newBusinessButtonLabel: "새 사업 등록",
     businessListEmptyMessage: "등록된 사업이 없습니다.",
     uploadTemplateButtonLabel: "제출 서류 업로드",
-    addFieldsButtonLabel: "필드 추가",
+    addFieldsButtonLabel: "필드 수정",
     editTemplateButtonLabel: "수정",
     deleteTemplateButtonLabel: "삭제",
     templateListEmptyMessage: "등록된 서류 양식이 없습니다.",
-    userUploadBadgeLabel: "사용자 업로드형",
+    referenceGroupLabel: "참고자료",
     userUploadGroupLabel: "사용자 업로드형",
-    formTemplateGroupLabel: "제출 서식 (서식 번호순)",
+    formTemplateGroupLabel: "제출 서식",
 
     businessForm: {
       title: "새 사업 등록",
@@ -1150,10 +1119,19 @@ export const adminPanel = {
         "일반 텍스트/장문 필드는 {{field_key}} 형식(예: {{company_name_kr}})으로, " +
         "체크박스 필드는 옵션 문구 앞에 □ 기호(예: □ 법인)를 넣어 작성해주세요. " +
         "자리표시자가 없으면 자동 채움 시 값이 채워지지 않습니다.",
-      userUploadCheckboxLabel: "서식 번호 및 docx 파일을 올리지 않기",
+      docKindLabel: "서류 종류",
+      docKindOptions: [
+        { id: "auto_fill", label: "자동완성 서류" },
+        { id: "user_upload", label: "사용자 제출서류" },
+        { id: "reference", label: "참고자료" },
+      ],
       userUploadHint:
-        "체크하면 AI 자동완성 서식 없이 서류 이름만 등록됩니다. 신청자 화면에는 이 서류가 " +
+        "AI 자동완성 서식 없이 서류 이름만 등록됩니다. 신청자 화면에는 이 서류가 " +
         "'발급 바로가기'로 발급받아 직접 업로드하는 서류로 표시됩니다.",
+      referenceHint:
+        "신청자가 제출/작성할 필요 없이, 참고용으로 다운로드만 받는 파일입니다. " +
+        "PDF·DOCX·HWP·이미지 파일을 올릴 수 있고, AI 자동채움 대상이 아닙니다.",
+      referenceFileLabel: "참고자료 파일",
       linkedDocLabel: "마이페이지 서류와 연결",
       linkedDocHint:
         "연결하면 신청자가 마이페이지에 미리 올려둔 파일을 다시 고를 필요 없이 " +

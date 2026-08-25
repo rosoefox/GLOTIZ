@@ -1,10 +1,9 @@
 import { createContext, useContext, useState } from "react";
-import { myExportItems as mi } from "../data/mockData";
 
 const ExportItemsContext = createContext(null);
 
 export function ExportItemsProvider({ children }) {
-  const [items, setItems] = useState(mi.items);
+  const [items, setItems] = useState([]);
 
   const addItem = (values) => {
     const newItem = {

@@ -53,6 +53,7 @@ import {
   Bookmark,
   Calendar,
   Menu,
+  GripVertical,
 } from "lucide-react";
 
 const icons = {
@@ -110,6 +111,7 @@ const icons = {
   bookmark: Bookmark,
   calendar: Calendar,
   menu: Menu,
+  grip: GripVertical,
 };
 
 export default function Icon({ name, className = "w-5 h-5", strokeWidth = 1.5, filled = false }) {

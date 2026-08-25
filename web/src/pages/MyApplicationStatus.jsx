@@ -4,12 +4,10 @@ import Icon from "../components/Icon";
 import { Card, Button } from "../components/ui";
 import SubmissionDetailModal from "../components/SubmissionDetailModal";
 import { myApplicationStatus as mas } from "../data/mockData";
+import { govAnnouncementDetails } from "../data/mockData";
 import { useAuth } from "../context/AuthContext";
 import { api, idsParam } from "../lib/api";
-
-// 관리자가 승인/반려하면 이 화면에도 바로 반영되어야 하는데, Cloud SQL에는 Supabase Realtime 같은
-// 실시간 구독이 없어서 짧은 주기로 다시 불러오는 폴링으로 대체한다.
-const POLL_INTERVAL_MS = 15000;
+import { isClosed } from "../lib/period";
 
 function reviewStatusKey(submission) {
   if (submission.review_status === "approved") return "approved";
@@ -40,6 +38,7 @@ function approvalAckId(doc) {
 }
 
 function ProgramRow({ index, program, expanded, onToggle, onViewDocument, onGoToDocs, onFixDocument, isNewApproval }) {
+  const closed = program.closed;
   return (
     <Card className="overflow-hidden p-0">
       <div className="flex w-full items-center justify-between gap-4 px-5 py-4">
@@ -54,9 +53,10 @@ function ProgramRow({ index, program, expanded, onToggle, onViewDocument, onGoTo
             variant="secondary"
             className="px-3 py-1.5 text-xs"
             onClick={() => onGoToDocs(program)}
+            disabled={closed}
           >
             <Icon name="documents" className="w-5 h-5" />
-            서류 작성하러 가기
+            {closed ? "마감됨" : "서류 작성하러 가기"}
           </Button>
           <button
             type="button"
@@ -98,8 +98,9 @@ function ProgramRow({ index, program, expanded, onToggle, onViewDocument, onGoTo
                         type="button"
                         className="px-3 py-1.5 text-xs"
                         onClick={() => onFixDocument(program, doc)}
+                        disabled={closed}
                       >
-                        보완하기
+                        {closed ? "마감됨" : "보완하기"}
                       </Button>
                     )}
                     <Button
@@ -177,7 +178,12 @@ export default function MyApplicationStatus() {
         setBookmarks(
           rows
             .filter((r) => businessById[r.business_id])
-            .map((r) => ({ bookmarkId: r.id, businessId: r.business_id, businessName: businessById[r.business_id].name }))
+            .map((r) => ({
+              bookmarkId: r.id,
+              businessId: r.business_id,
+              businessName: businessById[r.business_id].name,
+              closed: isClosed(businessById[r.business_id], govAnnouncementDetails),
+            }))
         );
         setLoadingBookmarks(false);
       }
@@ -217,6 +223,19 @@ export default function MyApplicationStatus() {
         ? await api.get(`/businesses?${idsParam("id", businessIds)}`)
         : { businesses: [] };
       const businessNameById = Object.fromEntries((businesses || []).map((b) => [b.id, b.name]));
+      const businessById = Object.fromEntries((businesses || []).map((b) => [b.id, b]));
+
+      // 마감된 공고인데 필수 서류를 다 못 낸 건 더 이상 손댈 수 없어 목록에 남겨둘 이유가
+      // 없다 - 지워버리려면 "몇 개 냈는지"뿐 아니라 "원래 몇 개 내야 했는지"를 알아야 하니,
+      // 제출 기록이 있는 서식뿐 아니라 그 사업의 서식 전체를 따로 가져온다.
+      const { templates: allTemplates } = businessIds.length
+        ? await api.get(`/templates?${idsParam("business_id", businessIds)}`)
+        : { templates: [] };
+      const requiredCountByBusiness = {};
+      (allTemplates || []).forEach((t) => {
+        if (t.reference_only) return;
+        requiredCountByBusiness[t.business_id] = (requiredCountByBusiness[t.business_id] || 0) + 1;
+      });
 
       const latestByTemplate = {};
       (subs || []).forEach((s) => {
@@ -232,6 +251,7 @@ export default function MyApplicationStatus() {
           byBusiness[businessId] = {
             businessId,
             businessName: businessNameById[businessId] || "알 수 없는 공고",
+            closed: isClosed(businessById[businessId], govAnnouncementDetails),
             documents: [],
           };
         }
@@ -244,20 +264,22 @@ export default function MyApplicationStatus() {
         });
       });
 
+      // 마감 + 필수 서류를 다 못 낸 경우만 목록에서 제거한다. 진행중인 공고는 완료 여부와
+      // 상관없이 그대로 두고, 마감됐어도 다 낸 경우는 "마감된 지원사업"으로 남겨둔다.
+      const visiblePrograms = Object.values(byBusiness).filter((p) => {
+        if (!p.closed) return true;
+        const required = requiredCountByBusiness[p.businessId] ?? p.documents.length;
+        return p.documents.length >= required;
+      });
+
       if (!cancelled) {
-        setPrograms(Object.values(byBusiness));
+        setPrograms(visiblePrograms);
         setLoading(false);
       }
     }
     load();
-
-    // 관리자가 승인/반려 버튼을 누르면 이 화면도 바로 반영되어야 하는데, Cloud SQL에는 실시간
-    // 구독이 없어서 짧은 주기로 다시 불러오는 폴링으로 대체한다.
-    const interval = setInterval(load, POLL_INTERVAL_MS);
-
     return () => {
       cancelled = true;
-      clearInterval(interval);
     };
   }, [user?.id, session?.access_token]);
 
@@ -303,9 +325,10 @@ export default function MyApplicationStatus() {
                     variant="secondary"
                     className="px-3 py-1.5 text-xs"
                     onClick={() => navigate("/docs", { state: { businessId: b.businessId, businessName: b.businessName } })}
+                    disabled={b.closed}
                   >
                     <Icon name="documents" className="w-5 h-5" />
-                    서류 작성하러 가기
+                    {b.closed ? "마감됨" : "서류 작성하러 가기"}
                   </Button>
                   <button
                     type="button"
@@ -341,15 +364,17 @@ export default function MyApplicationStatus() {
                 acknowledgeApproval(doc);
                 setViewingDoc(doc);
               }}
-              onFixDocument={(p, doc) =>
+              onFixDocument={(p, doc) => {
+                if (p.closed) return;
                 navigate(`/docs/fill/${doc.templateId}`, {
                   state: { templateName: doc.templateName, businessId: p.businessId, businessName: p.businessName },
-                })
-              }
+                });
+              }}
               isNewApproval={isNewApproval}
-              onGoToDocs={(p) =>
-                navigate("/docs", { state: { businessId: p.businessId, businessName: p.businessName } })
-              }
+              onGoToDocs={(p) => {
+                if (p.closed) return;
+                navigate("/docs", { state: { businessId: p.businessId, businessName: p.businessName } });
+              }}
             />
           ))}
         </div>

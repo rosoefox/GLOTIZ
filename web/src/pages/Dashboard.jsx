@@ -9,6 +9,7 @@ import { useAuth } from "../context/AuthContext";
 import { api, idsParam } from "../lib/api";
 import {
   periodEndDate as sharedPeriodEndDate,
+  periodStartDate as sharedPeriodStartDate,
   formatTodayKorean,
   isClosed as sharedIsClosed,
 } from "../lib/period";
@@ -17,6 +18,10 @@ const footerLogoUrl = new URL("../../로고최종1.png", import.meta.url).href;
 
 function periodEndDate(business) {
   return sharedPeriodEndDate(business, govAnnouncementDetails);
+}
+
+function periodStartDate(business) {
+  return sharedPeriodStartDate(business, govAnnouncementDetails);
 }
 
 function isOngoing(business) {
@@ -137,7 +142,28 @@ function ReviewStars({ rating }) {
   );
 }
 
-const EMPTY_MY_APPLICATION_STATS = { total: 0, drafting: 0, reviewing: 0, reviewed: 0, closed: 0 };
+const EMPTY_MY_APPLICATION_STATS = {
+  total: 0,
+  drafting: 0,
+  docsCompleted: 0,
+  submitted: 0,
+  reviewing: 0,
+  reviewed: 0,
+  expiredDrafting: 0,
+};
+
+const MY_APPLICATION_STAT_ROWS = [
+  [
+    { key: "total", label: "전체건수" },
+    { key: "drafting", label: "서류작성중" },
+    { key: "docsCompleted", label: "서류작성완료" },
+  ],
+  [
+    { key: "submitted", label: "제출완료" },
+    { key: "reviewing", label: "심사중" },
+    { key: "reviewed", label: "심사완료" },
+  ],
+];
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -172,14 +198,8 @@ export default function Dashboard() {
   useEffect(() => {
     async function loadOngoing() {
       setLoadingOngoing(true);
-      // 서류 양식이 하나라도 업로드된 사업만 노출한다 (GovSupport.jsx와 동일한 규칙) - 백엔드가
-      // Supabase의 templates!inner 조인을 대신 못 해줘서, 템플릿 목록을 같이 받아 여기서 거른다.
-      const [{ businesses: allBusinesses }, { templates: allTemplates }] = await Promise.all([
-        api.get("/businesses?order_by=created_at"),
-        api.get("/templates"),
-      ]);
-      const businessIdsWithTemplate = new Set((allTemplates || []).map((t) => t.business_id));
-      setBusinesses((allBusinesses || []).filter((b) => businessIdsWithTemplate.has(b.id)).reverse());
+      const { businesses: allBusinesses } = await api.get("/businesses?order_by=created_at");
+      setBusinesses((allBusinesses || []).reverse());
       setLoadingOngoing(false);
     }
     loadOngoing();
@@ -203,8 +223,10 @@ export default function Dashboard() {
       const now = new Date();
 
       const latest = businesses.filter((b) => {
-        const days = (now - new Date(b.created_at)) / 86400000;
-        return days <= 7;
+        const start = periodStartDate(b);
+        if (!start) return false;
+        const days = (now - start) / 86400000;
+        return days >= 0 && days <= 7;
       }).length;
 
       const deadlineSoon = businesses.filter((b) => {
@@ -242,10 +264,8 @@ export default function Dashboard() {
     { label: dashboard.programStats[2].label, count: programCounts.popular },
   ];
 
-  // "내가 지원한 공고 현황": 로그인한 사용자가 서류를 하나라도 제출한 사업(공고)들을
-  // 진행 단계별로 센다 — 아직 전부 제출 못했으면 서류작성중, 전부 제출했지만 검토가 안
-  // 끝났으면 심사진행중, 전부 검토(승인/보완요청)까지 끝났으면 심사완료. 마감건수는 그
-  // 공고들 중 접수 마감일이 이미 지난 건수를 별도로 센다.
+  // "내가 지원한 공고 현황": 로그인한 사용자가 서류를 하나라도 제출한 사업(공고)을
+  // 사업 단위로 센다. 작성중인 상태에서 마감된 건은 진행 가능한 작성중과 분리한다.
   const [myAppStats, setMyAppStats] = useState(EMPTY_MY_APPLICATION_STATS);
 
   useEffect(() => {
@@ -274,6 +294,7 @@ export default function Dashboard() {
 
       const totalByBusiness = {};
       (allTemplates || []).forEach((t) => {
+        if (t.reference_only) return;
         totalByBusiness[t.business_id] = (totalByBusiness[t.business_id] || 0) + 1;
       });
 
@@ -290,28 +311,38 @@ export default function Dashboard() {
       const now = new Date();
 
       let drafting = 0;
+      let docsCompleted = 0;
+      let submitted = 0;
       let reviewing = 0;
       let reviewed = 0;
-      let closed = 0;
+      let expiredDrafting = 0;
 
       businessIds.forEach((bizId) => {
         const done = submittedByBusiness[bizId]?.size || 0;
         const total = totalByBusiness[bizId] || 0;
-        if (total === 0 || done < total) {
-          drafting += 1;
-        } else {
-          const statuses = reviewStatusesByBusiness[bizId] || [];
-          const allReviewed = statuses.every((rs) => rs === "approved" || rs === "needs_revision");
-          if (allReviewed) reviewed += 1;
-          else reviewing += 1;
-        }
-
         const end = periodEndDate(bizById[bizId] || { id: bizId });
-        if (end && end < now) closed += 1;
+        const isExpired = Boolean(end && end < now);
+
+        if (total === 0 || done < total) {
+          if (isExpired) expiredDrafting += 1;
+          else drafting += 1;
+        } else {
+          docsCompleted += 1;
+          const statuses = reviewStatusesByBusiness[bizId] || [];
+          const hasReviewResult = statuses.some((rs) => rs === "approved" || rs === "needs_revision");
+          const allReviewed = statuses.length > 0 && statuses.every((rs) => rs === "approved" || rs === "needs_revision");
+          if (allReviewed) {
+            reviewed += 1;
+          } else if (hasReviewResult || statuses.some(Boolean)) {
+            reviewing += 1;
+          } else {
+            submitted += 1;
+          }
+        }
       });
 
       if (!cancelled) {
-        setMyAppStats({ total: businessIds.length, drafting, reviewing, reviewed, closed });
+        setMyAppStats({ total: businessIds.length, drafting, docsCompleted, submitted, reviewing, reviewed, expiredDrafting });
       }
     }
     loadMyApplicationStatus();
@@ -406,33 +437,49 @@ export default function Dashboard() {
               <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white md:col-span-2">
                 <div className="relative p-6">
                   <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                    <h3
-                      className={`text-sm font-bold text-slate-900 ${revealCls(programsInView)}`}
-                      style={revealStyle(0)}
-                    >
-                      {dashboard.myApplicationStatusTitle}
-                    </h3>
+                    <div className="flex items-center gap-2">
+                      <h3
+                        className={`text-sm font-bold text-slate-900 ${revealCls(programsInView)}`}
+                        style={revealStyle(0)}
+                      >
+                        {dashboard.myApplicationStatusTitle}
+                      </h3>
+                      {myAppStats.expiredDrafting > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => navigate("/my-applications")}
+                          className="rounded-full border border-red-100 bg-red-50 px-2.5 py-1 text-[11px] font-semibold text-red-600 hover:bg-red-100"
+                        >
+                          작성 중 마감 {myAppStats.expiredDrafting}건
+                        </button>
+                      )}
+                    </div>
                     <span className="text-[11px] text-slate-400">({formatTodayKorean()} 기준)</span>
                   </div>
-                  <div
-                    className={`grid grid-cols-3 gap-2 ${
-                      !isLoggedIn ? "pointer-events-none select-none blur-sm" : ""
-                    }`}
-                  >
-                    {dashboard.myApplicationStats.map((s) => (
-                      <button
-                        type="button"
-                        key={s.key}
-                        onClick={() => navigate("/my-applications")}
-                        className="rounded-lg bg-slate-50 px-2 py-3 text-center transition-colors hover:bg-brand-50"
-                      >
-                        <p className="text-lg font-extrabold text-brand-700">
-                          {myAppStats[s.key] || 0}
-                          <span className="ml-0.5 text-[10px] font-normal text-slate-500">건</span>
-                        </p>
-                        <p className="mt-0.5 text-[11px] font-medium text-slate-500">{s.label}</p>
-                      </button>
-                    ))}
+                  <div className={!isLoggedIn ? "pointer-events-none select-none blur-sm" : ""}>
+                    <div className="space-y-2">
+                      {MY_APPLICATION_STAT_ROWS.map((row, rowIdx) => (
+                        <div
+                          key={rowIdx}
+                          className={`grid grid-cols-3 gap-2 ${rowIdx === 1 ? "border-t border-slate-100 pt-2" : ""}`}
+                        >
+                          {row.map((s) => (
+                            <button
+                              type="button"
+                              key={s.key}
+                              onClick={() => navigate("/my-applications")}
+                              className="rounded-lg bg-slate-50 px-2 py-3 text-center transition-colors hover:bg-brand-50"
+                            >
+                              <p className="text-lg font-extrabold text-brand-700">
+                                {myAppStats[s.key] || 0}
+                                <span className="ml-0.5 text-[10px] font-normal text-slate-500">건</span>
+                              </p>
+                              <p className="mt-0.5 text-[11px] font-medium text-slate-500">{s.label}</p>
+                            </button>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                   {!isLoggedIn && (
                     <button

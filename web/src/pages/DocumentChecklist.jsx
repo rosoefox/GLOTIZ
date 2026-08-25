@@ -8,6 +8,7 @@ import { useAuth } from "../context/AuthContext";
 import { api, idsParam } from "../lib/api";
 import { readErrorMessage } from "../lib/apiError";
 import { readDraft } from "../lib/draft";
+import { isClosed } from "../lib/period";
 
 const SECONDARY_BUTTON_CLASS =
   "inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50";
@@ -50,7 +51,9 @@ function GovTemplateGroup({
   accountDocs,
   onImportFromAccount,
   importingTemplateId,
+  closed = false,
 }) {
+  if (templates.length === 0) return null;
   return (
     <div className="mb-8">
       <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
@@ -109,20 +112,20 @@ function GovTemplateGroup({
                       <button
                         type="button"
                         className={`${SECONDARY_BUTTON_CLASS} ${isImporting ? "opacity-50" : ""}`}
-                        disabled={isImporting}
+                        disabled={closed || isImporting}
                         onClick={() => onImportFromAccount(t)}
                       >
                         <Icon name="documents" className="w-5 h-5" />
-                        {isImporting ? dc.importingLabel : dc.importButtonLabel}
+                        {closed ? "마감됨" : isImporting ? dc.importingLabel : dc.importButtonLabel}
                       </button>
                     )}
-                    <label className={`cursor-pointer ${SECONDARY_BUTTON_CLASS} ${isUploading ? "opacity-50" : ""}`}>
+                    <label className={`${closed ? "pointer-events-none opacity-50" : "cursor-pointer"} ${SECONDARY_BUTTON_CLASS} ${isUploading ? "opacity-50" : ""}`}>
                       <Icon name="upload" className="w-5 h-5" />
-                      {isUploading ? dc.uploadingLabel : dc.uploadButtonLabel}
+                      {closed ? "마감됨" : isUploading ? dc.uploadingLabel : dc.uploadButtonLabel}
                       <input
                         type="file"
                         className="hidden"
-                        disabled={isUploading}
+                        disabled={closed || isUploading}
                         onChange={(e) => {
                           const file = e.target.files?.[0] || null;
                           e.target.value = "";
@@ -170,9 +173,9 @@ function GovTemplateGroup({
                         statusKey === "needsRevision" ? "border-red-300 text-red-600 hover:bg-red-50" : ""
                       }`}
                       onClick={() => onOpenFill(t)}
-                      disabled={statusKey === "reviewed"}
+                      disabled={closed || statusKey === "reviewed"}
                     >
-                      {meta.buttonLabel}
+                      {closed ? "마감됨" : meta.buttonLabel}
                     </Button>
                   </>
                 )}
@@ -180,6 +183,33 @@ function GovTemplateGroup({
             </div>
           );
         })}
+      </Card>
+    </div>
+  );
+}
+
+// 참고서류: 제출 대상이 아니라 다운로드만 받는 파일이라, 진행률/상태 표시 없이
+// 이름 + 다운로드 버튼만 있는 훨씬 단순한 목록으로 따로 보여준다.
+function ReferenceDocGroup({ title, templates, onDownload }) {
+  if (templates.length === 0) return null;
+  return (
+    <div className="mb-8">
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+        <h2 className="flex items-center gap-2 text-base font-bold text-slate-900">{title}</h2>
+      </div>
+      <Card className="divide-y divide-slate-100 p-2">
+        {templates.map((t) => (
+          <div key={t.id} className="flex flex-wrap items-center justify-between gap-3 p-4">
+            <div className="flex items-center gap-3">
+              <Icon name="documents" className="w-5 h-5 shrink-0 text-slate-500" />
+              <p className="font-semibold text-slate-900">{t.name}</p>
+            </div>
+            <button type="button" className={SECONDARY_BUTTON_CLASS} onClick={() => onDownload(t)}>
+              <Icon name="download" className="w-5 h-5" />
+              다운로드
+            </button>
+          </div>
+        ))}
       </Card>
     </div>
   );
@@ -251,6 +281,7 @@ export default function DocumentChecklist() {
 
   const [selectedBusinessId, setSelectedBusinessId] = useState(location.state?.businessId ?? null);
   const [selectedBusinessName, setSelectedBusinessName] = useState(location.state?.businessName ?? null);
+  const [selectedBusiness, setSelectedBusiness] = useState(null);
 
   const [govTemplates, setGovTemplates] = useState([]);
   const [govSubmissions, setGovSubmissions] = useState({});
@@ -264,6 +295,25 @@ export default function DocumentChecklist() {
   const [programs, setPrograms] = useState([]);
   const [loadingPrograms, setLoadingPrograms] = useState(false);
   const [progressByBusiness, setProgressByBusiness] = useState({});
+  const selectedBusinessClosed = selectedBusiness ? isClosed(selectedBusiness, govAnnouncementDetails) : false;
+
+  useEffect(() => {
+    if (!selectedBusinessId) {
+      setSelectedBusiness(null);
+      return;
+    }
+    let cancelled = false;
+    api.get(`/businesses/${selectedBusinessId}`).then((business) => {
+      if (cancelled) return;
+      setSelectedBusiness(business);
+      setSelectedBusinessName((prev) => prev || business?.name || null);
+    }).catch(() => {
+      if (!cancelled) setSelectedBusiness(null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedBusinessId]);
 
   const refreshGovTemplates = async () => {
     if (!selectedBusinessId) return;
@@ -306,7 +356,7 @@ export default function DocumentChecklist() {
 
     const percent = {};
     (templates || []).forEach((t) => {
-      if (t.user_upload_required) return;
+      if (t.user_upload_required || t.reference_only) return;
       const total = fieldCountByTemplate[t.id] || 0;
       if (!total) {
         percent[t.id] = 0;
@@ -404,6 +454,7 @@ export default function DocumentChecklist() {
       });
       const totalByBusiness = {};
       (allTemplates || []).forEach((t) => {
+        if (t.reference_only) return; // 참고서류는 제출 대상이 아니라 카운트에서 뺀다.
         totalByBusiness[t.business_id] = (totalByBusiness[t.business_id] || 0) + 1;
       });
 
@@ -427,9 +478,11 @@ export default function DocumentChecklist() {
   const handleSelectProgram = (business) => {
     setSelectedBusinessId(business.id);
     setSelectedBusinessName(business.name);
+    setSelectedBusiness(business);
   };
 
   const handleOpenFill = (template) => {
+    if (selectedBusinessClosed) return;
     navigate(`/docs/fill/${template.id}`, {
       state: {
         templateName: template.name,
@@ -440,6 +493,7 @@ export default function DocumentChecklist() {
   };
 
   const handleUploadFile = async (template, file) => {
+    if (selectedBusinessClosed) return;
     if (!session) return;
     setUploadingTemplateId(template.id);
     setUploadError(null);
@@ -462,6 +516,7 @@ export default function DocumentChecklist() {
   };
 
   const handleImportFromAccount = async (template) => {
+    if (selectedBusinessClosed) return;
     if (!session) return;
     setImportingTemplateId(template.id);
     setUploadError(null);
@@ -482,16 +537,35 @@ export default function DocumentChecklist() {
     }
   };
 
-  const perTemplatePercents = govTemplates.map((t) =>
-    t.user_upload_required
-      ? govSubmissions[t.id] && govSubmissions[t.id].review_status !== "needs_revision"
-        ? 100
-        : 0
-      : percentByTemplate[t.id] ?? 0
-  );
+  // 참고서류는 제출 대상이 아니라서 3그룹으로 나눠 보여준다 — 진행률 계산에서도 뺀다.
+  const referenceTemplates = govTemplates.filter((t) => t.reference_only);
+  const userUploadTemplates = govTemplates.filter((t) => t.user_upload_required && !t.reference_only);
+  const autoFillTemplates = govTemplates.filter((t) => !t.user_upload_required && !t.reference_only);
+
+  const perTemplatePercents = govTemplates
+    .filter((t) => !t.reference_only)
+    .map((t) =>
+      t.user_upload_required
+        ? govSubmissions[t.id] && govSubmissions[t.id].review_status !== "needs_revision"
+          ? 100
+          : 0
+        : percentByTemplate[t.id] ?? 0
+    );
   const govPercent = perTemplatePercents.length
     ? Math.round(perTemplatePercents.reduce((sum, p) => sum + p, 0) / perTemplatePercents.length)
     : 0;
+
+  const handleDownloadReference = async (t) => {
+    try {
+      const { url } = await api.get(
+        `/generated-file-url?path=${encodeURIComponent(t.original_file_path)}&bucket=templates`,
+        session?.access_token
+      );
+      if (url) window.open(url, "_blank", "noopener,noreferrer");
+    } catch {
+      // 다운로드 실패는 조용히 무시 - 버튼을 다시 누르면 재시도된다.
+    }
+  };
 
   return (
     <>
@@ -522,14 +596,20 @@ export default function DocumentChecklist() {
             <p className="text-xs font-semibold text-slate-400">내가 선택한 지원사업</p>
             <h2 className="text-lg font-bold text-slate-900">{selectedBusinessName}</h2>
           </div>
+          {selectedBusinessClosed && (
+            <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">
+              접수 마감된 지원사업입니다. 서류 작성, 업로드, 가져오기를 진행할 수 없습니다.
+            </div>
+          )}
 
           {loadingGovTemplates ? (
             <p className="text-sm text-slate-400">불러오는 중...</p>
           ) : govTemplates.length > 0 ? (
             <>
+              <ReferenceDocGroup title="참고서류" templates={referenceTemplates} onDownload={handleDownloadReference} />
               <GovTemplateGroup
-                title="제출 서류"
-                templates={govTemplates}
+                title="사용자 제출서류"
+                templates={userUploadTemplates}
                 submissions={govSubmissions}
                 percentByTemplate={percentByTemplate}
                 onOpenFill={handleOpenFill}
@@ -538,6 +618,20 @@ export default function DocumentChecklist() {
                 accountDocs={accountDocs}
                 onImportFromAccount={handleImportFromAccount}
                 importingTemplateId={importingTemplateId}
+                closed={selectedBusinessClosed}
+              />
+              <GovTemplateGroup
+                title="자동완성 서류"
+                templates={autoFillTemplates}
+                submissions={govSubmissions}
+                percentByTemplate={percentByTemplate}
+                onOpenFill={handleOpenFill}
+                onUploadFile={handleUploadFile}
+                uploadingTemplateId={uploadingTemplateId}
+                accountDocs={accountDocs}
+                onImportFromAccount={handleImportFromAccount}
+                importingTemplateId={importingTemplateId}
+                closed={selectedBusinessClosed}
               />
               {uploadError && (
                 <p className="mb-4 text-xs font-medium text-red-500">{uploadError}</p>

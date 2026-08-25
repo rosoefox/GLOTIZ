@@ -24,8 +24,9 @@ CHECKBOX_OPTION_RE = re.compile(r"□\s*([^\s□☑]+(?:\s[^\s□☑]+)*)")
 # 빈칸 표시로 흔히 쓰이는 패턴들: 공백/전각공백/줄바꿈없는공백 2칸+, 밑줄 3개+, 탭,
 # 마침표/가운뎃점 점선(．…‥ 등) 3개+, 빈 괄호. 원래는 공백/밑줄만 잡아서 표 라벨이
 # 아래쪽 셀에 있거나 점선으로 빈칸을 표시하는 서식은 후보 자체가 안 생겼었다.
-BLANK_RUN_RE = re.compile(r"[  　\t]{2,}|_{3,}|[.．…‥·]{3,}|\(\s*\)")
+BLANK_RUN_RE = re.compile(r"[  　\t]{4,}|_{3,}|[.．…‥·]{3,}|\(\s*\)")
 MAX_LABEL_LEN = 20
+INLINE_BLANK_MIN_WIDTH = 4
 
 
 def _iter_textbox_paragraphs(doc):
@@ -177,6 +178,94 @@ def _row_cells_deduped(row):
     return cells
 
 
+def _cell_text(cell):
+    return re.sub(r"\s+", " ", cell.text).strip()
+
+
+def _context_from_table_grid(rows, r, c):
+    """표의 빈 데이터 셀에 대해 왼쪽 행 라벨 + 위쪽 열 헤더를 조합한다."""
+    row_labels = []
+    for left in range(c):
+        text = _cell_text(rows[r][left])
+        if text and len(text) <= MAX_LABEL_LEN and text not in row_labels:
+            row_labels.append(text)
+
+    col_labels = []
+    for up in range(r - 1, -1, -1):
+        if c >= len(rows[up]):
+            continue
+        text = _cell_text(rows[up][c])
+        if text and len(text) <= MAX_LABEL_LEN and text not in col_labels:
+            col_labels.insert(0, text)
+
+    labels = row_labels + col_labels
+    if len(labels) < 2:
+        return None
+    return " > ".join(labels)
+
+
+def _is_probable_inline_blank(text, match_text, start, end):
+    """문장 서식용 공백을 입력칸으로 오탐하지 않도록 inline 후보를 좁힌다."""
+    stripped = text.strip()
+    if not stripped:
+        return False
+
+    is_visible_blank = bool(re.fullmatch(r"_{3,}|[.．…‥·]{3,}|\(\s*\)", match_text))
+    if is_visible_blank:
+        return True
+
+    if len(match_text) < INLINE_BLANK_MIN_WIDTH:
+        return False
+
+    before = text[:start].strip()
+    after = text[end:].strip()
+    if not before:
+        return False
+
+    # 안내문/설명문처럼 이미 긴 문장이 있는 줄의 자간, 들여쓰기, 불릿 뒤 공백은 빈칸이 아니다.
+    if before.startswith(("○", "o", "-", "*", "※")) or stripped.startswith(("○", "o", "-", "*", "※")):
+        return False
+    if len(before) > MAX_LABEL_LEN and not re.search(r"[:：]$", before):
+        return False
+    if after and len(after) > MAX_LABEL_LEN and not re.match(r"^(원|백만원|천원|USD|달러|%|명|개|건|년|월|일)\b", after):
+        return False
+
+    return True
+
+
+SECTION_HEADER_RE = re.compile(r"^\s*\d+\s*[.\)]\s*(\S.*)$")
+
+
+def _build_section_map(doc):
+    """본문을 순서대로 훑으면서 'N. 제목' 형태의 문단을 만날 때마다, 그 뒤에 나오는
+    모든 문단/표를 그 섹션 소속으로 표시한다. 필드가 원본 문서의 몇 번 항목에
+    속하는지(예: "인증 제품의 현황...") 알아내기 위한 것 - 문서에 이런 번호
+    헤더가 없으면 전부 None이 된다. 화면에 보여줄 땐 STEP 번호와 헷갈리니 앞의
+    'N.' 자체는 잘라내고 제목만 남긴다."""
+    section_map = {}
+    current_section = None
+    for child in doc.element.body:
+        tag = child.tag.split("}")[-1]
+        if tag == "p":
+            text = "".join(n.text or "" for n in child.iter(qn("w:t"))).strip()
+            m = SECTION_HEADER_RE.match(text)
+            if m:
+                current_section = m.group(1).strip()[:80]
+            section_map[id(child)] = current_section
+        elif tag == "tbl":
+            section_map[id(child)] = current_section
+    return section_map
+
+
+def _section_for_element(elem, section_map):
+    cur = elem
+    while cur is not None:
+        if id(cur) in section_map:
+            return section_map[id(cur)]
+        cur = cur.getparent()
+    return None
+
+
 def detect_blank_candidates(doc):
     """{{}} 자리표시자가 전혀 없는 원본 서식에서, 채워야 할 빈칸으로 보이는 후보를 찾는다.
 
@@ -193,8 +282,24 @@ def detect_blank_candidates(doc):
     """
     candidates = []
     used_cell_ids = set()
+    section_map = _build_section_map(doc)
 
     for table in doc.tables:
+        grid_rows = [list(row.cells) for row in table.rows]
+
+        # 0) 교차표형: 행 라벨과 열 헤더가 만나는 빈 데이터 셀.
+        # 예: '수출대상국가수 > 업체전체 > 인증 획득 전(2025년)'.
+        for r, cells in enumerate(grid_rows):
+            for c, blank_cell in enumerate(cells):
+                if blank_cell.text.strip() or id(blank_cell._tc) in used_cell_ids:
+                    continue
+                context = _context_from_table_grid(grid_rows, r, c)
+                if not context:
+                    continue
+                used_cell_ids.add(id(blank_cell._tc))
+                section = _section_for_element(blank_cell._tc, section_map)
+                candidates.append({"kind": "cell", "context": context, "cell": blank_cell, "section": section})
+
         rows = [_row_cells_deduped(row) for row in table.rows]
 
         # 1) 가로형: 라벨 셀 바로 오른쪽 셀이 빈칸.
@@ -210,7 +315,8 @@ def detect_blank_candidates(doc):
                 row_context = " > ".join(
                     c.text.strip() for c in cells[: i + 1] if c.text.strip()
                 )
-                candidates.append({"kind": "cell", "context": row_context, "cell": blank_cell})
+                section = _section_for_element(blank_cell._tc, section_map)
+                candidates.append({"kind": "cell", "context": row_context, "cell": blank_cell, "section": section})
 
         # 2) 세로형: 라벨 셀 바로 아래 행의 같은 열 셀이 빈칸.
         for r in range(len(rows) - 1):
@@ -227,20 +333,36 @@ def detect_blank_candidates(doc):
                 ):
                     continue
                 used_cell_ids.add(id(blank_cell._tc))
-                candidates.append({"kind": "cell", "context": label, "cell": blank_cell})
+                section = _section_for_element(blank_cell._tc, section_map)
+                candidates.append({"kind": "cell", "context": label, "cell": blank_cell, "section": section})
 
-    for p in _iter_all_paragraphs(doc):
+    paragraphs = list(_iter_all_paragraphs(doc))
+    for i, p in enumerate(paragraphs):
         text = p.text
         for m in BLANK_RUN_RE.finditer(text):
+            if not _is_probable_inline_blank(text, m.group(0), m.start(), m.end()):
+                continue
             anchor_before = text[max(0, m.start() - 15):m.start()]
             anchor_after = text[m.end():m.end() + 15]
+            context_label = anchor_before.strip()
+            if not context_label and not anchor_after.strip():
+                # 문단 전체가 빈칸뿐인 경우(제목 문단 아래 통째로 비어있는 서술형
+                # 답란 - "N. 제목" 다음 줄에 답을 쓰게 한 서식에 흔함) 같은 문단
+                # 안에는 문맥이 전혀 없다. 바로 위, 가장 가까운 비어있지 않은
+                # 문단(보통 그 섹션 제목)을 문맥으로 끌어온다.
+                for j in range(i - 1, -1, -1):
+                    prev_text = paragraphs[j].text.strip()
+                    if prev_text:
+                        context_label = prev_text[:80]
+                        break
             candidates.append({
                 "kind": "inline",
-                "context": f"{anchor_before.strip()} [[빈칸]] {anchor_after.strip()}".strip(),
+                "context": f"{context_label} [[빈칸]] {anchor_after.strip()}".strip(),
                 "paragraph": p,
                 "anchor_before": anchor_before,
                 "match_text": m.group(0),
                 "anchor_after": anchor_after,
+                "section": _section_for_element(p._p, section_map),
             })
 
     return candidates

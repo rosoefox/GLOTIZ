@@ -4,7 +4,7 @@ import Icon from "../components/Icon";
 import { Card, CardHeader, CardTitle, CardContent, Button } from "../components/ui";
 import { govSupport as gs, govAnnouncementDetails } from "../data/mockData";
 import { api } from "../lib/api";
-import { displayPeriod } from "../lib/period";
+import { displayPeriod, isClosed } from "../lib/period";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
 
@@ -42,8 +42,10 @@ export default function GovSupportDetail() {
   // 관리자가 기본서류를 업로드해 AI가 뽑아준 실제 정보가 있으면 그걸 쓰고,
   // 아직 없으면 임시 목업(govAnnouncementDetails)으로 대체한다.
   const detail = business?.basic_info || govAnnouncementDetails[businessId];
+  const closed = isClosed(business, govAnnouncementDetails);
 
   const handleApply = () => {
+    if (closed) return;
     navigate("/docs", { state: { businessId, businessName: business?.name } });
   };
 
@@ -100,9 +102,9 @@ export default function GovSupportDetail() {
         </CardContent>
       </Card>
 
-      <Button className="mt-6 w-full justify-center py-4 text-base" onClick={handleApply}>
+      <Button className="mt-6 w-full justify-center py-4 text-base" onClick={handleApply} disabled={closed}>
         <Icon name="sparkle" className="w-5 h-5" />
-        {gs.applyButtonLabel}
+        {closed ? "접수 마감" : gs.applyButtonLabel}
       </Button>
 
       <Card className="mt-6">

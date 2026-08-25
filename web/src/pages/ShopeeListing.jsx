@@ -18,20 +18,6 @@ const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
 const AI_ASSISTED_FIELD_KEYS = new Set(sl.fields.filter((f) => f.aiFillable).map((f) => f.key));
 const HIGHLIGHT_WHEN_EMPTY = new Set(sl.fields.map((f) => f.key).filter((k) => !AI_ASSISTED_FIELD_KEYS.has(k)));
 
-// 데모용: "이전 정보 불러오기"는 실제 이전 제출 이력 대신 고정된 예시 상품 정보를 채운다.
-const PREVIOUS_INFO_MOCK = {
-  productName: "해피 비타 카밍 선크림 SPF50+ PA++++",
-  category: "자외선 차단 화장품",
-  description:
-    "민감한 피부도 편안하게 사용할 수 있는 데일리 자외선 차단제입니다. 비타민 캡슐과 진정·수분 성분으로 산뜻한 사용감과 백탁 부담 완화, 메이크업 전 사용 편의성을 핵심으로 설계했습니다. 20~40대 K-Beauty 관심 소비자를 타깃으로 베트남, 싱가포르 온라인 마켓플레이스 및 현지 유통 파트너를 통해 판매됩니다.",
-  brand: "해피코스메틱",
-  shelfLife: "24 Months",
-  price: "15000",
-  stock: "100",
-  weight: "0.05",
-  daysToShip: "2",
-};
-
 // 데모용: "전체 내용 번역"은 실제 번역 API를 호출하지 않고 언어별 고정 번역문으로 바꿔친다.
 const TRANSLATIONS_MOCK = {
   en: {
@@ -281,6 +267,7 @@ export default function ShopeeListing() {
   const [images, setImages] = useState([]);
   const [copiedKey, setCopiedKey] = useState(null);
   const [loadingPrevious, setLoadingPrevious] = useState(false);
+  const [previousInfoMessage, setPreviousInfoMessage] = useState(null);
 
   const [translating, setTranslating] = useState(false);
   const [originalValues, setOriginalValues] = useState(null); // 번역 전 한글 원본 백업 (되돌리기용)
@@ -324,11 +311,11 @@ export default function ShopeeListing() {
   const addImage = (url, name) => setImages((prev) => [...prev, { url, name }]);
   const removeImage = (idx) => setImages((prev) => prev.filter((_, i) => i !== idx));
 
-  // 최근 등록한 수출 품목 + 예전에 제출했던 서류의 값을 먼저 끌어와 빈 칸을 채우고, 그래도
-  // 안 채워진 항목은 데모용 예시 상품 정보(PREVIOUS_INFO_MOCK)로 메운다 — 실사용자는 실제
-  // 이력을 우선 보고, 이력이 없는 데모 환경(박람회 등)에서도 빈 화면 없이 항상 채워진다.
+  // 최근 등록한 수출 품목 + 예전에 제출했던 서류의 값을 끌어와 빈 칸을 채운다.
+  // 실제 이력이 없으면 고정 예시를 넣지 않고 안내 문구만 보여준다.
   const loadPreviousInfo = async () => {
     setLoadingPrevious(true);
+    setPreviousInfoMessage(null);
     try {
       const next = { ...values };
 
@@ -371,11 +358,12 @@ export default function ShopeeListing() {
         }
       }
 
-      Object.entries(PREVIOUS_INFO_MOCK).forEach(([key, value]) => {
-        if (!next[key]) next[key] = value;
-      });
-
-      setValues(next);
+      const changed = sl.fields.some((f) => (next[f.key] || "") !== (values[f.key] || ""));
+      if (changed) {
+        setValues(next);
+      } else {
+        setPreviousInfoMessage(sl.loadPreviousEmpty);
+      }
     } finally {
       setLoadingPrevious(false);
     }
@@ -539,6 +527,7 @@ export default function ShopeeListing() {
               <Icon name="history" className="w-3.5 h-3.5" />
               {loadingPrevious ? "불러오는 중..." : sl.loadPreviousLabel}
             </Button>
+            {previousInfoMessage && <span className="text-xs font-medium text-slate-400">{previousInfoMessage}</span>}
             <TranslatePanel values={values} activeLang={activeLang} translating={translating} onTranslate={runTranslate} />
           </div>
         </div>

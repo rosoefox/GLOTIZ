@@ -7,7 +7,8 @@ import { useAuth } from "../context/AuthContext";
 import { api, idsParam } from "../lib/api";
 import { readErrorMessage } from "../lib/apiError";
 import { draftKey, readDraft } from "../lib/draft";
-import { documentPreview } from "../data/mockData";
+import { documentPreview, govAnnouncementDetails } from "../data/mockData";
+import { isClosed } from "../lib/period";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
 const aiReviewDraftKey = (userId, templateId) => `${draftKey(userId, templateId)}:ai-review`;
@@ -70,17 +71,21 @@ const VIETNAM_APPLICATION_AI_VALUES = {
   },
 };
 
-// 필드를 화면에서 한눈에 보기 좋게 카테고리별로 묶는다. 서식마다 field_key가 달라 정확한
-// 분류는 불가능하니, 흔한 패턴으로 "기본 정보/연락처 정보"를 먼저 추리고 나머지는
-// "사업 내용"으로 모은다.
+// 필드를 화면에서 한눈에 보기 좋게 카테고리별로 묶는다. 원본 문서에서 실제로 감지된
+// 섹션 제목(예: "인증 제품의 현황...")이 있으면 그게 field_key 키워드 추측보다 훨씬
+// 정확하니 그걸 최우선으로 쓴다 (예: "export_amount_company_..."처럼 섹션이 있는
+// 필드의 키에 우연히 "company"가 들어가 "기본 정보"로 잘못 묶이는 걸 막는다).
+// 섹션 정보가 없는 서식에서만 흔한 키워드 패턴으로 "기본 정보/연락처 정보"를 추리고,
+// 나머지는 "사업 내용" 하나로 뭉뚱그린다.
 function categorize(field) {
+  if (field.section) return field.section;
   const key = field.field_key.toLowerCase();
   if (/company|ceo|rep_name|business_name|corp|representative/.test(key)) return "기본 정보";
   if (/email|phone|contact/.test(key)) return "연락처 정보";
   return "사업 내용";
 }
 
-const CATEGORY_ORDER = ["기본 정보", "연락처 정보", "사업 내용"];
+const CATEGORY_ORDER = ["기본 정보", "연락처 정보"];
 
 function toOptionList(options) {
   if (!Array.isArray(options)) return [];
@@ -108,6 +113,15 @@ function isFieldFilled(field, values) {
   return (values[field.id] ?? "").toString().trim() !== "";
 }
 
+function displayFieldLabel(field) {
+  const label = (field.field_label || "").replace(/\[\[빈칸\]\]/g, " ");
+  const cleaned = label
+    .replace(/\s*>\s*/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/^[\s\-:>]+|[\s\-:>]+$/g, "");
+  return cleaned || field.field_key;
+}
+
 // AI가 추정해 자동으로 채운 값은 사용자가 직접 확인하기 전까지 빈칸 강조와 같은 방식(은은한
 // 브랜드 글로우)의 빨간 버전으로 표시한다 — ui.jsx의 emptyFieldClass와 같은 패턴이다.
 function needsReviewClass(needsReview) {
@@ -115,14 +129,16 @@ function needsReviewClass(needsReview) {
   return `${CONTROL_CLASS.replace("border-slate-300", "border-red-300").replace("bg-white", "bg-red-50/40")} ring-4 ring-red-100/60`;
 }
 
-function FieldInput({ field, value, onChange, needsReview = false }) {
+function FieldInput({ field, value, onChange, needsReview = false, disabled = false }) {
   const controlClass = needsReviewClass(needsReview);
   if (isMultilineField(field)) {
     return (
       <textarea
         rows={4}
         className={`${controlClass} py-2.5`}
+        placeholder={field.hint || undefined}
         value={value ?? ""}
+        disabled={disabled}
         onChange={(e) => onChange(field.id, e.target.value)}
       />
     );
@@ -131,7 +147,7 @@ function FieldInput({ field, value, onChange, needsReview = false }) {
   if (field.field_type === "select" || field.field_type === "checkbox") {
     const options = toOptionList(field.options);
     return (
-      <select className={`${controlClass} h-10`} value={value ?? ""} onChange={(e) => onChange(field.id, e.target.value)}>
+      <select className={`${controlClass} h-10`} value={value ?? ""} disabled={disabled} onChange={(e) => onChange(field.id, e.target.value)}>
         <option value="">선택하세요</option>
         {options.map((o) => (
           <option key={o.value} value={o.value}>
@@ -147,7 +163,9 @@ function FieldInput({ field, value, onChange, needsReview = false }) {
     <input
       type={type}
       className={`${controlClass} h-10`}
+      placeholder={field.hint || undefined}
       value={value ?? ""}
+      disabled={disabled}
       onChange={(e) => onChange(field.id, e.target.value)}
     />
   );
@@ -170,6 +188,7 @@ export default function DocumentFill() {
   const [isEditing, setIsEditing] = useState(false);
   const [isApproved, setIsApproved] = useState(false);
   const [isVietnamDemoApplication, setIsVietnamDemoApplication] = useState(false);
+  const [businessClosed, setBusinessClosed] = useState(false);
 
   const [transferring, setTransferring] = useState(false);
   const [extractingUploads, setExtractingUploads] = useState(false);
@@ -196,6 +215,18 @@ export default function DocumentFill() {
         api.get(`/templates?id=${templateId}`).then((r) => r.templates?.[0] || null),
       ]);
       if (cancelled) return;
+      const effectiveBusinessId = businessId || templateRow?.business_id;
+      if (effectiveBusinessId) {
+        api.get(`/businesses/${effectiveBusinessId}`)
+          .then((business) => {
+            if (!cancelled) setBusinessClosed(isClosed(business, govAnnouncementDetails));
+          })
+          .catch(() => {
+            if (!cancelled) setBusinessClosed(false);
+          });
+      } else {
+        setBusinessClosed(false);
+      }
       setFields(fieldRows || []);
       const isVietnamApplication =
         templateRow?.business_id === VIETNAM_EXPO_BUSINESS_ID && templateRow?.name?.trim() === "참가 신청서";
@@ -246,7 +277,7 @@ export default function DocumentFill() {
     return () => {
       cancelled = true;
     };
-  }, [templateId, authUser?.id]);
+  }, [templateId, authUser?.id, businessId]);
 
   // 마이페이지 서류 슬롯(사업자 등록증/상품 상세설명서)에 파일이 하나라도 있어야
   // "마이페이지에서 가져오기" 버튼을 보여준다.
@@ -275,11 +306,16 @@ export default function DocumentFill() {
 
   const categorizedFields = useMemo(() => {
     const groups = {};
+    const seenOrder = [];
     fields.forEach((f) => {
       const cat = categorize(f);
+      if (!groups[cat]) seenOrder.push(cat);
       (groups[cat] ??= []).push(f);
     });
-    return CATEGORY_ORDER.filter((c) => groups[c]?.length).map((c) => ({ name: c, fields: groups[c] }));
+    // "기본 정보"/"연락처 정보"는 항상 먼저, 그 뒤로는 필드가 실제로 등장한 순서대로
+    // (원본 문서의 섹션 순서와 같음) 나머지 카테고리(섹션별 그룹 또는 "사업 내용")를 붙인다.
+    const rest = seenOrder.filter((c) => !CATEGORY_ORDER.includes(c));
+    return [...CATEGORY_ORDER, ...rest].filter((c) => groups[c]?.length).map((c) => ({ name: c, fields: groups[c] }));
   }, [fields]);
 
   const stepLabels = useMemo(() => [...categorizedFields.map((g) => g.name), "최종 검토"], [categorizedFields]);
@@ -311,6 +347,7 @@ export default function DocumentFill() {
 
   // 필드를 직접 고치면 AI 추정값 표시(빨간 강조 + 안내문)를 지워서 "확인 완료"로 취급한다.
   const updateValue = (fieldId, value) => {
+    if (businessClosed) return;
     setValues((prev) => ({ ...prev, [fieldId]: value }));
     setAiReviewByField((prev) => {
       if (!prev[fieldId]) return prev;
@@ -322,6 +359,7 @@ export default function DocumentFill() {
 
   // 마이페이지 정보 + 예전에 제출했던 다른 서류들의 같은 field_key 값을 끌어와 빈 칸을 채운다.
   const handleTransferInfo = async () => {
+    if (businessClosed) return;
     if (!authUser?.id) return;
     setTransferring(true);
     setError(null);
@@ -376,6 +414,7 @@ export default function DocumentFill() {
   // 예전에 이 포털에 업로드했던 서류(사업자등록증 등) 파일을 AI가 직접 읽어서 아직 안 채운
   // 칸만 채운다 — "정보 이전"과 달리 다른 제출값이 아니라 실제 파일 내용을 읽는다.
   const handleExtractFromUploads = async () => {
+    if (businessClosed) return;
     if (!session) return;
     setExtractingUploads(true);
     setError(null);
@@ -426,6 +465,7 @@ export default function DocumentFill() {
   // 예전에 다른 서식으로 제출한 적 없어도, 마이페이지에 미리 올려둔 사업자등록증/
   // 상품 상세설명서 파일을 AI가 직접 읽어서 아직 안 채운 칸만 채운다.
   const handleImportFromAccountDocs = async () => {
+    if (businessClosed) return;
     if (!session) return;
     setImportingAccountDocs(true);
     setError(null);
@@ -454,6 +494,7 @@ export default function DocumentFill() {
   };
 
   const handleAiFill = async () => {
+    if (businessClosed) return;
     setAiFilling(true);
     setError(null);
     try {
@@ -505,6 +546,7 @@ export default function DocumentFill() {
   // 데모용: "정보 이전"과 "AI 채우기"가 각각 채우던 값을 한 번에 채운다.
   // AI 추정값(빨간 테두리)은 그대로 needs-review 상태로 남긴다.
   const handleOneTouchFill = async () => {
+    if (businessClosed) return;
     setOneTouchFilling(true);
     setError(null);
     try {
@@ -546,6 +588,10 @@ export default function DocumentFill() {
   };
 
   const handleTempSave = () => {
+    if (businessClosed) {
+      setError("접수 마감된 지원사업은 서류를 저장할 수 없습니다.");
+      return;
+    }
     if (!authUser?.id) return;
     localStorage.setItem(draftKey(authUser.id, templateId), JSON.stringify(values));
     localStorage.setItem(aiReviewDraftKey(authUser.id, templateId), JSON.stringify(aiReviewByField));
@@ -559,6 +605,10 @@ export default function DocumentFill() {
     }
     if (isApproved) {
       setError("이미 승인된 서류는 수정 및 재제출할 수 없습니다.");
+      return;
+    }
+    if (businessClosed) {
+      setError("접수 마감된 지원사업은 서류를 제출할 수 없습니다.");
       return;
     }
     if (!allFilled) {
@@ -646,6 +696,11 @@ export default function DocumentFill() {
 
       <h1 className="text-2xl font-bold text-slate-900">{templateName || "서류 작성하기"}</h1>
       {businessName && <p className="mt-1 text-sm text-slate-500">{businessName}</p>}
+      {businessClosed && (
+        <div className="mt-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">
+          접수 마감된 지원사업입니다. 서류 작성, 임시 저장, 제출을 진행할 수 없습니다.
+        </div>
+      )}
 
       {!loading && fields.length > 0 && (
         <div className="mt-6 rounded-lg border border-slate-200 bg-white px-5 py-4">
@@ -654,7 +709,7 @@ export default function DocumentFill() {
       )}
 
       <div className="mt-4 flex flex-wrap gap-2">
-        <Button type="button" variant="outlineBrand" className="px-3.5 py-2 text-xs" onClick={handleTransferInfo} disabled={transferring}>
+        <Button type="button" variant="outlineBrand" className="px-3.5 py-2 text-xs" onClick={handleTransferInfo} disabled={businessClosed || transferring}>
           <Icon name="user" className="w-3.5 h-3.5" />
           {transferring ? "불러오는 중..." : "정보 이전"}
         </Button>
@@ -663,7 +718,7 @@ export default function DocumentFill() {
           variant="outlineBrand"
           className="px-3.5 py-2 text-xs"
           onClick={handleExtractFromUploads}
-          disabled={extractingUploads}
+          disabled={businessClosed || extractingUploads}
         >
           <Icon name="upload" className="w-3.5 h-3.5" />
           {extractingUploads ? "서류 읽는 중..." : "업로드한 서류에서 불러오기"}
@@ -674,18 +729,18 @@ export default function DocumentFill() {
             variant="outlineBrand"
             className="px-3.5 py-2 text-xs"
             onClick={handleImportFromAccountDocs}
-            disabled={importingAccountDocs}
+            disabled={businessClosed || importingAccountDocs}
           >
             <Icon name="documents" className="w-3.5 h-3.5" />
             {importingAccountDocs ? "서류 읽는 중..." : "마이페이지에서 가져오기"}
           </Button>
         )}
-        <Button type="button" variant="outlineBrand" className="px-3.5 py-2 text-xs" onClick={handleAiFill} disabled={aiFilling}>
+        <Button type="button" variant="outlineBrand" className="px-3.5 py-2 text-xs" onClick={handleAiFill} disabled={businessClosed || aiFilling}>
           <Icon name="sparkle" className="w-3.5 h-3.5" />
           {aiFilling ? "AI가 채우는 중..." : "AI 채우기"}
         </Button>
         {isVietnamDemoApplication && (
-          <Button type="button" className="px-4 py-2.5 text-sm" onClick={handleOneTouchFill} disabled={oneTouchFilling}>
+          <Button type="button" className="px-4 py-2.5 text-sm" onClick={handleOneTouchFill} disabled={businessClosed || oneTouchFilling}>
             <Icon name="sparkle" className="h-4 w-4" />
             {oneTouchFilling ? "전체 입력 중..." : "전체 한 번에 채우기"}
           </Button>
@@ -715,13 +770,14 @@ export default function DocumentFill() {
                   {group.fields.map((field) => (
                     <label key={field.id} className={`block ${isMultilineField(field) ? "sm:col-span-2" : ""}`}>
                       <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-600">
-                        {field.field_label}
+                        {displayFieldLabel(field)}
                       </span>
                       <FieldInput
                         field={field}
                         value={values[field.id]}
                         onChange={updateValue}
                         needsReview={Boolean(aiReviewByField[field.id])}
+                        disabled={businessClosed}
                       />
                       {aiReviewByField[field.id] && (
                         <span className="mt-1.5 block text-xs font-medium text-red-500">
@@ -795,6 +851,9 @@ export default function DocumentFill() {
               이미 승인된 서류입니다. 수정 및 재제출할 수 없습니다.
             </p>
           )}
+          {!loading && !isApproved && businessClosed && (
+            <p className="mr-auto text-xs font-medium text-red-600">접수 마감으로 서류 작성 및 제출이 중단되었습니다.</p>
+          )}
           {!loading && !isApproved && fields.length > 0 && !allFilled && (
             <p className="mr-auto text-xs font-medium text-amber-600">모든 항목을 입력해야 제출할 수 있습니다.</p>
           )}
@@ -803,7 +862,7 @@ export default function DocumentFill() {
             variant="secondary"
             className="px-5 py-2.5 text-sm"
             onClick={handleTempSave}
-            disabled={submitting || loading || isApproved}
+            disabled={businessClosed || submitting || loading || isApproved}
           >
             임시 저장
           </Button>
@@ -811,7 +870,7 @@ export default function DocumentFill() {
             type="button"
             className="px-5 py-2.5 text-sm"
             onClick={handleSubmitDocument}
-            disabled={submitting || loading || !allFilled || isApproved}
+            disabled={businessClosed || submitting || loading || !allFilled || isApproved}
           >
             {submitting ? "제출하는 중..." : isEditing ? "수정 제출하기" : "작성 완료"}
           </Button>
