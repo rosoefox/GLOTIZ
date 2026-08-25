@@ -2777,11 +2777,17 @@ def translate_fields(req: TranslateFieldsRequest):
 def marketing_ai_fill(
     product_name: str = Form(...),
     product_images: list[UploadFile] = File(...),
+    logo: UploadFile | None = File(None),
+    style_hint: str = Form(""),
     authorization: str | None = Header(None),
 ):
-    """AI 이미지 생성 페이지의 '상품 정보 입력'에서 'AI로 채우기'를 누르면, 사용자가 이미 업로드한
-    상품 사진(여러 장 가능)을 실제로 보고 상품명에 맞춰 나머지 정보(태그라인/설명/가격/필수 장면)를 채워준다.
-    상품명은 사용자가 직접 쓴 값을 그대로 존중하고 AI가 덮어쓰지 않는다."""
+    """AI 이미지 생성 페이지의 '상품 정보 입력(Step 3)'에서 'AI로 채우기'를 누르면, Step 1에서 올린
+    상품 사진(여러 장 가능)·기업 로고와 Step 2에서 고른 템플릿의 스타일 톤(style_hint)을 함께 보고
+    상품명에 맞춰 나머지 정보(태그라인/설명/가격 추천/필수 장면)를 채워준다. 상품명은 사용자가 직접
+    쓴 값을 그대로 존중하고 AI가 덮어쓰지 않는다. 가격은 그냥 추정치가 아니라 사진 속 상품의 재질·
+    구성·마감 품질을 근거로 한 '해외 판매 추천가'로 채우고, 그 근거(price_reason)를 한 줄로 같이
+    돌려준다 — 로고 이미지는 상품으로 착각하거나 이미지 안에 그대로 옮겨 그릴 대상이 아니라 브랜드
+    톤(색감·분위기)을 파악하는 참고 자료로만 쓴다."""
     require_user(authorization)
 
     if not product_name.strip():
@@ -2791,13 +2797,24 @@ def marketing_ai_fill(
     for img in product_images:
         if (img.content_type or "") not in ALLOWED_PRODUCT_IMAGE_TYPES:
             raise HTTPException(status_code=400, detail="JPG, PNG, WEBP 이미지만 업로드할 수 있습니다.")
+    if logo is not None and (logo.content_type or "") not in ALLOWED_PRODUCT_IMAGE_TYPES:
+        raise HTTPException(status_code=400, detail="로고는 JPG, PNG, WEBP 이미지만 업로드할 수 있습니다.")
 
     image_parts = [
         types.Part.from_bytes(data=img.file.read(), mime_type=img.content_type) for img in product_images
     ]
-    prompt = f"""당신은 소상공인의 해외 수출 마케팅 자료 작성을 돕는 어시스턴트입니다.
-첨부된 사진{'들' if len(product_images) > 1 else ''}은 실제로 판매할 상품 사진입니다. 사진 속 상품의 실제 형태·색상·재질·특징을 자세히 보고,
-아래 상품명에 맞는 마케팅 정보를 채워주세요. 사진만으로 알 수 없는 항목(가격 등)만 합리적으로 추정하세요.
+    logo_note = ""
+    if logo is not None:
+        image_parts.append(types.Part.from_bytes(data=logo.file.read(), mime_type=logo.content_type))
+        logo_note = (
+            f"\n첨부된 이미지 중 마지막 한 장은 상품 사진이 아니라 이 브랜드의 로고입니다. "
+            f"상품으로 착각하지 말고, 브랜드 색상·톤·분위기를 파악하는 참고 자료로만 쓰세요."
+        )
+    style_note = f"\n선택된 디자인 템플릿의 스타일 톤: {style_hint.strip()} — 문구의 어휘와 분위기를 이 톤에 맞추세요." if style_hint.strip() else ""
+
+    prompt = f"""당신은 소상공인의 해외 수출 마케팅 자료 작성을 돕는 어시스턴트이자, 수출 상품 가격 컨설턴트입니다.
+첨부된 사진{'들' if len(product_images) > 1 else ''} 중 상품 사진은 실제로 판매할 상품입니다. 사진 속 상품의 실제 형태·색상·재질·마감 품질·구성을 자세히 보고,
+아래 상품명에 맞는 마케팅 정보를 채워주세요. 사진만으로 알 수 없는 사실(소재 성분 등)은 지어내지 마세요.{logo_note}{style_note}
 
 상품명: {product_name.strip()}
 
@@ -2805,7 +2822,9 @@ def marketing_ai_fill(
 언어 변경은 화면의 "이미지 언어 설정하기" 버튼으로 사용자가 직접 선택할 때만 이뤄집니다):
 - tagline: 한 줄 홍보 문구
 - description: 상품 설명 (2~3문장, 사진에 실제로 보이는 특징을 반영)
-- price: 가격 (예: "29,000원" 형식)
+- price: 해외 판매를 기준으로 AI가 추천하는 가격 (예: "29,000원" 형식). 사진에 보이는 재질·마감·구성 수준과
+  비슷한 카테고리 상품의 일반적인 해외 판매가 수준을 근거로 합리적으로 추천하세요.
+- price_reason: 위 가격을 추천한 근거를 한 문장으로 (예: "고급 스테인리스 마감과 다기능 구성을 고려한 중가~프리미엄 가격대")
 - must_have_photo: 이미지에 꼭 들어갔으면 하는 장면 묘사 (한 문장)
 """
 
@@ -2824,9 +2843,10 @@ def marketing_ai_fill(
                         "tagline": {"type": "STRING"},
                         "description": {"type": "STRING"},
                         "price": {"type": "STRING"},
+                        "price_reason": {"type": "STRING"},
                         "must_have_photo": {"type": "STRING"},
                     },
-                    "required": ["tagline", "description", "price", "must_have_photo"],
+                    "required": ["tagline", "description", "price", "price_reason", "must_have_photo"],
                 },
             ),
         )
@@ -3158,6 +3178,35 @@ NO_TEXT_INSTRUCTION = (
     "인공적인 대칭·과도한 채도·플라스틱 같은 질감 등 AI가 생성한 티가 나는 요소는 피하세요."
 )
 
+MARKETING_ASSETS_DIR = Path(__file__).parent / "marketing_assets"
+
+
+def _load_marketing_asset(filename: str) -> tuple[bytes, str] | None:
+    path = MARKETING_ASSETS_DIR / filename
+    if not path.exists():
+        return None
+    mime = "image/jpeg" if path.suffix.lower() in (".jpg", ".jpeg") else "image/png"
+    return path.read_bytes(), mime
+
+
+# 템플릿(포스터/상세페이지 등) 중 실제 참고 디자인 이미지가 준비된 것만 등록한다 — 없는
+# 템플릿은 지금처럼 style_hint 텍스트만으로 생성한다.
+TEMPLATE_STYLE_REFERENCE_IMAGES = {
+    "tpl-detail-classic": _load_marketing_asset("detail-classic-reference.png"),
+    "tpl-detail-premium": _load_marketing_asset("detail-premium-reference.png"),
+    "tpl-detail-trendy": _load_marketing_asset("detail-trendy-reference.png"),
+    "tpl-poster-minimal": _load_marketing_asset("poster-minimal-reference.jpg"),
+    "tpl-poster-pop": _load_marketing_asset("poster-pop-reference.jpg"),
+    "tpl-poster-emotional": _load_marketing_asset("poster-emotional-reference.jpg"),
+    "tpl-poster-modern": _load_marketing_asset("poster-modern-reference.jpg"),
+}
+
+STYLE_REFERENCE_NOTE = (
+    "참고로 첨부된 이미지 중 맨 마지막 한 장은 상품 사진이 아니라, 이 템플릿이 지향하는 사진 스타일(배경·소재·"
+    "조명·색감·구도)을 보여주는 예시 이미지입니다. 이 예시 속 상품·텍스트·레이아웃을 그대로 베끼지 말고, "
+    "오직 전체적인 분위기와 톤만 참고하세요. 실제로 그려야 하는 상품은 그 앞에 첨부된 참고 사진 속 상품입니다."
+)
+
 
 def _generate_image(
     prompt: str, reference_images: list[tuple[bytes, str]], aspect_ratio: str
@@ -3206,17 +3255,31 @@ def _style_line(style_hint: str) -> str:
     return f"\n스타일 톤: {style_hint.strip()}" if style_hint and style_hint.strip() else ""
 
 
-def _poster_prompt(description: str, must_have_photo: str, style_hint: str = "", aspect_ratio: str = "4:5") -> str:
+def _poster_prompt(
+    product_name: str, description: str, must_have_photo: str, style_hint: str = "",
+    aspect_ratio: str = "4:5", tagline: str = "", price: str = "", logo_render_note: str = "",
+    target_language: str = "ko",
+) -> str:
     scene = must_have_photo.strip() or "상품을 돋보이게 하는 매력적인 장면을 자유롭게 구성하세요."
-    return f"""당신은 상업 광고 사진작가입니다. 아래 정보를 바탕으로 마케팅 포스터용 배경 이미지를 만들어주세요.
+    lang_name = TRANSLATE_LANGUAGE_NAMES.get(target_language) or "Korean"
+    logo_line = f"\n{logo_render_note}" if logo_render_note else ""
+    return f"""당신은 상업 광고 사진작가 겸 그래픽 디자이너입니다. 아래 정보를 바탕으로 완성된 마케팅 포스터 한 장을 만들어주세요.
+상품명: {product_name}
+태그라인: {tagline or '(없음)'}
 상품 설명: {description or '(설명 없음)'}
-반드시 포함되어야 하는 장면: {scene}
+가격: {price or '(없음)'}
+반드시 포함되어야 하는 장면: {scene}{logo_line}
 
 요구사항: 첨부된 참고 사진 속 실제 상품과 동일한 형태·색상·재질로 등장시키세요.
-세로로 긴 {aspect_ratio} 비율로 구성하고,
-화면 하단 1/3 지점에 나중에 제목/태그라인/가격 문구가 얹힐 수 있도록 그 부분의 배경이 너무 산만하지 않게 여백과 대비를 의도적으로 남겨주세요.
-실제 스튜디오에서 촬영한 것처럼 사실적인 조명·그림자·반사를 살려서, AI가 생성한 티가 나지 않는 고급 상업광고 포스터 사진 스타일로 만들어주세요.{_style_line(style_hint)}
-{NO_TEXT_INSTRUCTION}"""
+세로로 긴 {aspect_ratio} 비율로 네이티브하게 구성하세요.
+상품명·태그라인·가격은 나중에 프론트엔드가 얹는 게 아니라, 지금 이 이미지 안에 실제 문구를 디자인 요소로 직접 렌더링해주세요 — 상품명이 가장 크고 강한 타이포그래피 요소여야 합니다.
+모든 렌더링 문구는 {lang_name} 언어로만 쓰고, 한글이나 다른 언어를 섞지 마세요 — 소스 데이터가 한글처럼 보여도 마찬가지입니다.
+이건 예외 없는 필수 규칙입니다 — 완성된 이미지 어디에도 한글 문자가 절대 나타나면 안 됩니다.
+글자는 매끈하고 정확한 철자로, 뭉개지거나 뒤틀리거나 겹치지 않게 완벽하게 읽혀야 합니다. 깨끗하게 렌더링될 자신이 없는 문구는 줄여서 쓰세요.
+특정 문구가 진짜 {lang_name}로 쓰인 게 확실하지 않으면(한글일 수도 있다면), 절대 넣지 말고 그 요소를 완전히 생략하세요.
+값이 없는 항목(태그라인·가격 등)은 자리표시자나 빈 박스 없이 자연스럽게 생략하세요.
+가짜 헤드라인·가짜 가격·가짜 CTA·의미 없는 텍스트를 지어내지 마세요.
+실제 스튜디오에서 촬영한 것처럼 사실적인 조명·그림자·반사를 살려서, AI가 생성한 티가 나지 않는 고급 상업광고 포스터 사진 스타일로 만들어주세요.{_style_line(style_hint)}"""
 
 
 CARD_NEWS_SHOPEE_PROMPT = """ROLE
@@ -3245,10 +3308,16 @@ empty space. Render every text field's ACTUAL supplied value exactly as given �
 translate, or invent wording. If a field is empty, per the EMPTY FIELD RULE below simply omit that
 element (no placeholder, no blank box) rather than leaving a broken gap.
 Keep every line of rendered text crisp, correctly spelled, and fully legible — never render smudged,
-warped, doubled, or illegible letterforms. If a supplied {{brand_logo}} reference image exists, you
-may feature that actual supplied logo graphic as a real photographed object/sticker/label element —
-but never invent a logo, and never typeset the brand name yourself unless {{brand_name}} is the field
-being rendered.
+warped, doubled, or illegible letterforms. Every rendered text field must be written in
+{{target_language}} only — never mix in Korean or any other language, even if the source data looks
+like it could be Korean. This is a hard requirement with zero exceptions: absolutely no Korean
+characters may appear anywhere in the rendered image. If you are not fully confident that a piece of
+text is already written in {{target_language}} (not Korean), do not render it at all — omit that text
+element entirely rather than risk any Korean leaking through. If a supplied {{brand_logo}} reference image exists, faithfully reproduce
+that EXACT supplied logo graphic in the small brand area — do not redesign it, distort it, restyle it,
+or replace it with a different mark. If no {{brand_logo}} is supplied, leave that brand area empty —
+never invent a logo. Do not render {{brand_name}} as text; the only brand element in the image is the
+reproduced logo graphic itself (or nothing, if none was supplied).
 
 TYPOGRAPHY SYSTEM
 Use a clean modern sans-serif (Inter / Manrope / Helvetica-inspired) for headlines, benefit labels,
@@ -3291,12 +3360,12 @@ Discount Rate: {{discount_rate}}
 Currency: {{currency}}
 Promotion: {{promotion_text}}
 CTA: {{cta}}
-Target Language (for the copy that will be added outside this image later): {{target_language}}
+Target Language (every rendered text field above MUST be written in this language only, never Korean): {{target_language}}
 
 IMAGE INPUTS
 Primary Product Image: {{product_image}}
 Detail Image: {{detail_image}}
-Brand Logo: {{brand_logo}}
+Brand Logo (the real uploaded logo — reproduce it exactly if supplied; leave the brand area empty if not): {{brand_logo}}
 Preserve the actual product's packaging shape, proportions, brand identity, logo, major colors,
 label structure, and recognizable package characteristics. Do not create a fictional replacement
 product.
@@ -3316,7 +3385,7 @@ Render with this visual-weight priority (largest/most dominant first):
 4. HEADLINE: {{headline}}
 5. DISCOUNT RATE: {{discount_rate}} (small badge)
 6. ORIGINAL PRICE: {{original_price}} {{currency}} (small, secondary, may use a strikethrough)
-7. BRAND: {{brand_name}} (small logo/wordmark area)
+7. BRAND: small logo area — reproduce the supplied {{brand_logo}} exactly if provided; leave empty if not
 Recommended layout: TOP 10-15% brand/logo -> TOP-MIDDLE 15-30% product-name/headline -> CENTER 30-72%
 large hero product -> BOTTOM 72-95% price area (sale price largest/boldest, original price smaller,
 discount as a compact badge placed close to the sale price). Positions may adapt slightly to the
@@ -3385,9 +3454,11 @@ def _shopee_card_prompt(card_type: str, values: dict, style_hint: str = "", extr
 
 
 # "클린 & 에디토리얼" 카드뉴스 전용 프롬프트 — 다른 카드뉴스 스타일과 달리 전용 4페이지 캠페인
-# 구조(히어로/성분·인증/사용법/브랜드 클로징)를 쓴다. 다른 프롬프트들과 동일하게, 실제 문자는
-# AI가 이미지 안에 그리지 않고 프론트엔드가 오버레이하므로, 타이포그래피/문구 관련 지시는 전부
-# "이 자리를 이만큼 비중 있게 비워둬라"는 구도 지시로 다시 썼다.
+# 구조(히어로/체험/디테일/브랜드 클로징)를 쓴다. 다른 card-news 프롬프트(CARD_NEWS_SHOPEE_PROMPT)와
+# 마찬가지로 실제 문구(헤드라인·태그라인·가격 등)는 AI가 이미지 픽셀에 직접 렌더링한다. 브랜드 표시는
+# 계정 프로필의 회사명이 아니라 스탭 1에서 실제로 업로드한 로고 이미지만 쓴다 — 있으면 그 로고를 그대로
+# 재현하고, 없으면 브랜드 영역을 비워둔다. 모든 렌더링 문구는 target_language 언어로만 쓰고 한글은 절대
+# 섞지 않는다(언어가 "ko"/미지정이면 한국어).
 CLEAN_EDITORIAL_CARD_NEWS_PROMPT = """ROLE
 You are a senior commercial art director and editorial product photographer specializing in premium e-commerce campaigns, beauty advertising, lifestyle products, and clean editorial design.
 Create ONE square page (the requested PAGE_NUMBER) from a cohesive 4-page square product card-news campaign, based on the product data and reference assets provided below.
@@ -3397,16 +3468,21 @@ IMPORTANT SYSTEM RULE
 Gemini renders the actual typography directly into the image — the headline, product name, tagline,
 description excerpt, and price are real rendered text, not reserved empty space.
 Render every supplied field's ACTUAL value exactly as given — do not paraphrase, translate, or invent
-wording. Do not invent headlines, slogans, prices, product descriptions, promotional messages, ingredient
-claims, certification claims, CTA text, website addresses, social media handles, or decorative pseudo-text.
-If a field is empty, omit that element (no placeholder, no blank box) rather than leaving a broken gap.
-Keep every line of rendered text crisp, correctly spelled, and fully legible — never render smudged,
-warped, doubled, or half-formed letterforms.
+wording. Every rendered text field must be written in {{target_language}} only — never mix in Korean or
+any other language. This is a hard requirement with zero exceptions: absolutely no Korean characters may
+appear anywhere in the rendered image. If you are not fully confident that a piece of text is already
+written in {{target_language}} (not Korean), do not render it at all — omit that text element entirely
+rather than risk any Korean leaking through. Do not invent headlines, slogans, prices, product
+descriptions, promotional messages, ingredient claims, certification claims, CTA text, website addresses,
+social media handles, or decorative pseudo-text. If a field is empty, omit that element (no placeholder,
+no blank box) rather than leaving a broken gap. Keep every line of rendered text crisp, correctly
+spelled, and fully legible — never render smudged, warped, doubled, or half-formed letterforms.
 
 INPUT DATA
 The application may provide:
-Company name: {{company_name}}
-Company logo: {{company_logo}}
+Company logo (the real uploaded logo — reproduce it exactly if supplied, do not redesign or distort it;
+leave the brand area empty if not supplied; never invent a substitute logo or render any company name
+as text instead): {{company_logo}}
 Company slogan / tagline: {{company_slogan}}
 Product name: {{product_name}}
 Product description: {{product_description}}
@@ -3466,15 +3542,16 @@ Available values: PAGE_01_PRODUCT_HERO, PAGE_02_PRODUCT_EXPERIENCE, PAGE_03_PROD
 Generate only the composition for the requested page below.
 
 PAGE_01_PRODUCT_HERO
-Purpose: immediately introduce the product and establish the brand. Render directly in the image: company
-name/logo ({{company_name}}), product name ({{product_name}}), tagline ({{company_slogan}}), regular price
-({{regular_price}}), promotional price ({{promotion_price}}). Visual priority: 1) product, 2) product
-presentation, 3) rendered typography, 4) supporting environment. The actual product image should be the
-hero visual, occupying approximately 40-60% of the visual attention. Use a premium editorial still-life
-composition: warm neutral studio, stone pedestal, marble slab, soft linen, subtle botanical accent, soft
-natural shadows. Do not overcrowd the scene. Render the product name, tagline, price, and promotional
-price in approximately 30-40% of the composition, plus a small clean area for the company logo/name. Omit
-any field that is empty rather than showing a placeholder.
+Purpose: immediately introduce the product and establish the brand. Render directly in the image: product
+name ({{product_name}}), tagline ({{company_slogan}}), regular price ({{regular_price}}), promotional
+price ({{promotion_price}}). Visual priority: 1) product, 2) product presentation, 3) rendered typography,
+4) supporting environment. The actual product image should be the hero visual, occupying approximately
+40-60% of the visual attention. Use a premium editorial still-life composition: warm neutral studio, stone
+pedestal, marble slab, soft linen, subtle botanical accent, soft natural shadows. Do not overcrowd the
+scene. Render the product name, tagline, price, and promotional price in approximately 30-40% of the
+composition, plus a small clean area featuring the supplied {{company_logo}} — reproduce that exact logo
+faithfully if provided, or leave the area empty if not. Omit any field that is empty rather than showing a
+placeholder.
 
 PAGE_02_PRODUCT_EXPERIENCE
 Purpose: visually communicate the first major part of {{product_description}} through a realistic usage
@@ -3518,13 +3595,14 @@ additional benefits merely to differentiate the pages.
 
 PAGE_04_BRAND_CLOSING
 Purpose: end the campaign with a memorable, sophisticated brand impression. Render directly in the image:
-the tagline ({{company_slogan}}), the company name/logo ({{company_name}}), and optionally a restrained
-product image. This should be the most minimal page in the campaign. Create maximum breathing room: subtle
-brand colors, soft lighting, simple background, minimal product presence, refined composition. Render the
-tagline as a large uninterrupted editorial headline and the company name/logo in a separate clean area.
-The product may appear subtly but should not dominate as strongly as Page 01. Omit the tagline entirely if
-{{company_slogan}} is empty — never invent one. Do not add a CTA, URL, social handle, promotional badge,
-or any other rendered text beyond the tagline and company name.
+the tagline ({{company_slogan}}), the supplied {{company_logo}} (reproduce it exactly if provided, leave
+that area empty if not — never invent a substitute), and optionally a restrained product image. This
+should be the most minimal page in the campaign. Create maximum breathing room: subtle brand colors, soft
+lighting, simple background, minimal product presence, refined composition. Render the tagline as a large
+uninterrupted editorial headline and the logo in a separate clean area. The product may appear subtly but
+should not dominate as strongly as Page 01. Omit the tagline entirely if {{company_slogan}} is empty —
+never invent one. Do not add a CTA, URL, social handle, promotional badge, company name text, or any other
+rendered text beyond the tagline.
 
 4-PAGE CAMPAIGN FLOW
 PAGE 01 - PRODUCT: what is the product? Hero product introduction.
@@ -3615,15 +3693,21 @@ DETAIL_CAPTIONS_SCHEMA = {
 }
 
 
-def _card_news_copy_prompt(product_name: str, description: str) -> str:
+def _card_news_copy_prompt(product_name: str, description: str, target_language: str = "ko") -> str:
+    # 이 문구는 카드뉴스 이미지 픽셀에 그대로 렌더링되므로, 반드시 실제 요청 언어로 써야 한다 —
+    # 여기서 한국어로 만들고 화면에서만 나중에 번역하면 이미지 속 글자는 한글로 남는다.
+    if target_language and target_language != "ko" and target_language in TRANSLATE_LANGUAGE_NAMES:
+        lang_name = TRANSLATE_LANGUAGE_NAMES[target_language]
+        language_note = f'반드시 "{lang_name}" 언어로만 작성하세요 — 한국어를 절대 섞지 마세요.'
+    else:
+        language_note = "상품명이 영어 등 다른 언어로 적혀 있어도 문구는 반드시 한국어로 작성하세요."
     return f"""당신은 이커머스 카드뉴스 카피라이터입니다.
 상품명: {product_name}
 상품 설명: {description or '(설명 없음)'}
 
-상품명이 영어 등 다른 언어로 적혀 있어도 문구는 반드시 한국어로 작성하세요. 언어 변경은 화면의
-"이미지 언어 설정하기" 버튼으로 사용자가 직접 선택할 때만 이뤄집니다.
+{language_note} 언어 변경은 화면의 "이미지 언어 설정하기" 버튼으로 사용자가 직접 선택할 때만 이뤄집니다.
 
-features: 상품 설명에서 도출한 핵심 특징 2~4개, 각 8~14자 내외 짧은 한글 문구 (설명에 근거하여, 지어내지 마세요).
+features: 상품 설명에서 도출한 핵심 특징 2~4개, 각 8~14자 내외의 짧은 문구 (설명에 근거하여, 지어내지 마세요).
 promoLine: 마지막 장 CTA용 15자 내외 짧고 임팩트 있는 홍보 문구."""
 
 
@@ -3816,8 +3900,12 @@ Unlike a generic product photo, THIS template renders its own typography directl
 the editorial copy, the giant hero word, the benefit/description labels, the bottom headline/price
 block, and the CTA are all real rendered typography, not reserved empty space.
 Render every text field's ACTUAL supplied value exactly as given — do not paraphrase, translate, or
-invent wording. If a field is empty, per rule 32 simply omit that element (no placeholder, no blank
-box) rather than leaving broken negative space.
+invent wording. Every rendered text field must be written in {{target_language}} only — never mix in
+Korean or any other language. This is a hard requirement with zero exceptions: absolutely no Korean
+characters may appear anywhere in the rendered image. If you are not fully confident that a piece of
+text is already written in {{target_language}} (not Korean), do not render it at all — omit that text
+element entirely rather than risk any Korean leaking through. If a field is empty, per rule 32 simply
+omit that element (no placeholder, no blank box) rather than leaving broken negative space.
 Keep every line of rendered text crisp, correctly spelled, and fully legible — never render smudged,
 warped, doubled, or illegible letterforms. If you are not confident a string of text will render
 cleanly, shorten it rather than risk illegible characters.
@@ -4364,6 +4452,1952 @@ Do not make it look like an e-commerce marketplace banner.
 Make it look like a real campaign photographed by an experienced brand design team in a professional commercial studio."""
 
 
+MINIMAL_CLEAN_POSTER_PROMPT = """ROLE
+You are a senior commercial advertising art director and product photographer specializing in premium beauty, skincare, lifestyle, and e-commerce campaign posters.
+Create exactly ONE professionally art-directed commercial product poster based on the supplied product image, product information, brand assets, and selected aspect ratio.
+The design concept is:
+MINIMAL & CLEAN — COMMERCIAL CAMPAIGN
+IMPORTANT:
+"Minimal & Clean" does NOT mean an empty white background, excessive blank space, a small centered product, or a simple product catalog image.
+Instead, interpret Minimal & Clean as:
+clean information hierarchy
+strong commercial photography
+full-frame visual composition
+large hero product
+bold headline placement
+sophisticated color coordination
+controlled number of visual elements
+modern advertising layout
+polished e-commerce campaign quality
+The poster should feel like a professionally art-directed seasonal beauty or lifestyle campaign.
+
+REFERENCE DESIGN PRINCIPLE
+Follow the supplied reference image primarily for its:
+full-frame photographic background
+immersive lifestyle environment
+large product presentation
+strong visual hierarchy
+oversized headline area
+clearly separated promotional information
+confident use of color
+commercial advertising composition
+balanced relationship between photography and typography
+visually complete canvas with no accidental empty areas
+The reference should guide the design density and advertising hierarchy, not the exact product, colors, wording, props, or background.
+DO NOT copy the reference literally.
+Adapt its advertising principles to the supplied product.
+
+CRITICAL OUTPUT RULE
+Generate exactly ONE poster.
+Output aspect ratio:
+{{selected_aspect_ratio}}
+Possible values:
+4:5
+or
+9:16
+The entire composition must be designed natively for the selected aspect ratio.
+Do NOT generate a square composition and crop it.
+Do NOT stretch a 4:5 composition into 9:16.
+Do NOT place the poster inside a mockup.
+Do NOT create a collage.
+
+CRITICAL — NO LARGE EMPTY AREA
+Do NOT create a composition with a large empty lower half, empty white gradient, unused background, or visually unfinished area.
+Every section of the canvas must feel intentionally designed.
+This does NOT mean filling the canvas with random decoration.
+Instead, use:
+photographic environment
+product
+natural surfaces
+subtle texture
+lighting
+shadow
+restrained props
+product-related contextual elements
+to create a visually complete commercial composition.
+The poster should feel full and immersive while remaining clean and organized.
+
+INPUT DATA
+Use available application data:
+{{product_image}}
+{{company_logo}}
+{{product_name}}
+{{company_slogan_or_tagline}}
+{{product_description}}
+{{price}}
+{{promotion_price}}
+{{product_category}}
+{{selected_aspect_ratio}}
+Never invent missing product information.
+
+ON-IMAGE TYPOGRAPHY SYSTEM
+Gemini renders the entire poster — photography AND typography — directly into the final image, exactly
+like the supplied reference. There is no separate frontend text overlay for this template; every visible
+word must be rendered by you as real, crisp pixels.
+Render the actual supplied values for:
+{{company_logo}}
+{{product_name}}
+{{company_slogan_or_tagline}}
+{{product_description}}
+{{price}}
+{{promotion_price}}
+Render every text field's ACTUAL supplied value exactly as given — do not paraphrase, translate loosely,
+or invent wording. Every rendered text field must be written in {{target_language}} only — never mix in
+Korean or any other language, even if the source data looks like it could be Korean. Keep every line of
+rendered text crisp, correctly spelled, and fully legible — never render smudged, warped, doubled, or
+illegible letterforms. If you are not confident a string of text will render cleanly, shorten it rather
+than risk illegible characters. If you are not confident whether a supplied value is already written in
+{{target_language}} or is still Korean, omit that text element entirely rather than guess or render it in
+the wrong language.
+Do NOT generate:
+fake headline
+fake product name
+fake tagline
+fake price
+fake discount
+fake CTA
+fake URL
+random text not supplied in the input data
+pseudo typography
+If a field is empty, null, missing, or unavailable, omit that element and let the layout rebalance
+naturally — never render a placeholder, "N/A", or blank box for it.
+If a {{company_logo}} reference image is supplied, faithfully reproduce that EXACT logo graphic — do not
+redesign, distort, restyle, or replace it. If none is supplied, leave the brand area empty.
+However, preserve authentic text already printed on the supplied physical product packaging as part of the product image.
+
+DESIGN THE IMAGE AROUND THE TEXT
+The composition must reserve real typographic space for the rendered text, not just imply it.
+Do NOT simply create a product photo and leave random blank space.
+Design intentional editorial zones for:
+COMPANY LOGO
+LARGE PRODUCT NAME
+TAGLINE
+SHORT PRODUCT DESCRIPTION
+PRICE / PROMOTIONAL PRICE
+These zones must feel like part of the advertising composition, exactly as in the reference image.
+
+TYPOGRAPHIC HIERARCHY
+The intended final poster should visually support typography similar to the reference campaign.
+PRODUCT NAME
+The product name is the dominant typographic element.
+Reserve enough space for a:
+very large
+bold
+modern
+clean
+high-impact
+headline.
+Intended font feeling:
+Helvetica Neue Bold
+Neue Haas Grotesk
+Archivo Black
+Inter ExtraBold
+Montserrat ExtraBold
+similar modern commercial sans-serif
+The headline may occupy approximately 20-30% of the visual hierarchy.
+Do NOT reserve a tiny text box.
+The product name must have enough room to appear dramatically large.
+
+TAGLINE
+Reserve an area immediately above or below the product name.
+The tagline should feel like supporting campaign copy.
+Use enough space for approximately:
+1-2 lines.
+
+PRODUCT DESCRIPTION
+Reserve a secondary information area for a short product description.
+The description should visually remain subordinate to the product name.
+Do not create an excessively large blank rectangle specifically for description text.
+Integrate the description area naturally into the composition.
+
+PRICE
+Price must be treated as a strong commercial element.
+Render the actual supplied value for {{price}}, and when available {{promotion_price}}, inside a
+distinct high-contrast area.
+The price area may visually use:
+a clean rounded badge
+restrained geometric shape
+contrasting solid block
+simple high-contrast area
+The promotional price should be capable of appearing significantly larger than the regular price.
+Render the real supplied price text exactly as given — never invent, estimate, or alter a price.
+
+PRODUCT — HERO VISUAL
+The supplied product must be one of the strongest elements in the poster.
+The product should generally occupy approximately:
+35-55% of the visual attention.
+Avoid a small isolated product floating in the center.
+The product should feel integrated into a professionally photographed campaign environment.
+Depending on the product, it may:
+stand prominently in the foreground
+rest on a relevant surface
+overlap part of the photographic background
+appear slightly off-center
+interact naturally with the environment
+The product must remain immediately recognizable.
+
+PRODUCT PRESERVATION
+Use the supplied product image as the source of truth.
+Preserve:
+packaging shape
+proportions
+container
+cap
+packaging color
+label placement
+recognizable graphics
+distinctive product identity
+DO NOT:
+redesign the packaging
+replace the product
+change packaging color
+alter product proportions
+create a fictional variant
+duplicate the product unless specifically requested
+replace authentic product graphics with AI-generated graphics
+
+FULL-BLEED PHOTOGRAPHIC BACKGROUND
+The background should generally extend across the entire canvas.
+Avoid plain empty white or beige backgrounds unless the supplied product genuinely requires a studio campaign.
+Prefer a full-bleed photographic environment appropriate to the product.
+Examples:
+Sunscreen
+sunlit pool
+beach
+summer water
+bright outdoor setting
+sunlit stone
+vacation environment
+clean summer lifestyle
+Skincare
+water
+stone
+soft botanical environment
+bright bathroom
+clean vanity
+natural daylight studio
+Beverage
+ice
+water
+cafe environment
+ingredient-related setting
+refreshing lifestyle environment
+Food
+table setting
+ingredient-related scene
+natural kitchen environment
+premium serving context
+Lifestyle product
+relevant real-life environment
+architectural background
+contemporary lifestyle scene
+Choose the environment based on actual product information.
+
+BACKGROUND MUST SUPPORT THE PRODUCT
+The environment should make the product feel desirable but should not overpower it.
+Use depth:
+foreground
+-> hero product
+-> contextual surface
+-> softly detailed environment
+The product should remain sharper and more visually prominent than the background.
+
+HUMAN MODELS — OPTIONAL AND CONTROLLED
+Do NOT automatically place large blurred people behind every product.
+Use human models only when they genuinely improve the product story.
+If models are appropriate:
+place them naturally in the environment
+keep them secondary to the product
+use realistic proportions
+create authentic lifestyle photography
+avoid obvious AI faces
+avoid awkward hands
+avoid artificial advertising poses
+For products such as sunscreen, a subtle summer lifestyle context may be appropriate.
+However, the product must remain the visual hero.
+
+IMPORTANT — DO NOT USE BLUR AS A SUBSTITUTE FOR DESIGN
+Do not create a generic blurred stock-photo background simply to fill the canvas.
+If people appear in the background, their placement must feel intentional.
+Use depth of field naturally.
+Avoid excessively blurred anonymous figures that make the poster look like a cheap composite.
+The background itself should still have attractive photographic value.
+
+COLOR SYSTEM
+Analyze the actual:
+product packaging
+logo
+brand colors
+product category
+and build the poster palette around them.
+Use approximately:
+60% environmental / dominant campaign color
+25% product-derived supporting color
+15% contrast / promotional accent
+This template may use more color than a traditional minimalist poster.
+However, the palette should remain controlled and sophisticated.
+
+EXAMPLE COLOR LOGIC
+Yellow sunscreen packaging:
+-> clear aqua / sky blue environment
+-> warm cream or sand
+-> yellow accent
+Pink skincare:
+-> water blue / soft pink / white
+Green skincare:
+-> ivory / botanical green / muted stone
+Blue product:
+-> water / pale blue / white / warm contrasting accent
+Orange product:
+-> blue / aqua / cream / restrained orange accent
+Do not mechanically apply these examples.
+Analyze the actual product.
+
+COMPOSITION — 4:5
+When:
+{{selected_aspect_ratio}} = 4:5
+Design specifically for a 4:5 commercial poster.
+Recommended hierarchy:
+TOP 25-35%
+-> logo
+-> tagline
+-> LARGE product name
+MIDDLE 35-45%
+-> hero product
+-> photographic environment
+SIDE OR LOWER-MIDDLE
+-> price / promotion area
+BOTTOM
+-> product description or supporting visual environment
+The composition should remain visually complete from top to bottom.
+Do NOT leave the lower 30-50% empty.
+
+COMPOSITION — 9:16
+When:
+{{selected_aspect_ratio}} = 9:16
+Design specifically for a tall mobile advertising poster.
+Recommended hierarchy:
+TOP
+-> logo / brand space
+UPPER
+-> tagline
+UPPER-MIDDLE
+-> VERY LARGE product name
+CENTER
+-> hero product
+CENTER-LOWER
+-> supporting photographic environment
+LOWER
+-> product description + price / promotional price
+BOTTOM
+-> subtle campaign finishing area / environmental continuation
+Use the entire vertical canvas intentionally.
+Do NOT simply put everything at the top and leave the lower half empty.
+
+ASPECT RATIO ADAPTATION
+4:5 and 9:16 should share the same:
+campaign concept
+palette
+product treatment
+photography style
+typography hierarchy
+But they must NOT use identical coordinates.
+Recompose:
+product scale
+headline zone
+price zone
+description zone
+background elements
+for each ratio.
+
+INFORMATION DENSITY
+This is a commercial poster, not a minimalist art print.
+The final design should feel approximately:
+75-90% visually intentional / occupied
+while still maintaining clean separation between elements.
+Avoid both extremes:
+BAD:
+Too empty
+-> product floating in blank space
+BAD:
+Too crowded
+-> every area filled with props and graphics
+GOOD:
+Full photographic environment
+large product
+strong headline zone
+clear promotion zone
+controlled supporting information
+
+VISUAL HIERARCHY TARGET
+The viewer should perceive the final poster in approximately this order:
+PRODUCT NAME
+PRODUCT IMAGE
+PROMOTIONAL PRICE / PRICE
+TAGLINE
+PRODUCT DESCRIPTION
+LOGO
+The photographic background supports this hierarchy rather than competing with it.
+
+REFERENCE-LIKE ADVERTISING ENERGY
+The target should have the confidence of a professional seasonal campaign.
+Think:
+large headline
+immersive photography
+large product
+strong promotional badge or price area
+clean supporting information
+Do not interpret "clean" as "empty."
+Interpret "clean" as:
+CLEAR HIERARCHY + CONTROLLED ELEMENTS + STRONG ALIGNMENT.
+
+DO NOT
+Do NOT create:
+huge blank lower areas
+empty beige gradients
+tiny centered products
+generic catalog photography
+anonymous blurred stock imagery dominating the background
+weak product hierarchy
+tiny headline zones
+excessive whitespace
+random props
+unrelated ingredients
+fake text
+fake prices
+fake claims
+fake certifications
+fake discount percentages
+mockup frames
+multiple poster variations inside one image
+
+FINAL QUALITY CHECK
+Before generating, verify:
+Exactly ONE poster is generated.
+The selected 4:5 or 9:16 ratio is respected.
+The composition is designed natively for that ratio.
+The canvas feels visually complete from top to bottom.
+There is NO large accidental empty area.
+The product is large and immediately recognizable.
+The background is a full commercial photographic environment.
+The product name has a LARGE typography-safe zone.
+The tagline has a clear supporting zone.
+Product description space exists.
+Price / promotional price has a strong dedicated zone.
+Logo space exists.
+The product packaging is preserved.
+No unsupported product claims are invented.
+No fake advertising typography is generated.
+The visual hierarchy is strong.
+The poster feels like a real professionally art-directed commercial campaign.
+The design is clean because it is organized — NOT because it is empty.
+FINAL TARGET
+Create a visually complete, premium commercial product campaign poster with the advertising impact of the supplied reference.
+The final design should combine:
+FULL-BLEED LIFESTYLE PHOTOGRAPHY
+LARGE HERO PRODUCT
+OVERSIZED HEADLINE SPACE
+STRONG PRICE / PROMOTION AREA
+PRODUCT-ADAPTIVE COLOR
+CLEAN INFORMATION HIERARCHY
+The result should feel designed, complete, commercial, and immediately usable as a finished poster — all typography and the logo are already rendered in the image, in {{target_language}} only."""
+
+
+POP_COLORFUL_POSTER_PROMPT = """ROLE
+You are a senior commercial advertising art director specializing in bold, energetic, high-impact product campaigns for beauty, food, beverage, fashion, lifestyle, and e-commerce brands.
+Create exactly ONE professionally art-directed commercial product poster based on the supplied product image, product information, brand assets, and selected aspect ratio.
+DESIGN CONCEPT
+POP & COLORFUL — BOLD GRAPHIC COMMERCIAL CAMPAIGN
+This concept must be visually and structurally different from Minimal & Clean, Luxury & Premium, and Emotional & Mood designs.
+The defining characteristics are:
+BOLD COLOR + OVERSIZED TYPOGRAPHY + GRAPHIC SHAPES + DYNAMIC PRODUCT PLACEMENT + HIGH VISUAL ENERGY
+The result should immediately feel energetic, youthful, contemporary, playful, graphic, and attention-grabbing.
+Think of a modern social-media advertising campaign, pop-art-inspired commercial poster, Gen-Z beauty campaign, contemporary beverage campaign, or bold editorial product advertisement.
+
+CRITICAL STYLE SEPARATION
+DO NOT interpret Pop & Colorful as:
+a minimalist poster with brighter colors
+a clean product photograph with one colorful background
+a luxury composition with saturated colors
+a centered product on a simple gradient
+a traditional catalog advertisement
+a restrained editorial composition
+Instead, the entire layout system itself must become more dynamic and expressive.
+Compared with Minimal & Clean, this design must use:
+stronger asymmetry
+dramatically larger graphic elements
+more aggressive cropping
+overlapping layers
+bold geometric composition
+vivid contrasting colors
+dynamic product positioning
+graphic depth
+energetic visual rhythm
+promotional shapes
+editorial-scale typography zones
+The difference must be immediately recognizable even when viewed as a small thumbnail.
+
+INPUT DATA
+Use available application data:
+{{product_image}}
+{{company_logo}}
+{{product_name}}
+{{company_slogan_or_tagline}}
+{{product_description}}
+{{price}}
+{{promotion_price}}
+{{product_category}}
+{{selected_aspect_ratio}}
+Never invent missing product information.
+
+ON-IMAGE TYPOGRAPHY SYSTEM
+There is no separate frontend text overlay for this template. Gemini renders the entire poster —
+photography, graphics, AND typography — directly into the final image. Render the actual supplied
+values for:
+{{company_logo}}
+{{product_name}}
+{{company_slogan_or_tagline}}
+{{product_description}}
+{{price}}
+{{promotion_price}}
+Render every text field's ACTUAL supplied value exactly as given — do not paraphrase, translate loosely,
+or invent wording. Every rendered text field must be written in {{target_language}} only — never mix in
+Korean or any other language, even if the source data looks like it could be Korean. Keep every line of
+rendered text crisp, correctly spelled, and fully legible — never render smudged, warped, doubled, or
+illegible letterforms. If you are not confident a string of text will render cleanly, shorten it rather
+than risk illegible characters. If you are not confident whether a supplied value is already written in
+{{target_language}} or is still Korean, omit that text element entirely rather than guess or render it in
+the wrong language.
+Therefore, do NOT generate fake advertising copy, random English words, fake prices, fake discount percentages, URLs, CTAs, or pseudo typography.
+If a field is empty, null, missing, or unavailable, omit that element and let the layout rebalance
+naturally — never render a placeholder, "N/A", or blank box for it.
+If a {{company_logo}} reference image is supplied, faithfully reproduce that EXACT logo graphic — do not
+redesign, distort, restyle, or replace it. If none is supplied, leave the brand area empty.
+Preserve authentic text already printed on the physical product packaging.
+The generated visual composition must build real graphic typography zones into the composition itself —
+do not create generic empty text boxes.
+
+POP COLOR SYSTEM — CRITICAL
+Color is one of the PRIMARY design elements.
+Analyze the supplied product packaging and automatically create a bold complementary campaign palette.
+Use approximately 3-5 coordinated high-impact colors.
+Recommended structure:
+45-55% dominant vivid campaign color
+20-30% contrasting secondary color
+10-20% product-derived color
+5-10% accent color
+Use strong combinations when appropriate, such as:
+orange + electric blue + cream
+cobalt blue + vivid yellow + white
+hot pink + red + pale pink
+lime green + purple + cream
+coral + turquoise + yellow
+red + cobalt + warm ivory
+The palette must remain commercially sophisticated rather than random.
+Avoid muted beige-dominant palettes.
+Avoid gray-dominant palettes.
+Avoid pale minimalist palettes.
+Avoid monochromatic luxury palettes.
+At thumbnail size, the poster should immediately communicate COLOR.
+
+BACKGROUND DESIGN
+Do NOT default to realistic full-frame lifestyle photography.
+Unlike Minimal & Clean, the background may function as an active graphic design element.
+Use combinations of:
+bold solid color fields
+contrasting color blocks
+oversized circles
+geometric shapes
+abstract waves
+curved panels
+stripes
+checkerboard details
+graphic shadows
+oversized cropped shapes
+gradient blobs
+halftone-inspired textures
+playful editorial patterns
+Photography may be incorporated when appropriate, but it should interact with the graphic system rather than dominate the entire canvas.
+The background must feel intentionally art-directed.
+
+HERO PRODUCT — DYNAMIC PLACEMENT
+The supplied product must remain immediately recognizable and visually dominant.
+The hero product should occupy approximately 35-60% of visual attention.
+DO NOT automatically center the product vertically.
+Instead, consider:
+oversized product cropping
+diagonal positioning
+asymmetric placement
+product breaking through graphic shapes
+product overlapping typography-safe zones
+product emerging from a colored panel
+dynamic shadow beneath product
+floating product with controlled graphic depth
+product partially extending beyond a graphic boundary
+The product may be slightly rotated when visually appropriate.
+The composition should feel active rather than static.
+
+PRODUCT PRESERVATION
+Use the supplied product image as the source of truth.
+Preserve:
+packaging shape
+proportions
+container
+cap
+packaging color
+label placement
+recognizable graphics
+distinctive product identity
+DO NOT redesign the packaging.
+DO NOT replace the product.
+DO NOT change its packaging color.
+DO NOT create fictional variants.
+DO NOT distort its proportions.
+
+OVERSIZED TYPOGRAPHY COMPOSITION
+Typography must be treated as a MAJOR GRAPHIC ELEMENT — render {{product_name}} directly as real pixels.
+Reserve a dramatically large zone for {{product_name}}.
+The product name should be capable of occupying approximately 20-35% of the total composition.
+Think:
+HUGE DISPLAY TYPE
+not:
+small conventional advertising headline.
+Allow the headline zone to:
+span almost the full width
+use 1-3 stacked lines
+partially sit behind the product
+interact with graphic shapes
+extend close to canvas edges
+use aggressive editorial scale
+The final composition should support bold condensed or grotesk typography such as:
+Anton
+Archivo Black
+Bebas Neue
+League Spartan
+Montserrat Black
+Arial Black
+or a similar high-impact commercial display sans-serif.
+
+GRAPHIC LAYERING
+Use controlled overlapping layers.
+Possible visual depth:
+BACKGROUND COLOR
+-> LARGE GRAPHIC SHAPE
+-> OVERSIZED HEADLINE ZONE
+-> PRODUCT
+-> SMALL ACCENT GRAPHICS
+-> PROMOTIONAL BADGE
+The product may visually overlap part of the headline area.
+Graphic elements may partially leave the canvas.
+Shapes should not all remain safely inside margins.
+Use edge cropping deliberately.
+This creates the feeling of a professionally designed editorial advertisement rather than a template.
+
+PROMOTIONAL PRICE AREA
+Price and promotional price must feel highly visible.
+Create a strong promotional graphic element such as:
+circular sticker
+starburst
+oversized circle
+contrasting rectangular block
+speech-bubble-inspired shape
+bold corner badge
+irregular pop-art badge
+The promotional area should feel intentionally louder than in Minimal & Clean.
+If both regular and promotional prices exist, visually support:
+regular price = secondary
+promotional price = dominant.
+Render the real supplied price text exactly as given — never invent, estimate, or alter a price.
+
+DECORATIVE GRAPHICS
+Use approximately 3-7 supporting graphic elements where appropriate.
+Examples:
+stars
+spark shapes
+circles
+dots
+arrows
+curved lines
+geometric fragments
+checkerboard patterns
+outlined shapes
+oversized quotation-like marks
+sticker-style shapes
+graphic fruit/ingredient silhouettes when directly relevant
+These elements should create visual rhythm.
+They must NEVER appear as random decoration.
+Each should support either:
+the product,
+typography,
+promotion,
+visual movement.
+
+COMPOSITION — 4:5
+When:
+{{selected_aspect_ratio}} = 4:5
+create a compact, high-impact social-commerce poster.
+Suggested visual structure:
+TOP / UPPER:
+-> small logo zone
+-> supporting tagline zone
+-> VERY LARGE product-name typography zone
+CENTER:
+-> oversized hero product
+-> overlapping graphic shapes
+SIDE / CENTER:
+-> promotional badge
+LOWER:
+-> secondary product information
+-> continued graphic composition
+The design should occupy approximately 85-95% of the canvas visually.
+Use deliberate edge cropping.
+Avoid large blank margins.
+
+COMPOSITION — 9:16
+When:
+{{selected_aspect_ratio}} = 9:16
+recompose the campaign specifically for vertical mobile viewing.
+Do NOT simply stretch the 4:5 design.
+Use the tall format to create visual movement from top to bottom.
+Suggested flow:
+TOP
+-> logo + graphic accent
+UPPER
+-> oversized headline zone
+UPPER-MIDDLE
+-> hero product entering or overlapping headline
+CENTER
+-> product + strong graphic composition
+CENTER-LOWER
+-> promotional badge
+LOWER
+-> supporting information
+BOTTOM
+-> graphic continuation / pattern / color block
+Maintain strong visual activity across the entire vertical canvas.
+
+ASYMMETRY — IMPORTANT
+Perfectly centered layouts should NOT be the default.
+Prefer a controlled asymmetric grid.
+For example:
+large headline aligned left
+hero product shifted right
+promotion badge breaking into the opposite side
+large cropped background circle
+small accent graphics creating directional movement.
+The composition should feel balanced without being symmetrical.
+
+VISUAL ENERGY TARGET
+The viewer should perceive approximately:
+LARGE PRODUCT NAME
+HERO PRODUCT
+PROMOTIONAL PRICE
+BOLD COLOR COMBINATION
+TAGLINE
+PRODUCT DESCRIPTION
+LOGO
+The overall impression should be:
+LOUD BUT DESIGNED.
+PLAYFUL BUT PROFESSIONAL.
+COLORFUL BUT COORDINATED.
+DYNAMIC BUT READABLE.
+
+STRICTLY AVOID
+Do NOT create:
+minimalist white advertising layouts
+beige luxury layouts
+centered product catalog images
+subtle neutral gradients
+huge empty spaces
+tiny products
+tiny headline zones
+conventional symmetric layouts
+restrained corporate layouts
+generic studio product photography
+photographic background dominating the entire canvas
+random rainbow colors
+excessive decorative clutter
+childish clip-art aesthetics
+fake typography
+fake prices
+fake discounts
+fake claims
+mockup frames
+multiple poster variations inside one image
+
+CRITICAL DIFFERENTIATION TEST
+Before generating, mentally compare this result with a hypothetical Minimal & Clean version of the same product.
+If both posters would have:
+similar product placement
+similar background structure
+similar typography scale
+similar spacing
+similar promotional badge
+similar composition
+then the Pop & Colorful design has FAILED.
+Recompose it.
+The Pop & Colorful version must have visibly stronger:
+COLOR CONTRAST
+ASYMMETRY
+OVERSIZED TYPOGRAPHY
+GRAPHIC SHAPES
+OVERLAPPING
+PROMOTIONAL ENERGY
+EDGE CROPPING
+VISUAL RHYTHM
+
+FINAL QUALITY CHECK
+Before generating, verify:
+Exactly ONE poster is generated.
+The selected 4:5 or 9:16 ratio is respected.
+The design is natively composed for that ratio.
+High-saturation color is immediately noticeable.
+At least one strong complementary color contrast exists.
+The product is large and recognizable.
+The product packaging remains accurate.
+The headline zone is dramatically oversized.
+The composition uses meaningful graphic layering.
+The layout is intentionally asymmetric.
+The promotion area has strong visual presence.
+The canvas feels approximately 85-95% visually designed.
+Edge cropping or off-canvas graphic elements are used where appropriate.
+No large accidental blank areas exist.
+No unsupported claims are invented.
+No fake advertising text is generated.
+The design does NOT resemble Minimal & Clean.
+The result feels like a professionally art-directed modern pop commercial campaign.
+FINAL TARGET
+Create a bold, high-energy, contemporary commercial product poster combining:
+VIVID CONTRASTING COLORS
+OVERSIZED DISPLAY TYPOGRAPHY
+LARGE HERO PRODUCT
+ASYMMETRIC COMPOSITION
+GRAPHIC SHAPES
+OVERLAPPING LAYERS
+BOLD PROMOTIONAL BADGE
+EDGE-CROPPED ELEMENTS
+HIGH VISUAL DENSITY
+The result should look like a professionally art-directed social-commerce campaign that immediately stands apart from Minimal & Clean, Luxury & Premium, and Emotional & Mood templates — all typography and the logo are already rendered in the image, in {{target_language}} only."""
+
+
+def _pop_colorful_poster_prompt(
+    product_name: str, description: str, tagline: str, price: str, aspect_ratio: str,
+    logo_render_note: str = "", target_language: str = "ko",
+) -> str:
+    values = {
+        "product_image": "(첨부된 참고 이미지 속 실제 상품 사진을 그대로 사용하세요)",
+        "company_logo": logo_render_note,
+        "product_name": product_name,
+        "company_slogan_or_tagline": tagline,
+        "product_description": description,
+        "price": price,
+        "promotion_price": "",
+        "product_category": "",
+        "selected_aspect_ratio": aspect_ratio,
+        "target_language": TRANSLATE_LANGUAGE_NAMES.get(target_language) or "Korean",
+    }
+    return _apply_prompt_template(POP_COLORFUL_POSTER_PROMPT, values)
+
+
+EMOTIONAL_MOOD_POSTER_PROMPT = """ROLE
+You are a senior commercial art director, fashion editorial designer, and lifestyle photographer specializing in emotional beauty campaigns, premium lifestyle advertising, warm editorial photography, and sophisticated brand storytelling.
+Create exactly ONE premium emotional product advertising poster based on the supplied product image, brand information, product information, and selected aspect ratio.
+The design concept is:
+EMOTIONAL & MOOD
+Create a visually sophisticated advertising poster that evokes emotion through:
+warm color tones
+atmospheric photography
+intimate lifestyle imagery
+cinematic lighting
+editorial composition
+strong visual storytelling
+sophisticated typography-aware layout
+premium brand mood
+The poster should feel like a professionally art-directed beauty or lifestyle campaign from a contemporary fashion or beauty magazine.
+It must feel emotional and atmospheric, but still work as a clear commercial product advertisement.
+
+CORE DESIGN PHILOSOPHY
+IMPORTANT:
+"Emotional & Mood" does NOT mean:
+empty beige background
+simple product catalog photography
+generic flowers beside a product
+excessive blank space
+blurry stock photography
+overly romantic decoration
+Instead, interpret Emotional & Mood as:
+ATMOSPHERIC PHOTOGRAPHY
+HUMAN EMOTION OR LIFESTYLE STORY
+WARM COLOR GRADING
+LARGE EDITORIAL TYPOGRAPHY SPACE
+PRODUCT INTEGRATION
+STRONG BRAND MOOD
+The image should make the viewer feel something before reading the information.
+
+REFERENCE STYLE
+Use the supplied reference image as inspiration for:
+warm editorial color grading
+intimate human close-up photography
+large facial or lifestyle imagery
+oversized headline composition
+product layered over or integrated with the scene
+sophisticated beauty campaign mood
+strong vertical hierarchy
+warm shadows
+modern fashion editorial aesthetic
+product and typography visually interacting
+full-frame composition
+Do NOT copy:
+the exact people
+exact faces
+exact product
+exact wording
+exact headline
+exact brand
+exact layout
+exact colors
+Reinterpret the visual philosophy according to the actual product.
+
+OUTPUT
+Generate exactly:
+ONE advertising poster
+Use:
+{{selected_aspect_ratio}}
+Possible values:
+4:5
+9:16
+The entire composition must be designed natively for the selected aspect ratio.
+Do NOT:
+generate multiple posters
+generate a collage
+create a mockup
+create a square image
+generate 4:5 and crop it into 9:16
+stretch an existing composition
+
+ASPECT RATIO — 4:5
+If:
+{{selected_aspect_ratio}} = 4:5
+Create a balanced vertical editorial advertising poster.
+Use a compact but emotionally powerful composition.
+Recommended visual hierarchy:
+TOP
+-> logo / small brand area
+UPPER TO CENTER
+-> large product-name typography-safe area
+CENTER
+-> emotional lifestyle image + product interaction
+LOWER-MIDDLE
+-> tagline / product description area
+LOWER
+-> price area
+Use the entire frame intentionally.
+The poster should work especially well for:
+social feed advertising
+e-commerce campaign imagery
+product promotion
+brand campaign content
+Do NOT leave a large empty lower area.
+
+ASPECT RATIO — 9:16
+If:
+{{selected_aspect_ratio}} = 9:16
+Create a tall cinematic editorial poster.
+Use the additional vertical space for storytelling.
+Recommended flow:
+TOP
+-> logo / atmospheric opening
+UPPER
+-> large product-name area
+UPPER-MIDDLE / CENTER
+-> emotional lifestyle visual
+CENTER
+-> hero product
+LOWER-MIDDLE
+-> tagline + product description
+LOWER
+-> price / promotional price
+BOTTOM
+-> subtle continuation of the photographic environment
+The result should feel specifically designed for:
+Stories
+Reels
+vertical mobile advertising
+full-screen campaign content
+Do NOT simply extend a 4:5 background.
+Recompose the visual specifically for 9:16.
+
+INPUT DATA
+Use available application data:
+{{product_image}}
+{{company_logo}}
+{{product_name}}
+{{company_slogan_or_tagline}}
+{{product_description}}
+{{price}}
+{{promotion_price}}
+{{product_category}}
+{{selected_aspect_ratio}}
+Use only information that is actually supplied.
+Never invent missing information.
+
+ON-IMAGE TYPOGRAPHY SYSTEM
+There is no separate frontend text overlay for this template. Gemini is responsible for photography,
+model or lifestyle scene, product integration, background, lighting, shadows, atmospheric elements,
+composition, AND typography — the entire poster is rendered directly into the final image.
+Render the actual supplied values for:
+{{company_logo}}
+{{product_name}}
+{{company_slogan_or_tagline}}
+{{product_description}}
+{{price}}
+{{promotion_price}}
+Render every text field's ACTUAL supplied value exactly as given — do not paraphrase, translate loosely,
+or invent wording. Every rendered text field must be written in {{target_language}} only — never mix in
+Korean or any other language, even if the source data looks like it could be Korean. Keep every line of
+rendered text crisp, correctly spelled, and fully legible — never render smudged, warped, doubled, or
+illegible letterforms. If you are not confident a string of text will render cleanly, shorten it rather
+than risk illegible characters. If you are not confident whether a supplied value is already written in
+{{target_language}} or is still Korean, omit that text element entirely rather than guess or render it in
+the wrong language.
+Therefore:
+Do NOT create:
+fake product names
+fake slogans
+fake prices
+fake discount percentages
+fake CTA
+website addresses
+social media handles
+random English words
+meaningless letters
+pseudo typography
+fake logos
+If a field is empty, null, missing, or unavailable, omit that element and let the layout rebalance
+naturally — never render a placeholder, "N/A", or blank box for it.
+If a {{company_logo}} reference image is supplied, faithfully reproduce that EXACT logo graphic — do not
+redesign, distort, restyle, or replace it. If none is supplied, leave the brand area empty.
+Preserve only authentic text already physically printed on the supplied product packaging.
+
+IMPORTANT — TYPOGRAPHY-AWARE COMPOSITION
+The visual composition must be designed around bold editorial typography that you render directly.
+Do NOT simply leave a blank rectangle for text.
+Instead, create a composition where the typography feels intentionally integrated into the photography.
+The final composition must render:
+1. PRODUCT NAME
+Very large and visually dominant.
+2. TAGLINE
+Emotional supporting message.
+3. PRODUCT DESCRIPTION
+Short secondary copy.
+4. PRICE / PROMOTIONAL PRICE
+Clear commercial information.
+5. COMPANY LOGO
+Small but independent brand signature.
+
+PRODUCT NAME AREA — CRITICAL
+The product name must be one of the strongest elements in the poster.
+Reserve enough visual space for an oversized headline.
+Intended typography:
+bold condensed sans-serif
+editorial grotesk
+modern fashion display type
+ExtraBold / Black
+strong vertical presence
+tight line spacing
+dramatic scale
+Typography feeling similar to:
+Anton
+Archivo Black
+Bebas Neue
+Helvetica Neue Condensed Bold
+League Gothic
+Neue Haas Grotesk Display
+The headline may occupy approximately:
+20-35% of the visual hierarchy.
+Render the product name in 2-3 large lines similar to a fashion editorial cover.
+
+TYPOGRAPHY AND SUBJECT LAYERING
+Inspired by high-end editorial design, allow the composition to support controlled layering between:
+product
+typography
+model
+background
+For example:
+the product may visually overlap part of the headline area,
+or
+the headline may appear behind part of the product,
+while remaining readable.
+However:
+Do NOT place typography directly over important facial features such as:
+eyes
+nose
+mouth
+Protect important human features.
+The composition should feel intentionally layered, not randomly overlapped.
+
+EMOTIONAL LIFESTYLE PHOTOGRAPHY
+Whenever appropriate for the product category, create an emotional lifestyle scene.
+For beauty, skincare, fashion, wellness, or personal-care products, human presence is strongly encouraged.
+Possible visual approaches:
+intimate facial close-up
+two or more people naturally interacting
+warm skin close-up
+model touching face naturally
+quiet candid moment
+mirror reflection
+soft beauty portrait
+natural lifestyle interaction
+relaxed emotional expression
+The image should feel like a real editorial photoshoot.
+Avoid obvious stock-photo posing.
+
+HUMAN MODEL STYLE
+Models should feel:
+natural
+confident
+intimate
+contemporary
+sophisticated
+approachable
+emotionally expressive
+Use realistic:
+skin texture
+facial proportions
+hair
+hands
+eyes
+lighting
+Avoid:
+plastic skin
+excessive retouching
+uncanny faces
+malformed hands
+artificial smiles
+exaggerated beauty filters
+generic AI influencer appearance
+The people should look professionally photographed rather than AI-generated.
+
+IMPORTANT — MODEL ADAPTATION
+Do NOT force human models for every category.
+If a human model is inappropriate for the supplied product, create emotional storytelling through:
+atmospheric environment
+natural materials
+warm lighting
+tactile close-ups
+lifestyle context
+intimate product photography
+The emotional mood is mandatory.
+Human presence is conditional.
+
+PRODUCT — HERO ROLE
+The supplied product must remain commercially important.
+Even when a large human portrait is used, the product cannot become an insignificant accessory.
+The product should occupy approximately:
+25-45% of visual attention
+depending on the composition.
+The product may:
+appear prominently in the foreground
+float naturally over the editorial image
+be held naturally by a model
+appear close to the face
+rest on a relevant surface
+overlap the headline typography
+integrate into the photographic story
+The product should feel intentionally art-directed.
+
+PRODUCT PRESERVATION — CRITICAL
+Use {{product_image}} as the source of truth.
+Preserve:
+package shape
+container proportions
+cap
+bottle or tube structure
+packaging colors
+recognizable label placement
+brand graphics
+distinctive product characteristics
+Do NOT:
+redesign the product
+change packaging colors
+replace the product
+invent another product variant
+distort the product
+change container proportions
+create fake packaging claims
+The final product must remain recognizable as the supplied product.
+
+MOOD & COLOR
+Build the color palette from the actual product and brand.
+The overall color treatment should be:
+warm
+cohesive
+atmospheric
+sophisticated
+emotionally rich
+slightly cinematic
+Possible palette families include:
+Warm Neutral
+cream + caramel + warm brown + ivory
+Warm Rose
+dusty rose + nude + terracotta + cream
+Golden
+warm beige + amber + honey + deep brown
+Soft Natural
+sage + warm ivory + muted olive + skin tone
+Warm Peach
+peach + coral + cream + soft brown
+These are examples only.
+Do NOT force brown or beige onto every product.
+
+PRODUCT-ADAPTIVE COLOR RULE
+The Emotional & Mood template must adapt to the actual product.
+For example:
+Pink cosmetic
+-> dusty rose + nude + warm cream
+Green skincare
+-> muted sage + ivory + warm olive
+Blue skincare
+-> muted blue-gray + cream + warm skin tones
+Orange product
+-> terracotta + warm peach + cream
+Black product
+-> espresso brown + charcoal + warm beige
+White product
+-> ivory + caramel + subtle brand accent
+The final palette should remain warm and emotionally cohesive.
+
+COLOR GRADING
+Apply cinematic editorial color grading.
+Prefer:
+warm highlights
+slightly muted saturation
+rich skin tones
+soft blacks
+gentle contrast
+warm shadows
+natural film-like depth
+Avoid:
+neon colors
+overly saturated pop colors
+cold clinical lighting
+harsh pure white backgrounds
+excessive HDR
+artificial orange skin
+The result should feel premium and photographic.
+
+LIGHTING
+Use emotionally expressive natural or studio lighting.
+Preferred:
+golden-hour light
+warm window light
+diffused sunlight
+soft side lighting
+gentle backlight
+warm studio light
+subtle shadow patterns
+Use light to create mood.
+Do NOT make every area equally bright.
+Allow controlled shadows and depth.
+
+BACKGROUND
+Prefer a full-frame photographic environment.
+Possible environments:
+close-up human portrait
+warm interior
+soft bedroom light
+vanity
+sunlit wall
+linen
+warm stone
+wood
+subtle nature
+beach at golden hour
+softly lit bathroom
+contemporary lifestyle space
+The background should contribute emotionally to the campaign.
+Avoid generic blurred stock backgrounds.
+
+FULL-FRAME COMPOSITION
+Use the entire canvas intentionally.
+The reference design feels powerful because the photograph extends throughout the poster.
+Therefore:
+Do NOT create:
+large unused white areas
+empty lower half
+huge plain beige gradient
+isolated small product
+product floating in empty space
+Aim for approximately:
+75-90% visually intentional composition
+while keeping information hierarchy clean.
+
+TAGLINE AREA
+Render the actual supplied value for:
+{{company_slogan_or_tagline}}
+The tagline should feel emotional and aspirational.
+It should appear smaller than the product name but larger than the product description.
+Provide enough space for approximately:
+1-2 lines.
+
+PRODUCT DESCRIPTION AREA
+Render the actual supplied value for:
+{{product_description}}
+The description should be visually secondary.
+Provide enough readable space for approximately:
+2-4 short lines.
+Do not create a huge empty rectangle for it.
+Integrate the area naturally into the editorial composition.
+
+PRICE AREA
+Render the actual supplied value for:
+{{price}}
+and when available:
+{{promotion_price}}
+Unlike the Pop & Colorful template, the price should NOT dominate through a bright sale badge.
+Instead, integrate it elegantly.
+Possible treatment:
+clean typography area
+subtle outlined pill
+restrained solid shape
+elegant corner placement
+small contrasting block
+The price must remain noticeable but should not destroy the emotional mood.
+Render the real supplied price text exactly as given — never invent, estimate, or alter a price.
+
+LOGO AREA
+Render the actual supplied value for:
+{{company_logo}}
+Possible placements:
+top center
+top left
+top right
+The logo should feel like a subtle brand signature.
+Do not make it visually dominant.
+
+COMPOSITION STYLE
+Strong compositions may include:
+OPTION A — EDITORIAL PORTRAIT
+Large human portrait fills the background.
+Oversized product-name area integrated around the face.
+Product placed prominently near center.
+Tagline and description lower.
+Price subtly placed.
+OPTION B — INTIMATE PRODUCT + MODEL
+Close crop of model skin / hand / face.
+Product appears naturally in foreground.
+Large headline uses surrounding negative visual zones.
+OPTION C — ATMOSPHERIC PRODUCT STORY
+No model.
+Full-frame warm lifestyle environment.
+Large product integrated into environment.
+Strong editorial headline zone.
+Atmospheric lighting and texture create emotion.
+Choose intelligently according to product category.
+
+VISUAL DIFFERENTIATION
+This template must clearly differ from:
+MINIMAL & CLEAN
+Do NOT rely primarily on neutral studio backgrounds and isolated product shots.
+POP & COLORFUL
+Do NOT use:
+loud complementary colors
+playful stickers
+graphic bursts
+cartoon shapes
+excessive promotional badges
+energetic pop-art graphics
+Emotional & Mood should instead communicate:
+WARMTH + HUMANITY + ATMOSPHERE + STORY + EDITORIAL BEAUTY.
+
+DO NOT
+Do NOT generate:
+fake text
+fake logo
+fake price
+fake discounts
+fake certifications
+fake ingredients
+fake product claims
+generic stock photography
+excessive flowers
+random decorative props
+empty beige backgrounds
+tiny centered product
+cold clinical design
+loud pop graphics
+excessive promotional stickers
+artificial AI-looking models
+
+FINAL QUALITY CHECK
+Before generating, verify:
+Exactly ONE poster is generated.
+The selected aspect ratio is exactly 4:5 or 9:16.
+The composition is designed specifically for that ratio.
+The entire frame feels intentionally composed.
+The supplied product remains recognizable.
+The product has strong commercial presence.
+The visual feels emotional and atmospheric.
+Warm editorial color grading is present.
+Human models look realistic when used.
+Product-name space is large and dramatic.
+Tagline space is clearly available.
+Product-description space is available.
+Price space is clearly available.
+Logo space is available.
+No fake advertising typography is generated.
+No unsupported product information is invented.
+The result does NOT resemble Minimal & Clean.
+The result does NOT resemble Pop & Colorful.
+The poster resembles a professionally art-directed fashion, beauty, or lifestyle campaign.
+The final image creates an emotional response while still clearly selling the product.
+FINAL GOAL
+Create a premium Emotional & Mood commercial poster that combines:
+WARM EDITORIAL PHOTOGRAPHY
+EMOTIONAL STORYTELLING
+HUMAN OR LIFESTYLE PRESENCE
+LARGE TYPOGRAPHY-AWARE COMPOSITION
+PROMINENT PRODUCT
+SOPHISTICATED PRICE PLACEMENT
+CINEMATIC COLOR GRADING
+STRONG BRAND MOOD
+The final poster should feel intimate, stylish, warm, memorable, and professionally art-directed — with
+PRODUCT NAME + TAGLINE + PRODUCT DESCRIPTION + PRICE + LOGO already rendered directly in the image, in
+{{target_language}} only."""
+
+
+def _emotional_mood_poster_prompt(
+    product_name: str, description: str, tagline: str, price: str, aspect_ratio: str,
+    logo_render_note: str = "", target_language: str = "ko",
+) -> str:
+    values = {
+        "product_image": "(첨부된 참고 이미지 속 실제 상품 사진을 그대로 사용하세요)",
+        "company_logo": logo_render_note,
+        "product_name": product_name,
+        "company_slogan_or_tagline": tagline,
+        "product_description": description,
+        "price": price,
+        "promotion_price": "",
+        "product_category": "",
+        "selected_aspect_ratio": aspect_ratio,
+        "target_language": TRANSLATE_LANGUAGE_NAMES.get(target_language) or "Korean",
+    }
+    return _apply_prompt_template(EMOTIONAL_MOOD_POSTER_PROMPT, values)
+
+
+MODERN_BOLD_POSTER_PROMPT = """ROLE
+You are a senior graphic designer and commercial art director specializing in bold editorial posters, Swiss-inspired graphic design, contemporary branding, geometric advertising, and high-impact product campaigns.
+Create exactly ONE graphic advertising poster based on the supplied product image, product information, company branding, and selected aspect ratio.
+The concept is:
+MODERN & BOLD
+This is a GRAPHIC POSTER DESIGN, NOT a photographic studio scene.
+The design must be driven by:
+bold 2D geometric structure
+oversized typography-aware composition
+strong light-dark contrast
+limited color palette
+large product cutout
+asymmetric grid
+flat color blocking
+bold editorial hierarchy
+strong graphic rhythm
+The poster should feel like a professionally designed contemporary editorial poster.
+
+ABSOLUTE PRIORITY
+The final result must look like:
+GRAPHIC DESIGN FIRST
+PRODUCT CUTOUT SECOND
+PHOTOGRAPHY ONLY AS PRODUCT MATERIAL
+Do NOT interpret this as a luxury product photoshoot.
+Do NOT build a realistic studio room around the product.
+Do NOT create architectural 3D blocks.
+Do NOT create a marble pedestal.
+Do NOT create a dark photographic environment.
+Do NOT create a cinematic product scene.
+Do NOT create a beauty still-life photograph.
+The background must primarily be a flat graphic composition.
+
+OUTPUT
+Generate exactly:
+ONE poster
+Aspect ratio:
+{{selected_aspect_ratio}}
+Possible values:
+4:5
+9:16
+The design must be composed natively for the selected ratio.
+Do NOT:
+crop 4:5 into 9:16
+stretch the layout
+generate multiple versions
+generate a collage
+generate a mockup
+create a square image
+
+INPUT DATA
+Use:
+{{product_image}}
+{{company_logo}}
+{{product_name}}
+{{company_slogan_or_tagline}}
+{{product_description}}
+{{price}}
+{{promotion_price}}
+{{product_category}}
+{{selected_aspect_ratio}}
+Never invent missing information.
+
+ON-IMAGE TYPOGRAPHY SYSTEM
+There is no separate frontend text overlay for this template. Gemini generates the product cutout,
+graphic background, geometric shapes, color blocks, layout structure, shadows only when necessary,
+visual rhythm, AND typography — the entire poster is rendered directly into the final image.
+Render the actual supplied values for:
+{{company_logo}}
+{{product_name}}
+{{company_slogan_or_tagline}}
+{{product_description}}
+{{price}}
+{{promotion_price}}
+Render every text field's ACTUAL supplied value exactly as given — do not paraphrase, translate loosely,
+or invent wording. Every rendered text field must be written in {{target_language}} only — never mix in
+Korean or any other language, even if the source data looks like it could be Korean. Keep every line of
+rendered text crisp, correctly spelled, and fully legible — never render smudged, warped, doubled, or
+illegible letterforms. If you are not confident a string of text will render cleanly, shorten it rather
+than risk illegible characters. If you are not confident whether a supplied value is already written in
+{{target_language}} or is still Korean, omit that text element entirely rather than guess or render it in
+the wrong language.
+Therefore:
+Do NOT create:
+fake headline
+fake product name
+fake tagline
+fake company name
+fake price
+fake discount
+random letters
+random numbers
+fake logo
+CTA
+URL
+social media text
+If a field is empty, null, missing, or unavailable, omit that element and let the layout rebalance
+naturally — never render a placeholder, "N/A", or blank box for it.
+If a {{company_logo}} reference image is supplied, faithfully reproduce that EXACT logo graphic — do not
+redesign, distort, restyle, or replace it. If none is supplied, leave the brand area empty.
+Preserve only authentic text already physically printed on the product packaging.
+
+MOST IMPORTANT VISUAL RULE
+The poster must NOT look like:
+product photography
+luxury skincare photography
+dark studio scene
+architectural set
+realistic room
+marble still life
+black premium advertisement
+Instead, the poster must look like:
+A FLAT, HIGH-CONTRAST, GEOMETRIC GRAPHIC POSTER.
+
+REFERENCE DESIGN LOGIC
+Follow the reference poster for its design principles:
+very large typography area
+cream-colored graphic field
+strong dark-blue graphic field
+checkerboard fragments
+rectangular modules
+large quotation-mark graphics
+bold product cutout
+asymmetric placement
+limited color palette
+strong separation between information zones
+large graphic shapes extending to canvas edges
+graphic composition filling the entire frame
+Do NOT reproduce the exact coffee poster.
+Do NOT always use blue and cream.
+Translate the same graphic intensity to the supplied product.
+
+COLOR PALETTE
+Use only:
+2 dominant colors
++ 1 neutral
+optional 1 accent color
+Avoid many colors.
+The palette must have strong contrast.
+Examples:
+White/yellow product
+-> cream + deep navy + warm yellow
+Orange product
+-> cream + cobalt + orange
+Pink product
+-> pale blush + deep burgundy + cream
+Green product
+-> ivory + forest green + black
+Blue product
+-> cream + navy + bright blue
+Black product
+-> warm white + black + one vivid accent
+Adapt to the actual product.
+Do NOT default to black backgrounds.
+
+GRAPHIC BACKGROUND — CRITICAL
+At least 60-80% of the canvas should be visibly structured by flat graphic elements.
+Use:
+large rectangles
+cropped squares
+checker fragments
+diagonal color fields
+thick horizontal bars
+vertical blocks
+corner modules
+quotation-mark-inspired shapes
+circles
+repeated geometric patterns
+flat grid modules
+Shapes must be large enough to affect the whole composition.
+Do NOT use tiny decorative geometry.
+Do NOT place one small checker pattern in a corner and call the design geometric.
+The geometry must form the architecture of the poster.
+
+FLAT GRAPHIC STYLE
+Prefer:
+flat solid colors
+subtle matte texture
+paper-like surface
+crisp edges
+clean intersections
+simple hard boundaries
+bold color fields
+Avoid:
+realistic walls
+realistic rooms
+photographic architecture
+marble slabs
+glass pedestals
+3D exhibition stands
+excessive gradients
+The poster should feel designed in Illustrator or InDesign rather than photographed in a studio.
+
+PRODUCT CUTOUT
+Use {{product_image}} as the source of truth.
+Remove or isolate its original background.
+Treat the product as a professionally cut-out commercial object.
+Preserve:
+exact shape
+proportions
+cap
+packaging
+packaging color
+label placement
+recognizable identity
+Do NOT redesign the product.
+Do NOT replace it.
+Do NOT change its color.
+Do NOT generate additional product variants.
+
+PRODUCT SCALE
+The product must occupy approximately:
+35-50% of the poster's visual attention.
+The product should feel large and assertive.
+Do NOT place it as a small centered item.
+Preferred placement:
+center-right
+lower-center
+lower-right
+overlapping central grid
+partially crossing large color blocks
+Allow the product to break the graphic grid.
+
+PRODUCT AND GEOMETRY INTERACTION
+The product should interact with the geometry.
+For example:
+product crosses from a light block into a dark block
+product overlaps a large rectangle
+product breaks through a checker module
+product sits partially in front of a diagonal shape
+product visually connects two color zones
+Avoid simply placing the product on top of a finished background.
+The product should feel structurally integrated into the poster.
+
+TYPOGRAPHY-AWARE DESIGN
+Render the actual supplied typography directly into the image. Design large areas that support:
+PRODUCT NAME
+The product name must be the dominant text element.
+Reserve enough room for:
+extremely large text
+1-3 lines
+bold or editorial type
+tight line spacing
+The headline area should occupy approximately:
+25-35% of the visual hierarchy.
+Do NOT reserve a small conventional headline box.
+Make it large enough to function as a graphic element.
+
+TYPOGRAPHY STYLE
+The rendered typography may combine:
+Editorial Serif
+Bodoni
+Didot
+Cormorant Garamond
+DM Serif Display
+with
+Bold Modern Sans Serif
+Helvetica Neue Black
+Neue Haas Grotesk
+Archivo Black
+Anton
+Inter Black
+Create strong contrast between typography roles.
+Example visual principle:
+VERY LARGE SERIF WORD
+BOLD SANS-SERIF WORD
+Render {{product_name}} using this typographic system, exactly as supplied.
+
+TAGLINE AREA
+Render the actual supplied value for:
+{{company_slogan_or_tagline}}
+It should align strongly with the graphic grid.
+Possible placements:
+directly beneath the headline
+beside the product
+inside a contrasting rectangular block
+
+PRODUCT DESCRIPTION AREA
+Render the actual supplied value for:
+{{product_description}}
+Target:
+2-4 short lines.
+Place it in a clearly defined information module such as:
+bottom-left block
+dark horizontal strip
+side column
+contrasting rectangle
+The description must feel deliberately designed as part of the grid.
+
+PRICE AREA — CRITICAL
+Render the actual supplied value for:
+{{price}}
+and when available:
+{{promotion_price}}
+Use:
+rectangle
+side block
+corner block
+large numeric-safe field
+horizontal banner
+Avoid round sale badges.
+Price treatment should feel:
+graphic
+structured
+bold
+modern
+When promotional price exists:
+regular price
+-> smaller
+promotional price
+-> much larger
+Render the real supplied price text exactly as given — never invent, estimate, or alter a price.
+
+LOGO AREA
+Render the actual supplied value for:
+{{company_logo}}
+Use:
+top-left
+top-right
+small corner module
+Do not create a fake logo.
+
+SHADOW RULE
+Use minimal realistic shadow.
+The product may have:
+small contact shadow
+simple cast shadow
+but shadow must NOT turn the composition into a photographic scene.
+Avoid:
+deep cinematic shadow
+dramatic spotlight
+moody black lighting
+glossy luxury reflections
+The poster must remain primarily graphic.
+
+LIGHTING RULE
+Use clean product lighting only.
+Preferred:
+clear frontal light
+soft directional product highlight
+controlled realistic material rendering
+Do NOT use lighting as the main visual concept.
+Geometry and color must remain dominant.
+
+4:5 LAYOUT
+If:
+{{selected_aspect_ratio}} = 4:5
+Use a compact graphic layout.
+Recommended structure:
+TOP 25-30%
+-> logo
+-> oversized product-name zone
+CENTER 40-45%
+-> large product cutout
+-> diagonal or rectangular color blocks
+-> geometric pattern
+LOWER 25-30%
+-> tagline
+-> product description
+-> strong rectangular price module
+The entire canvas must feel filled and intentional.
+Do NOT leave an empty lower region.
+
+9:16 LAYOUT
+If:
+{{selected_aspect_ratio}} = 9:16
+Use a tall modular editorial grid.
+Recommended structure:
+TOP 20%
+-> logo
+-> oversized headline zone
+UPPER-MIDDLE 20%
+-> tagline
+-> major geometric block
+CENTER 30-35%
+-> large product cutout crossing multiple color fields
+LOWER-MIDDLE 15%
+-> checker / geometric rhythm
+BOTTOM 15-20%
+-> description module
+-> strong rectangular price block
+The bottom must visually complete the design.
+Do NOT leave the bottom dark, empty, or photographic.
+
+MANDATORY GEOMETRIC DENSITY
+The composition must contain at least:
+2 large color fields
+2-4 major geometric blocks
+1 repeating geometric motif or checker fragment
+1 strong asymmetrical alignment
+1 graphic module dedicated to price or information
+1 oversized typography-safe region
+These elements must be visibly important.
+They must not be tiny decorations.
+
+ASYMMETRY
+The design must be asymmetrical.
+Avoid:
+product perfectly centered
+equal left-right balance
+standard centered catalog layout
+Prefer:
+offset product
+uneven columns
+cropped shapes
+edge-aligned modules
+intentional overlaps
+The poster should feel designed, not templated.
+
+NO PHOTOGRAPHIC ENVIRONMENT
+Do NOT generate:
+marble table
+realistic interior
+beach
+bathroom
+studio room
+architectural blocks
+lifestyle photography
+human models
+blurred photographic background
+unless explicitly required by product data.
+For this template, the default should always be:
+GRAPHIC BACKGROUND + PRODUCT CUTOUT
+
+DIFFERENTIATION
+This design must NOT resemble:
+MINIMAL & CLEAN
+No soft neutral studio photography.
+POP & COLORFUL
+No stickers, splashes, cartoon bursts, or many saturated colors.
+EMOTIONAL & MOOD
+No cinematic portraits, warm lifestyle photography, or soft romantic lighting.
+Modern & Bold must communicate:
+STRUCTURE
+CONTRAST
+GEOMETRY
+SCALE
+CONFIDENCE
+
+DO NOT
+Do NOT create:
+dark luxury photography
+black studio backgrounds
+marble pedestals
+realistic architectural sets
+tiny centered product
+excessive empty space
+soft lifestyle photography
+random geometric decorations
+round sale badges
+neon effects
+playful stickers
+gradients as the main design
+fake typography
+fake prices
+fake claims
+fake logos
+
+FINAL QUALITY CHECK
+Before generating, confirm:
+This looks like a GRAPHIC POSTER, not a product photoshoot.
+Exactly ONE poster is generated.
+The selected aspect ratio is respected.
+4:5 and 9:16 are independently composed.
+Flat graphic color fields dominate the background.
+At least 60% of the canvas uses intentional geometric structure.
+At least 2 major contrasting color fields are present.
+The product is large and offset rather than small and centered.
+The product overlaps or crosses geometric elements.
+The typography-safe zone is extremely large.
+The tagline zone is visible.
+The description zone is integrated into a graphic module.
+The price zone is a strong rectangular or geometric module.
+The logo zone is clearly defined.
+No large accidental blank area exists.
+No dark luxury studio scene is present.
+No marble pedestal or architectural set is present.
+No fake text is generated.
+No unsupported product claims are invented.
+The final composition feels bold, modern, graphic, structured, and high-impact.
+FINAL GOAL
+Create a MODERN & BOLD GRAPHIC PRODUCT POSTER built from:
+LARGE PRODUCT CUTOUT
+OVERSIZED TYPOGRAPHY STRUCTURE
+LIMITED HIGH-CONTRAST PALETTE
+LARGE FLAT COLOR FIELDS
+ASYMMETRIC GRID
+GEOMETRIC MODULES
+STRONG RECTANGULAR PRICE AREA
+CLEAN INFORMATION BLOCKS
+The final poster should look like it was professionally designed in a contemporary graphic design studio.
+It must NOT look like a studio product photograph with text placed on top — all typography and the logo
+are already rendered directly in the graphic composition, in {{target_language}} only."""
+
+
+def _modern_bold_poster_prompt(
+    product_name: str, description: str, tagline: str, price: str, aspect_ratio: str,
+    logo_render_note: str = "", target_language: str = "ko",
+) -> str:
+    values = {
+        "product_image": "(첨부된 참고 이미지 속 실제 상품 사진을 그대로 사용하세요)",
+        "company_logo": logo_render_note,
+        "product_name": product_name,
+        "company_slogan_or_tagline": tagline,
+        "product_description": description,
+        "price": price,
+        "promotion_price": "",
+        "product_category": "",
+        "selected_aspect_ratio": aspect_ratio,
+        "target_language": TRANSLATE_LANGUAGE_NAMES.get(target_language) or "Korean",
+    }
+    return _apply_prompt_template(MODERN_BOLD_POSTER_PROMPT, values)
+
+
 def _apply_prompt_template(template: str, values: dict[str, str]) -> str:
     """{{token}} 형태의 자리표시자를 실제 값으로 치환한다. 값이 없는 항목은 빈 문자열로 남겨서,
     프롬프트 자체가 갖고 있는 "데이터 없으면 지어내지 말고 비워두라"는 규칙이 그대로 작동하게 한다."""
@@ -4374,7 +6408,8 @@ def _apply_prompt_template(template: str, values: dict[str, str]) -> str:
 
 
 def _luxury_premium_poster_prompt(
-    product_name: str, description: str, tagline: str, price: str, brand_name: str, aspect_ratio: str
+    product_name: str, description: str, tagline: str, price: str, brand_name: str, aspect_ratio: str,
+    target_language: str = "ko",
 ) -> str:
     values = {
         "product_image": "(첨부된 참고 이미지 속 실제 상품 사진을 그대로 사용하세요)",
@@ -4394,8 +6429,28 @@ def _luxury_premium_poster_prompt(
         "accent_color": "",
         "target_market": "",
         "aspect_label": aspect_ratio,
+        "target_language": TRANSLATE_LANGUAGE_NAMES.get(target_language) or "Korean",
     }
     return _apply_prompt_template(LUXURY_PREMIUM_POSTER_PROMPT, values)
+
+
+def _minimal_clean_poster_prompt(
+    product_name: str, description: str, tagline: str, price: str, aspect_ratio: str,
+    logo_render_note: str = "", target_language: str = "ko",
+) -> str:
+    values = {
+        "product_image": "(첨부된 참고 이미지 속 실제 상품 사진을 그대로 사용하세요)",
+        "company_logo": logo_render_note,
+        "product_name": product_name,
+        "company_slogan_or_tagline": tagline,
+        "product_description": description,
+        "price": price,
+        "promotion_price": "",
+        "product_category": "",
+        "selected_aspect_ratio": aspect_ratio,
+        "target_language": TRANSLATE_LANGUAGE_NAMES.get(target_language) or "Korean",
+    }
+    return _apply_prompt_template(MINIMAL_CLEAN_POSTER_PROMPT, values)
 
 
 # 포스터 템플릿이 고를 수 있는 세로 비율 — 피드용(4:5)과 스토리/모바일 전면(9:16) 중 사용자가 고른다.
@@ -4413,16 +6468,61 @@ def _with_notes(prompt: str, *notes: str) -> str:
 def _generate_poster(
     user_id, gen_id, reference_images, product_name, description, must_have_photo,
     style_hint="", template_id="", tagline="", price="", brand_name="", logo_note="",
-    aspect_ratio=DEFAULT_POSTER_ASPECT_RATIO, model_note="",
+    aspect_ratio=DEFAULT_POSTER_ASPECT_RATIO, model_note="", target_language="ko",
 ):
     if aspect_ratio not in POSTER_ASPECT_RATIOS:
         aspect_ratio = DEFAULT_POSTER_ASPECT_RATIO
+
+    # 이 템플릿에 참고 디자인 이미지가 등록돼 있으면(TEMPLATE_STYLE_REFERENCE_IMAGES) 상품 사진/로고
+    # 뒤에 맨 마지막으로 덧붙여서, 실제 톤·구도·밀도를 예시로 보여준다.
+    style_ref = TEMPLATE_STYLE_REFERENCE_IMAGES.get(template_id)
+    gen_reference_images = [*reference_images, style_ref] if style_ref else reference_images
+    style_ref_note = STYLE_REFERENCE_NOTE if style_ref else ""
+
+    # 럭셔리&프리미엄을 제외한 모든 포스터 템플릿은 카드뉴스처럼 문구(상품명·태그라인·가격)와 로고를
+    # 이미지 픽셀에 직접 그려 넣는다 — 프론트는 더 이상 텍스트를 오버레이하지 않는다. 그래서 로고도
+    # "문자·워터마크처럼 렌더링하지 말라"는 LOGO_REFERENCE_NOTE(logo_note) 대신, 실제 업로드된 로고를
+    # 그대로 재현하라는 지시를 프롬프트 값 자체에 심는다(카드뉴스의 logo_render_note와 동일한 패턴).
+    # 럭셔리만 로고 대신 브랜드명 텍스트(brand_name)를 쓰므로 예외로 둔다.
+    logo_render_note = (
+        "(첨부된 참고 이미지 속 실제 로고입니다 — 다른 로고를 지어내지 말고 이 로고를 그대로 재현해서 "
+        "작은 브랜드 영역에 배치하세요)"
+        if logo_note
+        else ""
+    )
+
     if template_id == "tpl-poster-luxury":
-        prompt = _luxury_premium_poster_prompt(product_name, description, tagline, price, brand_name, aspect_ratio)
+        prompt = _luxury_premium_poster_prompt(
+            product_name, description, tagline, price, brand_name, aspect_ratio, target_language
+        )
+        prompt = _with_notes(prompt, logo_note, model_note, style_ref_note)
+    elif template_id == "tpl-poster-minimal":
+        prompt = _minimal_clean_poster_prompt(
+            product_name, description, tagline, price, aspect_ratio, logo_render_note, target_language
+        )
+        prompt = _with_notes(prompt, model_note, style_ref_note)
+    elif template_id == "tpl-poster-pop":
+        prompt = _pop_colorful_poster_prompt(
+            product_name, description, tagline, price, aspect_ratio, logo_render_note, target_language
+        )
+        prompt = _with_notes(prompt, model_note, style_ref_note)
+    elif template_id == "tpl-poster-emotional":
+        prompt = _emotional_mood_poster_prompt(
+            product_name, description, tagline, price, aspect_ratio, logo_render_note, target_language
+        )
+        prompt = _with_notes(prompt, model_note, style_ref_note)
+    elif template_id == "tpl-poster-modern":
+        prompt = _modern_bold_poster_prompt(
+            product_name, description, tagline, price, aspect_ratio, logo_render_note, target_language
+        )
+        prompt = _with_notes(prompt, model_note, style_ref_note)
     else:
-        prompt = _poster_prompt(description, must_have_photo, style_hint, aspect_ratio)
-    prompt = _with_notes(prompt, logo_note, model_note)
-    image_bytes, mime = _generate_image(prompt, reference_images, aspect_ratio)
+        prompt = _poster_prompt(
+            product_name, description, must_have_photo, style_hint, aspect_ratio, tagline, price,
+            logo_render_note, target_language,
+        )
+        prompt = _with_notes(prompt, model_note, style_ref_note)
+    image_bytes, mime = _generate_image(prompt, gen_reference_images, aspect_ratio)
     return {"images": [_upload_generated_image(user_id, gen_id, "poster", image_bytes, mime)]}
 
 
@@ -4431,16 +6531,28 @@ def _generate_card_news(
     logo_note="", tagline="", price="", brand_name="", target_language="ko", template_id="",
 ):
     # 카드 장수는 4장으로 고정한다 — 레이아웃마다 다른 건 카드 수가 아니라 프롬프트에 얹는 스타일 톤이다.
-    copy = _generate_copy_json(_card_news_copy_prompt(product_name, description), CARD_NEWS_COPY_SCHEMA)
+    # 여기서 만드는 features/promoLine은 이미지 픽셀에 그대로 구워지므로, 반드시 실제 요청 언어로
+    # 생성해야 한다 — 한국어로 만들어놓고 나중에 화면에서만 번역하면 이미지 속 글자는 그대로 한글로 남는다.
+    target_language_name = TRANSLATE_LANGUAGE_NAMES.get(target_language) or "Korean"
+    copy = _generate_copy_json(
+        _card_news_copy_prompt(product_name, description, target_language), CARD_NEWS_COPY_SCHEMA
+    )
     features = copy.get("features") or []
     promo_line = copy.get("promoLine") or ""
     benefit_slots = (features + ["", "", ""])[:3]
+    # 로고는 계정 프로필의 회사명이 아니라 Step 1에서 실제로 올린 로고 이미지만 쓴다 — 있으면 그대로
+    # 재현하고, 없으면 브랜드 영역을 비워둔다.
+    logo_render_note = (
+        "(첨부된 참고 이미지 속 실제 로고입니다 — 다른 로고를 지어내지 말고 이 로고를 그대로 재현해서 "
+        "작은 브랜드 영역에 배치하세요)"
+        if logo_note
+        else ""
+    )
 
     if template_id == "tpl-cardnews-minimal":
         # "클린 & 에디토리얼"만 예외로, 전용 4페이지 캠페인 프롬프트(CLEAN_EDITORIAL_CARD_NEWS_PROMPT)를 쓴다.
         clean_values = {
-            "company_name": brand_name,
-            "company_logo": "(첨부된 참고 이미지 중 로고 이미지를 참고하세요)" if logo_note else "",
+            "company_logo": logo_render_note,
             "company_slogan": tagline,
             "product_name": product_name,
             "product_description": description,
@@ -4448,6 +6560,7 @@ def _generate_card_news(
             "regular_price": "",
             "promotion_price": price,
             "product_images": "(첨부된 참고 이미지 속 실제 상품 사진을 그대로 사용하세요)",
+            "target_language": target_language_name,
         }
         slot_prompts = [
             ("card-1", _clean_editorial_card_prompt("PAGE_01_PRODUCT_HERO", clean_values, style_hint)),
@@ -4484,10 +6597,10 @@ def _generate_card_news(
         "currency": "",
         "promotion_text": promo_line,
         "cta": "",
-        "target_language": target_language,
+        "target_language": target_language_name,
         "product_image": "(첨부된 참고 이미지 속 실제 상품 사진을 그대로 사용하세요)",
         "detail_image": "",
-        "brand_logo": "(첨부된 참고 이미지 중 로고 이미지를 참고하세요)" if logo_note else "",
+        "brand_logo": logo_render_note,
     }
 
     must_have_note = (
@@ -4513,6 +6626,7 @@ def _generate_card_news(
 
 def _generate_detail(
     user_id, gen_id, reference_images, product_name, description, style_hint="", logo_note="", model_note="",
+    template_id="",
 ):
     captions_result = _generate_copy_json(_detail_captions_prompt(product_name, description), DETAIL_CAPTIONS_SCHEMA)
     captions = (captions_result.get("captions") or [])[:3]
@@ -4521,13 +6635,19 @@ def _generate_detail(
 
     images = []
 
-    hero_prompt = _with_notes(_detail_hero_prompt(description, style_hint), logo_note, model_note)
-    hero_bytes, hero_mime = _generate_image(hero_prompt, reference_images, "16:9")
+    # 이 템플릿에 참고 디자인 이미지가 등록돼 있으면(TEMPLATE_STYLE_REFERENCE_IMAGES) 상품 사진/로고
+    # 뒤에 맨 마지막으로 덧붙여서, style_hint 텍스트만으로는 전달하기 어려운 실제 톤·구도를 예시로 보여준다.
+    style_ref = TEMPLATE_STYLE_REFERENCE_IMAGES.get(template_id)
+    gen_reference_images = [*reference_images, style_ref] if style_ref else reference_images
+    style_ref_note = STYLE_REFERENCE_NOTE if style_ref else ""
+
+    hero_prompt = _with_notes(_detail_hero_prompt(description, style_hint), logo_note, model_note, style_ref_note)
+    hero_bytes, hero_mime = _generate_image(hero_prompt, gen_reference_images, "16:9")
     images.append(_upload_generated_image(user_id, gen_id, "hero", hero_bytes, hero_mime))
 
     for i, caption in enumerate(captions, start=1):
-        feature_prompt = _with_notes(_detail_feature_prompt(caption, style_hint), logo_note, model_note)
-        f_bytes, f_mime = _generate_image(feature_prompt, reference_images, "1:1")
+        feature_prompt = _with_notes(_detail_feature_prompt(caption, style_hint), logo_note, model_note, style_ref_note)
+        f_bytes, f_mime = _generate_image(feature_prompt, gen_reference_images, "1:1")
         images.append(_upload_generated_image(user_id, gen_id, f"feature-{i}", f_bytes, f_mime))
 
     angle_slots = [
@@ -4536,8 +6656,8 @@ def _generate_detail(
         ("angle-top", "위에서 내려다본 모습"),
     ]
     for slot, label in angle_slots:
-        angle_prompt = _with_notes(_detail_angle_prompt(label, style_hint), logo_note, model_note)
-        a_bytes, a_mime = _generate_image(angle_prompt, reference_images, "1:1")
+        angle_prompt = _with_notes(_detail_angle_prompt(label, style_hint), logo_note, model_note, style_ref_note)
+        a_bytes, a_mime = _generate_image(angle_prompt, gen_reference_images, "1:1")
         images.append(_upload_generated_image(user_id, gen_id, slot, a_bytes, a_mime))
 
     return {"images": images, "copy": {"captions": captions}}
@@ -4553,6 +6673,7 @@ def generate_marketing_images(
     price: str = Form(""),
     style_hint: str = Form(""),
     template_id: str = Form(""),
+    target_language: str = Form("ko"),
     aspect_ratio: str = Form(DEFAULT_POSTER_ASPECT_RATIO),
     use_ai_model: bool = Form(False),
     product_images: list[UploadFile] = File(...),
@@ -4560,11 +6681,17 @@ def generate_marketing_images(
     authorization: str | None = Header(None),
 ):
     """상품 정보 + 상품 사진(여러 장 가능) + 기업 로고(선택)를 바탕으로 AI 마케팅 이미지를 생성한다
-    (포스터 1장 / 카드뉴스 4장 / 상세설명 7장). template_id가 "tpl-poster-luxury"인 경우를 제외하면
-    이미지에는 문구를 렌더링하지 않고 실제 문구는 프론트엔드가 오버레이한다 — 럭셔리&프리미엄
-    포스터만 예외로, Gemini가 태그라인·히어로 워드·상품명(Bebas Neue)·가격·CTA를 이미지 안에 직접
-    렌더링한다(LUXURY_PREMIUM_POSTER_PROMPT 참고). style_hint는 프롬프트에 얹는 스타일 톤이고,
-    template_id가 "tpl-poster-luxury"이면 전용 데이터 기반 광고 프롬프트(LUXURY_PREMIUM_POSTER_PROMPT)를 대신 쓴다."""
+    (포스터 1장 / 카드뉴스 4장 / 상세설명 7장). layout이 "poster"(tpl-poster-luxury 제외)나 "detail"이면
+    이미지에는 문구를 렌더링하지 않고 실제 문구는 프론트엔드가 오버레이한다. 반면 layout이
+    "card-news"이거나 template_id가 "tpl-poster-luxury"이면 Gemini가 문구(태그라인·헤드라인·가격·
+    CTA 등)를 이미지 픽셀에 직접 렌더링한다 — target_language로 실제 렌더링 언어를 명시해야 한글이
+    섞여 들어가지 않는다(특히 카드뉴스는 benefit/promo 문구를 서버에서 새로 만들어 굽기 때문에 이 값이
+    없으면 항상 한국어로 나온다). 로고는 계정 프로필의 회사명이 아니라 Step 1에서 실제로 업로드한
+    로고 이미지만 쓴다 — 있으면 그대로 재현하고 없으면 브랜드 영역을 비워둔다(LOGO_REFERENCE_NOTE,
+    CARD_NEWS_SHOPEE_PROMPT, CLEAN_EDITORIAL_CARD_NEWS_PROMPT 참고. LUXURY_PREMIUM_POSTER_PROMPT만
+    예외로 계정 프로필의 회사명 텍스트(brand_name)를 그대로 쓴다). style_hint는 프롬프트에 얹는 스타일
+    톤이고, template_id가 "tpl-poster-luxury"면 전용 데이터 기반 광고 프롬프트(LUXURY_PREMIUM_POSTER_PROMPT)를,
+    "tpl-cardnews-minimal"이면 전용 4페이지 캠페인 프롬프트(CLEAN_EDITORIAL_CARD_NEWS_PROMPT)를 대신 쓴다."""
     user_id = require_user(authorization)
 
     if layout not in {"poster", "card-news", "detail"}:
@@ -4588,8 +6715,13 @@ def generate_marketing_images(
     gen_id = uuid.uuid4().hex
 
     try:
+        # 브랜드 이름(brand_name)은 계정 프로필의 회사명인데, 이건 카드뉴스가 실제로 마케팅하려는
+        # 그 상품의 브랜드와 무관할 수 있다(예: 데모/테스트 계정 이름) — 그래서 카드뉴스는 이 값을
+        # 전혀 쓰지 않고, Step 1에서 실제로 올린 로고 이미지만 브랜드 표시에 쓴다. tpl-poster-luxury만
+        # 예외로 이 프로필 회사명을 그대로 쓴다(전용 프롬프트가 로고가 아니라 회사명 텍스트를 쓰도록
+        # 설계되어 있음).
         brand_name = ""
-        if (layout == "poster" and template_id == "tpl-poster-luxury") or layout == "card-news":
+        if layout == "poster" and template_id == "tpl-poster-luxury":
             profile = (
                 db.table("users").select("company").eq("id", user_id).maybe_single().execute().data
             ) or {}
@@ -4599,15 +6731,17 @@ def generate_marketing_images(
             result = _generate_poster(
                 user_id, gen_id, reference_images, product_name, description, must_have_photo,
                 style_hint, template_id, tagline, price, brand_name, logo_note, aspect_ratio, model_note,
+                target_language,
             )
         elif layout == "card-news":
             result = _generate_card_news(
                 user_id, gen_id, reference_images, product_name, description, must_have_photo,
-                style_hint, logo_note, tagline, price, brand_name, "ko", template_id,
+                style_hint, logo_note, tagline, price, brand_name, target_language, template_id,
             )
         else:
             result = _generate_detail(
-                user_id, gen_id, reference_images, product_name, description, style_hint, logo_note, model_note
+                user_id, gen_id, reference_images, product_name, description, style_hint, logo_note, model_note,
+                template_id,
             )
     except HTTPException:
         raise

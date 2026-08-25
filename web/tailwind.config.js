@@ -83,10 +83,6 @@ export default {
           "0%, 100%": { strokeDashoffset: "1" },
           "45%, 60%": { strokeDashoffset: "0" },
         },
-        "pencil-travel": {
-          "0%": { offsetDistance: "0%" },
-          "100%": { offsetDistance: "100%" },
-        },
         "slide-in-right": {
           "0%": { opacity: "0", transform: "translateX(28px)" },
           "100%": { opacity: "1", transform: "translateX(0)" },
@@ -103,7 +99,6 @@ export default {
         shimmer: "shimmer 1.8s linear infinite",
         "fade-in-up": "fade-in-up 0.4s ease-out both",
         "sketch-draw": "sketch-draw 2.8s ease-in-out infinite",
-        "pencil-travel": "pencil-travel 2.8s linear infinite",
         "slide-in-right": "slide-in-right 0.5s cubic-bezier(0.22,1,0.36,1) both",
       },
     },

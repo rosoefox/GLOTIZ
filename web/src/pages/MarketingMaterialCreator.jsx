@@ -6,7 +6,7 @@ import { marketingMaterialCreator as mc } from "../data/mockData";
 import { useMarketingImages } from "../context/MarketingImagesContext";
 import { useAuth } from "../context/AuthContext";
 import { readErrorMessage } from "../lib/apiError";
-import { convertFromKrw } from "../lib/currency";
+import { convertFromKrw, EXCHANGE_RATE_PER_KRW } from "../lib/currency";
 import { parseSpecLines } from "../lib/spec";
 import thumbMinimal from "../../미니멀 클린.jpg";
 import thumbLuxury from "../../럭셔리.jpg";
@@ -24,7 +24,7 @@ import detailThumbTrendy from "../../detail-trendy.png";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
 
-// Step 3 템플릿 카드에 쓰는 실제 예시 이미지 — 포스터/카드뉴스는 같은 스타일 이름(미니멀·럭셔리·팝·
+// Step 2 템플릿 카드에 쓰는 실제 예시 이미지 — 포스터/카드뉴스는 같은 스타일 이름(미니멀·럭셔리·팝·
 // 감성)끼리 같은 사진을 재사용한다. 매칭되는 템플릿이 없으면 TemplateThumb의 기존 도형
 // 플레이스홀더로 자연히 대체된다.
 const TEMPLATE_THUMBS = {
@@ -43,7 +43,7 @@ const TEMPLATE_THUMBS = {
   "tpl-detail-trendy": detailThumbTrendy,
 };
 
-// 레이아웃별로 몇 장이 생성되는지 — Step 3 안내 배지/박스에 쓴다. 사용자가 고를 수 있는 값이
+// 레이아웃별로 몇 장이 생성되는지 — Step 2 안내 배지/박스에 쓴다. 사용자가 고를 수 있는 값이
 // 아니라 레이아웃 구조 자체가 고정하는 값이다(포스터 1장, 카드뉴스 4장, 상세설명 히어로+특징3+각도3=7장).
 const LAYOUT_INFO = {
   poster: { noun: "포스터", count: 1 },
@@ -103,7 +103,7 @@ function AiFilledHint() {
 
 // 아직 실제 생성 결과가 없는 템플릿 카드에 형태를 미리 보여주는 예시 썸네일 —
 // 실사 이미지 대신 각 레이아웃의 구조(세로 포스터/가로 카드뉴스/세로 상세페이지)를 축소해 그린다.
-// "4:5" 같은 W:H 문자열을 Tailwind aspect-ratio 클래스로 바꾼다 — Step 3 템플릿 썸네일이
+// "4:5" 같은 W:H 문자열을 Tailwind aspect-ratio 클래스로 바꾼다 — Step 2 템플릿 썸네일이
 // 실제로 그 템플릿이 생성할 이미지 비율과 같은 모양으로 보이게 하는 데 쓴다.
 function aspectClassFor(ratio) {
   const map = {
@@ -169,93 +169,21 @@ function TemplateThumb({ layout, templateId, aspectRatio }) {
   );
 }
 
-// 템플릿 무드별 오버레이 폰트 — 헤드라인(상품명)/서브헤드(태그라인)/가격 역할마다 다른 폰트를 쓴다.
-// 한글에는 이 폰트들에 글자가 없어서 지정한 폴백(Pretendard)으로 자동으로 넘어간다.
-const MOOD_FONTS = {
-  bold: {
-    headline: "'Anton', 'Pretendard Variable', sans-serif",
-    subhead: "'Montserrat', 'Pretendard Variable', sans-serif",
-    subheadWeight: 600,
-    price: "'Montserrat', 'Pretendard Variable', sans-serif",
-  },
-  editorial: {
-    headline: "'Bebas Neue', 'Pretendard Variable', sans-serif",
-    subhead: "'DM Sans', 'Pretendard Variable', sans-serif",
-    subheadWeight: 600,
-    price: "'DM Sans', 'Pretendard Variable', sans-serif",
-  },
-  luxury: {
-    headline: "'Playfair Display', 'Pretendard Variable', serif",
-    subhead: "'Montserrat', 'Pretendard Variable', sans-serif",
-    subheadWeight: 500,
-    price: "'Montserrat', 'Pretendard Variable', sans-serif",
-  },
-  tech: {
-    headline: "'Space Grotesk', 'Pretendard Variable', sans-serif",
-    subhead: "'Space Grotesk', 'Pretendard Variable', sans-serif",
-    subheadWeight: 500,
-    price: "'Space Grotesk', 'Pretendard Variable', sans-serif",
-  },
-};
-
-function moodForTemplateId(templateId = "") {
-  if (templateId.includes("luxury") || templateId.includes("premium") || templateId.includes("classic")) return "luxury";
-  if (templateId.includes("pop") || templateId.includes("trendy")) return "bold";
-  if (templateId.includes("modern")) return "tech";
-  return "editorial"; // 미니멀/감성/내추럴 등 기본값
+// 모든 포스터 템플릿(럭셔리&프리미엄/미니멀&클린/팝&컬러풀/감성&무드/모던&대담)과 카드뉴스는
+// Gemini가 상품명·태그라인·가격 같은 문구를 이미지 픽셀에 직접 그려 넣는다(백엔드 main.py의
+// _generate_poster/_generate_card_news 참고) — 그래서 프론트는 더 이상 텍스트를 오버레이하지 않는다.
+function bakesTextIntoImage(layout) {
+  return layout === "card-news" || layout === "poster";
 }
 
-// 포스터 위 문구는 이미지 크기에 비례해서 커지고 작아져야 하므로, 화면 폭이 아니라 이 박스 자체의
-// 렌더링 폭을 기준으로 삼는 컨테이너 쿼리 단위(cqw)를 쓴다 — 그래야 미리보기/상세 모달처럼 실제
-// 렌더링 크기가 다른 곳에서도 항상 그 박스에 맞게 글자 크기와 여백이 조정된다.
-// 타이포그래피 문서의 위치 규칙(헤드라인=상단/상단중앙, 서브헤드=헤드라인 근처, 가격=배지 형태)을 그대로
-// 따른다. 글자 크기는 cqw(박스 폭 비례)만 쓰지 않고 clamp(최소, cqw, 최대)로 상/하한을 같이 둬서,
-// 상품명이 아무리 길어도 포스터 프레임을 벗어나지 않는다 — 거기에 line-clamp+overflow-hidden까지 겹쳐서
-// 정말로 넘치지 않게 이중으로 막는다.
-function PosterPreview({ images, preview, templateId, aspectRatio = "4:5" }) {
+function PosterPreview({ images, aspectRatio = "4:5" }) {
   const url = findImage(images, "poster");
-  const fonts = MOOD_FONTS[moodForTemplateId(templateId)];
-  // 럭셔리&프리미엄은 Gemini가 태그라인·상품명(Bebas Neue)·가격·CTA를 이미지 안에 직접 그려 넣는
-  // 전용 프롬프트를 쓰기 때문에, 다른 템플릿들처럼 프론트에서 문구를 또 얹으면 글자가 겹쳐 보인다.
-  const isLuxury = templateId === "tpl-poster-luxury";
   const ratioClass = aspectRatio === "9:16" ? "aspect-[9/16]" : "aspect-[4/5]";
   return (
     <div
       className={`relative mx-auto ${ratioClass} w-full max-w-sm overflow-hidden rounded-2xl shadow-lg`}
-      style={{ containerType: "inline-size" }}
     >
       {url && <img src={url} alt="포스터" className="absolute inset-0 h-full w-full object-cover" />}
-      {!isLuxury && (
-        <>
-          <div className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-black/70 via-black/15 to-transparent" />
-          <div className="absolute inset-x-0 top-0 flex flex-col gap-[1.2cqw] p-[6cqw] pr-[25cqw] text-white">
-            {preview.tagline && (
-              <p
-                className="line-clamp-2 overflow-hidden text-[clamp(0.6rem,2.6cqw,1rem)] uppercase tracking-[0.2em] text-white/85"
-                style={{ textShadow: "0 2px 8px rgba(0,0,0,0.6)", fontFamily: fonts.subhead, fontWeight: fonts.subheadWeight }}
-              >
-                {preview.tagline}
-              </p>
-            )}
-            <p
-              className="line-clamp-3 overflow-hidden text-[clamp(1.3rem,7.5cqw,3rem)] leading-[1.1] tracking-tight"
-              style={{ textShadow: "0 3px 12px rgba(0,0,0,0.65)", fontFamily: fonts.headline }}
-            >
-              {preview.productName}
-            </p>
-          </div>
-          {preview.price && (
-            <div className="absolute right-[5cqw] top-[5cqw] max-w-[24cqw] rounded-full bg-black/70 px-[3.5cqw] py-[2cqw]">
-              <p
-                className="line-clamp-2 overflow-hidden text-center text-[clamp(0.65rem,3.2cqw,1.2rem)] font-bold text-amber-300"
-                style={{ textShadow: "0 2px 8px rgba(0,0,0,0.6)", fontFamily: fonts.price }}
-              >
-                {preview.price}
-              </p>
-            </div>
-          )}
-        </>
-      )}
     </div>
   );
 }
@@ -283,9 +211,104 @@ function CardNewsPreview({ images }) {
   );
 }
 
-function DetailPreview({ images, copy, preview, specLines }) {
+// 상세페이지 템플릿별 텍스트 영역 테마 — AI가 만드는 상품 사진은 이미 템플릿 톤(스타일 힌트·참고
+// 이미지)에 맞춰 생성되는데, 그 사진을 감싸는 헤딩/설명/스펙표/배경까지 흰 배경·검은 글자 그대로면
+// 사진과 이질감이 크다. 그래서 배경·글자색·구분선·헤딩 폰트를 템플릿마다 다르게 준다.
+// headerBg/altSectionBg는 사진 없이 글자만 놓이는 구간(헤더, 각도 섹션 타이틀)에 쓰는 은은한
+// 그라디언트 배경 — 참고 디자인들의 배경이 단색이 아니라 은은한 빛·번짐·베인 결이 있는 것처럼, 그
+// 질감을 CSS 그라디언트만으로 흉내낸다. page는 사진과 나란히 있는 구간(특징 행/스펙/하단 문구)에
+// 쓰는 차분한 단색 — 사진이 이미 시각적 밀도를 담당하므로 그 옆 글자 배경은 단순하게 둔다.
+// 헤딩 폰트는 4종 템플릿 모두 Bebas Neue로 통일한다 — 한글에는 이 폰트에 글자가 없어서 자동으로
+// Pretendard로 대체되므로, 영어 문구에만 적용된 것처럼 보인다.
+const DETAIL_HEADING_FONT = "font-['Bebas_Neue','Pretendard_Variable',sans-serif]";
+
+const DETAIL_THEMES = {
+  // 01_classic_white.png: 거의 흰색에 가까운 웜아이보리 배경, 차콜에 가까운 짙은 헤딩, 절제된 웜그레이 본문.
+  "tpl-detail-classic": {
+    page: "bg-[#faf8f3]",
+    labelBg: "bg-[#f1ecdf]",
+    headerBg:
+      "radial-gradient(ellipse 320px 200px at 88% 8%, rgba(70,58,32,0.07), transparent 70%), " +
+      "radial-gradient(ellipse 260px 300px at 6% 96%, rgba(70,58,32,0.06), transparent 70%), " +
+      "linear-gradient(180deg, #fcfaf5, #f4eee0)",
+    altSectionBg:
+      "radial-gradient(ellipse 320px 220px at 14% 12%, rgba(255,255,255,0.6), transparent 60%), " +
+      "linear-gradient(180deg, #f3ede0, #ece4d1)",
+    heading: `${DETAIL_HEADING_FONT} text-[#262220]`,
+    eyebrow: "text-[#8c8060]",
+    body: "text-[#5c5648]",
+    divider: "border-[#ddd2b8]",
+    disclaimer: "text-[#a89d84]",
+  },
+  // 02_premium_dark.png: 거의 검정 배경, 헤딩·섹션 타이틀은 골드, 본문/캡션은 아이보리·웜그레이.
+  "tpl-detail-premium": {
+    page: "bg-[#0d0d0d]",
+    labelBg: "bg-[#1a1a1a]",
+    headerBg:
+      "radial-gradient(ellipse 520px 280px at 50% 0%, rgba(201,162,39,0.18), transparent 60%), " +
+      "linear-gradient(135deg, rgba(201,162,39,0.08) 0%, transparent 35%, transparent 65%, rgba(201,162,39,0.08) 100%), " +
+      "linear-gradient(180deg, #141414, #0b0b0b)",
+    altSectionBg:
+      "radial-gradient(ellipse 440px 240px at 50% 100%, rgba(201,162,39,0.13), transparent 60%), " +
+      "linear-gradient(180deg, #1c1c1c, #131313)",
+    heading: `${DETAIL_HEADING_FONT} text-[#caa24d]`,
+    eyebrow: "text-[#ece4d3]",
+    body: "text-[#b7ad9c]",
+    divider: "border-[#332c1c]",
+    disclaimer: "text-[#6f6a5c]",
+  },
+  // 03_natural_organic.png: 웜베이지 배경, 짙은 포레스트 그린 헤딩, 우드톤 본문.
+  "tpl-detail-natural": {
+    page: "bg-[#f6efe2]",
+    labelBg: "bg-[#ece2cc]",
+    headerBg:
+      "radial-gradient(ellipse 300px 220px at 12% 10%, rgba(255,255,255,0.5), transparent 60%), " +
+      "radial-gradient(ellipse 280px 280px at 92% 88%, rgba(63,90,44,0.16), transparent 60%), " +
+      "linear-gradient(180deg, #f8f2e5, #eee3cd)",
+    altSectionBg:
+      "radial-gradient(ellipse 340px 220px at 85% 15%, rgba(63,90,44,0.14), transparent 60%), " +
+      "linear-gradient(180deg, #ece2cc, #e2d4b8)",
+    heading: `${DETAIL_HEADING_FONT} text-[#2f4a28]`,
+    eyebrow: "text-[#6d8a54]",
+    body: "text-[#5c5440]",
+    divider: "border-[#ddd0ac]",
+    disclaimer: "text-[#9b9276]",
+  },
+  // 04_trendy_pop.png: 라벤더 -> 핑크 그라디언트 배경, 비비드 바이올렛 헤딩/본문.
+  "tpl-detail-trendy": {
+    page: "bg-[#f9f6fc]",
+    labelBg: "bg-[#f1e8fa]",
+    headerBg:
+      "radial-gradient(circle 300px at 88% 8%, rgba(255,140,190,0.28), transparent 55%), " +
+      "radial-gradient(circle 300px at 8% 92%, rgba(150,110,235,0.24), transparent 55%), " +
+      "linear-gradient(160deg, #f3e9fb, #ece3fa 45%, #fbe9f3)",
+    altSectionBg:
+      "radial-gradient(circle 280px at 10% 15%, rgba(150,110,235,0.18), transparent 55%), " +
+      "linear-gradient(180deg, #f1e8fa, #eaddf6)",
+    heading: `${DETAIL_HEADING_FONT} text-[#6d3aa8]`,
+    eyebrow: "text-[#9a6fc9]",
+    body: "text-[#6b5f7c]",
+    divider: "border-[#e2d2f4]",
+    disclaimer: "text-[#a698b8]",
+  },
+};
+
+const DEFAULT_DETAIL_THEME = {
+  page: "bg-white",
+  labelBg: "bg-slate-50",
+  headerBg: "#ffffff",
+  altSectionBg: "#f8fafc",
+  heading: "font-serif text-slate-900",
+  eyebrow: "text-slate-400",
+  body: "text-slate-500",
+  divider: "border-slate-100",
+  disclaimer: "text-slate-400",
+};
+
+function DetailPreview({ images, copy, preview, specLines, templateId }) {
   const heroUrl = findImage(images, "hero");
   const captions = copy?.captions || [];
+  const theme = DETAIL_THEMES[templateId] || DEFAULT_DETAIL_THEME;
   const angles = [
     { slot: "angle-front", label: "정면" },
     { slot: "angle-back", label: "후면" },
@@ -293,11 +316,11 @@ function DetailPreview({ images, copy, preview, specLines }) {
   ];
 
   return (
-    <div className="w-full overflow-hidden rounded-2xl bg-white shadow-lg">
-      <div className="bg-white py-12 text-center">
-        <h2 className="font-serif text-3xl font-semibold tracking-tight text-slate-900">{preview.productName}</h2>
+    <div className={`w-full overflow-hidden rounded-2xl shadow-lg ${theme.page}`}>
+      <div className="py-12 text-center" style={{ background: theme.headerBg }}>
+        <h2 className={`text-3xl font-semibold tracking-tight ${theme.heading}`}>{preview.productName}</h2>
         {preview.tagline && (
-          <p className="mt-3 text-sm font-medium tracking-wide text-slate-400">{preview.tagline}</p>
+          <p className={`mt-3 text-sm font-medium tracking-wide ${theme.eyebrow}`}>{preview.tagline}</p>
         )}
       </div>
 
@@ -309,29 +332,29 @@ function DetailPreview({ images, copy, preview, specLines }) {
         return (
           <div
             key={i}
-            className={`flex flex-col items-center gap-0 md:flex-row ${i === 1 ? "md:flex-row-reverse" : ""}`}
+            className={`flex flex-col items-center gap-0 md:flex-row ${theme.page} ${i === 1 ? "md:flex-row-reverse" : ""}`}
           >
             <div className="aspect-square w-full md:w-1/2">
               {url && <img src={url} alt={caption.heading} className="h-full w-full object-cover" />}
             </div>
             <div className="w-full space-y-2.5 px-8 py-10 md:w-1/2">
-              <p className="text-[11px] font-semibold tracking-[0.25em] text-slate-400">{caption.eyebrow}</p>
-              <h3 className="font-serif text-xl font-semibold text-slate-900">{caption.heading}</h3>
-              <p className="text-sm leading-relaxed text-slate-500">{caption.description}</p>
+              <p className={`text-[11px] font-semibold tracking-[0.25em] ${theme.eyebrow}`}>{caption.eyebrow}</p>
+              <h3 className={`text-xl font-semibold ${theme.heading}`}>{caption.heading}</h3>
+              <p className={`text-sm leading-relaxed ${theme.body}`}>{caption.description}</p>
             </div>
           </div>
         );
       })}
 
-      <div className="bg-slate-50 py-12 text-center">
-        <h3 className="font-serif text-lg font-semibold text-slate-900">
+      <div className="py-12 text-center" style={{ background: theme.altSectionBg }}>
+        <h3 className={`text-lg font-semibold ${theme.heading}`}>
           {copy?.angleTitle || "다양한 각도에서 확인하세요"}
         </h3>
         <div className="mt-6 grid grid-cols-3 gap-3 px-6">
           {angles.map(({ slot, label }) => {
             const url = findImage(images, slot);
             return (
-              <div key={slot} className="aspect-square overflow-hidden rounded-xl bg-slate-200">
+              <div key={slot} className={`aspect-square overflow-hidden rounded-xl ${theme.divider} border`}>
                 {url && <img src={url} alt={label} className="h-full w-full object-cover" />}
               </div>
             );
@@ -340,25 +363,25 @@ function DetailPreview({ images, copy, preview, specLines }) {
       </div>
 
       {specLines.length > 0 && (
-        <div className="px-8 py-10">
-          <h3 className="mb-4 font-serif text-lg font-semibold tracking-wide text-slate-900">SPEC</h3>
-          <div className="overflow-hidden rounded-xl border border-slate-100">
+        <div className={`px-8 py-10 ${theme.page}`}>
+          <h3 className={`mb-4 text-lg font-semibold tracking-wide ${theme.heading}`}>SPEC</h3>
+          <div className={`overflow-hidden rounded-xl border ${theme.divider}`}>
             {specLines.map((row, i) => (
               <div
                 key={row.label + i}
-                className={`flex ${i > 0 ? "border-t border-slate-100" : ""}`}
+                className={`flex ${i > 0 ? `border-t ${theme.divider}` : ""}`}
               >
-                <div className="w-28 shrink-0 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600">
+                <div className={`w-28 shrink-0 px-4 py-3 text-sm font-semibold ${theme.labelBg} ${theme.body}`}>
                   {row.label}
                 </div>
-                <div className="px-4 py-3 text-sm text-slate-700">{row.value}</div>
+                <div className={`px-4 py-3 text-sm ${theme.body}`}>{row.value}</div>
               </div>
             ))}
           </div>
         </div>
       )}
 
-      <p className="pb-8 text-center text-xs text-slate-400">
+      <p className={`pb-8 text-center text-xs ${theme.disclaimer} ${theme.page}`}>
         {copy?.disclaimer || "※ 이미지는 연출된 예시이며 실제 상품과 다를 수 있습니다."}
       </p>
     </div>
@@ -367,11 +390,11 @@ function DetailPreview({ images, copy, preview, specLines }) {
 
 // 결과 페이지 미리보기 자리에서 generatedResult.layout에 맞춰 알맞은 미리보기 컴포넌트를 고른다.
 function LayoutPreview({ layout, images, copy, preview, specLines, templateId, aspectRatio }) {
-  if (layout === "poster")
-    return <PosterPreview images={images} preview={preview} templateId={templateId} aspectRatio={aspectRatio} />;
+  if (layout === "poster") return <PosterPreview images={images} aspectRatio={aspectRatio} />;
   if (layout === "card-news")
     return <CardNewsPreview images={images} />;
-  if (layout === "detail") return <DetailPreview images={images} copy={copy} preview={preview} specLines={specLines} />;
+  if (layout === "detail")
+    return <DetailPreview images={images} copy={copy} preview={preview} specLines={specLines} templateId={templateId} />;
   return null;
 }
 
@@ -419,12 +442,6 @@ function PencilDrawingLoader({ label }) {
             style={{ strokeDasharray: 1, strokeDashoffset: 1, animationDelay: "0.5s" }}
           />
         </svg>
-        <div
-          className="animate-pencil-travel absolute h-7 w-7 text-brand-300"
-          style={{ offsetPath: "path('M16,26 L144,26 L144,134 L16,134 Z')", offsetRotate: "auto" }}
-        >
-          <Icon name="pencil" className="h-7 w-7 -rotate-45" />
-        </div>
       </div>
 
       <div className="relative flex flex-col items-center gap-2">
@@ -440,49 +457,6 @@ const TRANSLATE_LANGUAGES = [
   { code: "vi", label: "Tiếng Việt" },
   { code: "th", label: "ภาษาไทย" },
 ];
-
-// 원화 입력값을 고정 환율(대략치, 실시간 아님)로 현지통화로 변환해서 보여준다.
-// AI 가격 추천을 대체하는 결정론적 버전이라 API 호출이나 로딩 대기가 없다.
-function PriceConverter({ krwValue, onApply }) {
-  const [targetLang, setTargetLang] = useState(TRANSLATE_LANGUAGES[0].code);
-  const krwNumber = Number(String(krwValue ?? "").replace(/[^0-9.]/g, ""));
-  const result = krwNumber > 0 ? convertFromKrw(krwNumber, targetLang) : null;
-
-  return (
-    <div className="mt-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <select
-          value={targetLang}
-          onChange={(e) => setTargetLang(e.target.value)}
-          className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-700 focus:border-brand-600 focus:outline-none"
-        >
-          {TRANSLATE_LANGUAGES.map((lang) => (
-            <option key={lang.code} value={lang.code}>
-              {lang.label}
-            </option>
-          ))}
-        </select>
-        {result ? (
-          <>
-            <span className="text-xs font-semibold text-brand-700">
-              ≈ {result.formatted} {result.currency}
-            </span>
-            <button
-              type="button"
-              onClick={() => onApply(`${result.formatted} ${result.currency}`)}
-              className="text-[11px] font-semibold text-brand-600 hover:underline"
-            >
-              이 값 적용
-            </button>
-          </>
-        ) : (
-          <span className="text-[11px] text-slate-400">원화 가격을 먼저 입력하세요.</span>
-        )}
-      </div>
-      <p className="mt-1 text-[10px] text-slate-400">참고용 환율이며 실시간 시세와 다를 수 있어요.</p>
-    </div>
-  );
-}
 
 // 이미지에 얹힐 언어를 미리 고르는 드롭다운. 생성 전에 고르면 "이미지 생성하기"를 누를 때
 // 바로 그 언어로 생성되고, 이미 생성된 이미지가 있는 상태에서 고르면 문구만 바로 번역해서 바꿔친다.
@@ -565,6 +539,7 @@ export default function MarketingMaterialCreator() {
   const [aiFillingInfo, setAiFillingInfo] = useState(false);
   const [aiFillError, setAiFillError] = useState("");
   const [aiFilledFields, setAiFilledFields] = useState(() => new Set()); // AI가 채운 뒤 아직 사용자가 손대지 않은 필드
+  const [priceReason, setPriceReason] = useState(""); // AI가 추천한 가격의 근거 — 가격 필드 밑에 표시
   const [translating, setTranslating] = useState(false);
   const [translateError, setTranslateError] = useState(null);
   const [activeLang, setActiveLang] = useState(null); // null이면 한국어 원본
@@ -622,6 +597,14 @@ export default function MarketingMaterialCreator() {
           setLogoImage(saved.logo.dataUrl);
         }
       }
+      // 생성된 이미지도 같이 임시저장해서, 페이지를 새로고침하거나 실수로 벗어나도
+      // 다시 생성할 필요 없이 그대로 이어볼 수 있게 한다.
+      if (saved.generatedResult) setGeneratedResult(saved.generatedResult);
+      if (Array.isArray(saved.versionHistory)) setVersionHistory(saved.versionHistory);
+      if (saved.activeLang !== undefined) setActiveLang(saved.activeLang);
+      if (saved.originalPreview) setOriginalPreview(saved.originalPreview);
+      if (saved.originalCopy) setOriginalCopy(saved.originalCopy);
+      if (typeof saved.originalSpec === "string") setOriginalSpec(saved.originalSpec);
     } catch {
       // 저장된 내용이 깨졌으면 무시하고 빈 화면으로 시작한다.
     }
@@ -642,6 +625,12 @@ export default function MarketingMaterialCreator() {
         type: file.type,
       })),
       logo: logoFile && logoImage ? { dataUrl: logoImage, name: logoFile.name, type: logoFile.type } : null,
+      generatedResult,
+      versionHistory,
+      activeLang,
+      originalPreview,
+      originalCopy,
+      originalSpec,
     };
     try {
       localStorage.setItem(setupDraftKey(user?.id), JSON.stringify(payload));
@@ -651,6 +640,7 @@ export default function MarketingMaterialCreator() {
   }, [
     user?.id, preview, spec, activeTemplate, activeCategory, posterAspectRatio, useAiModel,
     uploadedFiles, uploadedImages, logoFile, logoImage,
+    generatedResult, versionHistory, activeLang, originalPreview, originalCopy, originalSpec,
   ]);
 
   const handleSaveImage = async () => {
@@ -699,9 +689,13 @@ export default function MarketingMaterialCreator() {
       next.delete(field);
       return next;
     });
+    if (field === "price") setPriceReason("");
   };
 
-  const handleAiFillInfo = async () => {
+  // templateIdOverride를 주면 그 템플릿 기준으로 채운다 — 템플릿을 막 바꾼 직후에는
+  // activeTemplate 상태가 아직 리렌더 전이라 최신값을 못 읽을 수 있어서, 방금 고른 id를
+  // 직접 넘겨받아 쓴다(handleTemplateSelect 참고).
+  const runAiFillInfo = async (templateIdOverride) => {
     if (!preview.productName.trim()) {
       setAiFillError("상품명을 입력해야 작성 가능합니다.");
       return;
@@ -713,9 +707,12 @@ export default function MarketingMaterialCreator() {
     setAiFillingInfo(true);
     setAiFillError("");
     try {
+      const template = mc.templates.items.find((t) => t.id === (templateIdOverride ?? activeTemplate));
       const formData = new FormData();
       formData.append("product_name", preview.productName);
       uploadedFiles.forEach((file) => formData.append("product_images", file));
+      if (logoFile) formData.append("logo", logoFile);
+      if (template?.styleHint) formData.append("style_hint", template.styleHint);
       const res = await fetch(`${BACKEND_URL}/marketing/ai-fill`, {
         method: "POST",
         headers: { Authorization: `Bearer ${session.access_token}` },
@@ -730,6 +727,7 @@ export default function MarketingMaterialCreator() {
         mustHavePhoto: data.must_have_photo || "",
         price: data.price || "",
       }));
+      setPriceReason(data.price_reason || "");
       setAiFilledFields(new Set(["tagline", "description", "mustHavePhoto", "price"]));
       setGeneratedResult(null);
       setGenerateError("");
@@ -739,6 +737,8 @@ export default function MarketingMaterialCreator() {
       setAiFillingInfo(false);
     }
   };
+
+  const handleAiFillInfo = () => runAiFillInfo();
 
   const handleFileChange = (e) => {
     const files = Array.from(e.target.files || []);
@@ -781,10 +781,28 @@ export default function MarketingMaterialCreator() {
     setLogoImage(null);
   };
 
+  // 템플릿을 바꾸면 그 템플릿의 스타일 톤에 맞춰 상품명을 뺀 나머지 정보(태그라인/설명/가격/
+  // 필수 장면/스펙)를 새로 작성한다 — 이전 템플릿 기준으로 써둔 문구가 새 템플릿과 안 맞는
+  // 채로 남아있지 않도록, 일단 비우고(사진·상품명이 준비돼 있으면) AI로 다시 채운다.
+  // activeLang도 반드시 같이 초기화해야 한다 — 안 그러면 이전 템플릿에서 이미지 언어를 설정해둔
+  // 상태가 그대로 남아서, 새 템플릿에서는 언어를 따로 설정하지 않았는데도 languageChosen이 true가
+  // 되어 빈칸만 채우면 바로 "이미지 생성하기"가 활성화돼버린다.
   const handleTemplateSelect = (id) => {
+    if (id === activeTemplate) return;
     setActiveTemplate(id);
     setGeneratedResult(null);
     setGenerateError("");
+    setPreview((p) => ({ ...p, tagline: "", description: "", mustHavePhoto: "", price: "" }));
+    setSpec("");
+    setPriceReason("");
+    setAiFilledFields(new Set());
+    setActiveLang(null);
+    setOriginalPreview(null);
+    setOriginalCopy(null);
+    setOriginalSpec(null);
+    if (preview.productName.trim() && uploadedFiles.length > 0) {
+      runAiFillInfo(id);
+    }
   };
 
   // 새 버전(최초 생성/재제작/프롬프트 수정)이 나올 때마다 목록 맨 앞에 얹는다. 문구(상품명/
@@ -816,15 +834,19 @@ export default function MarketingMaterialCreator() {
     setGenerateError("");
     try {
       const template = mc.templates.items.find((t) => t.id === activeTemplate);
-      // 카드뉴스/럭셔리&프리미엄 포스터는 Gemini가 문구를 이미지 픽셀에 직접 그려 넣는데, 이 모델은
-      // 한글 글자를 깨뜨려서 그린다. 사용자가 언어를 따로 고르지 않았으면(=한국어 그대로 생성) 화면
-      // 입력값은 한국어로 그대로 두되, AI에게 넘기는 문구만 조용히 영어로 번역해서 보낸다.
-      const bakesTextIntoImage =
-        template?.layout === "card-news" || (template?.layout === "poster" && activeTemplate === "tpl-poster-luxury");
-      const genLang = lang || (bakesTextIntoImage ? "en" : null);
+      // 카드뉴스/포스터는 Gemini가 문구를 이미지 픽셀에 직접 그려 넣는데, 이 모델은 한글 글자를
+      // 깨뜨려서 그린다. 사용자가 언어를 따로 고르지 않았으면(=한국어 그대로 생성) 화면 입력값은
+      // 한국어로 그대로 두되, AI에게 넘기는 문구만 조용히 영어로 번역해서 보낸다.
+      const textBaked = bakesTextIntoImage(template?.layout);
+      const genLang = lang || (textBaked ? "en" : null);
 
+      // lang(사용자가 Step3 "이미지 언어 설정하기"로 이미 고른 언어)이 있으면 preview는 그때
+      // runTranslate가 이미 그 언어로 번역해 저장해뒀으므로 그대로 쓴다. 여기서 또 번역하면
+      // 이미 번역된 문구를 한 번 더 번역하는 이중 번역이 된다. 문구를 이미지에 굽는 템플릿인데
+      // 사용자가 언어를 따로 안 골라 genLang이 자동으로 "en"이 된 경우에만(preview가 아직
+      // 한국어 그대로라서) 여기서 번역이 필요하다.
       let genPreview = preview;
-      if (genLang) {
+      if (genLang && !lang) {
         try {
           const { nextPreview } = await applyTranslation(genLang, preview, null, spec);
           genPreview = nextPreview;
@@ -839,10 +861,11 @@ export default function MarketingMaterialCreator() {
       formData.append("tagline", genPreview.tagline);
       formData.append("description", genPreview.description);
       formData.append("must_have_photo", preview.mustHavePhoto);
-      formData.append("price", preview.price);
+      formData.append("price", genPreview.price);
       uploadedFiles.forEach((file) => formData.append("product_images", file));
       if (logoFile) formData.append("logo", logoFile);
       formData.append("template_id", activeTemplate || "");
+      formData.append("target_language", genLang || "ko");
       if (template?.layout === "poster") formData.append("aspect_ratio", posterAspectRatio);
       formData.append("use_ai_model", String(useAiModel));
       if (template?.styleHint) formData.append("style_hint", template.styleHint);
@@ -856,23 +879,18 @@ export default function MarketingMaterialCreator() {
       const data = await res.json();
 
       let finalResult = data;
-      // lang(사용자가 명시적으로 고른 언어)일 때만 번역된 genPreview를 기록/표시에 쓴다 — bakesTextIntoImage로
-      // 조용히 번역한 경우는 화면에 보여줄 일이 없는 내부용이라, 기록은 사용자가 실제로 본 한국어 원문으로 남긴다.
-      let previewSnapshot = lang ? genPreview : preview;
+      let previewSnapshot = preview;
       let specSnapshot = spec;
 
       if (lang) {
+        // preview/spec은 Step3에서 이미 이 언어로 번역돼 저장돼 있으니 다시 번역하지 않고,
+        // 이번에 새로 생성된 copy(카드뉴스/상세설명 문구)만 같은 언어로 마저 번역한다.
         try {
-          // preview는 이미 번역해서 생성 요청에 썼으니, 여기서는 copy(카드뉴스/상세설명 문구)만
-          // 같은 언어로 마저 번역한다.
-          const { nextCopy, nextSpec } = await applyTranslation(lang, genPreview, data.copy, spec);
+          const { nextCopy } = await applyTranslation(lang, preview, data.copy, spec);
           if (!originalPreview) setOriginalPreview(preview);
           setOriginalCopy(data.copy);
           if (originalSpec === null) setOriginalSpec(spec);
-          setPreview(genPreview);
-          setSpec(nextSpec);
           finalResult = { ...data, copy: nextCopy };
-          specSnapshot = nextSpec;
           setActiveLang(lang);
         } catch (err) {
           setTranslateError(err.message);
@@ -956,6 +974,8 @@ export default function MarketingMaterialCreator() {
       productName: p.productName || "",
       tagline: p.tagline || "",
       description: p.description || "",
+      price: p.price || "",
+      mustHavePhoto: p.mustHavePhoto || "",
     };
     if (copy) {
       if (copy.promoLine) dict.promoLine = copy.promoLine;
@@ -994,7 +1014,15 @@ export default function MarketingMaterialCreator() {
       productName: translated.productName ?? basePreview.productName,
       tagline: translated.tagline ?? basePreview.tagline,
       description: translated.description ?? basePreview.description,
+      price: translated.price ?? basePreview.price,
+      mustHavePhoto: translated.mustHavePhoto ?? basePreview.mustHavePhoto,
     };
+
+    // 가격은 AI가 문구로 번역한 값 대신 그 나라 환율로 정확히 변환한 값을 우선 쓴다 — AI 번역은
+    // "29,000원"의 숫자만 그대로 옮겨 "$29,000"처럼 만드는 등 실제 환율과 다르게 나올 수 있다.
+    const krwNumber = Number(String(basePreview.price ?? "").replace(/[^0-9.]/g, ""));
+    const converted = krwNumber > 0 ? convertFromKrw(krwNumber, langCode) : null;
+    if (converted) nextPreview.price = `${converted.formatted} ${converted.currency}`;
 
     let nextSpec = baseSpec;
     const baseSpecLines = parseSpecLines(baseSpec);
@@ -1030,17 +1058,16 @@ export default function MarketingMaterialCreator() {
     return { nextPreview, nextCopy, nextSpec };
   };
 
-  // "이미지 언어 선택하기"에서 언어를 고르면 실행된다. 아직 생성된 이미지가 없으면 언어만
-  // 기억해뒀다가 handleGenerate에서 그 언어로 바로 생성하고, 이미 이미지가 있으면 지금
-  // 바로 문구만 번역해서 바꿔친다.
+  // "이미지 언어 설정하기"에서 언어를 고르면 실행된다. 이미지 생성 전(Step 3 작성 중)이어도
+  // 그 자리에서 바로 Step 3 문구를 그 언어로 번역해서 화면에 보여준다 — 그래야 "이미지 생성하기"를
+  // 눌렀을 때 화면에 보이는 것과 똑같은 언어로 이미지가 만들어진다. 이미 이미지가 있으면 문구를
+  // 바꿔치기하거나(오버레이 방식), 문구가 이미지 픽셀에 직접 그려지는 템플릿이면 그 언어로 다시 생성한다.
   const runTranslate = async (langCode) => {
-    // 카드뉴스/럭셔리&프리미엄 포스터는 AI가 문구를 이미지 안에 직접 그려 넣기 때문에, 언어를
-    // 바꾸거나 원래 언어(한국어)로 되돌릴 때 오버레이만 바꿔치기해서는 이미지 속 글자가 바뀌지
-    // 않는다 — 이미 생성된 이미지가 있으면 그 언어로 다시 생성해야 한다.
+    // 카드뉴스/포스터는 AI가 문구를 이미지 안에 직접 그려 넣기 때문에, 언어를 바꾸거나 원래
+    // 언어(한국어)로 되돌릴 때 오버레이만 바꿔치기해서는 이미지 속 글자가 바뀌지 않는다 — 이미
+    // 생성된 이미지가 있으면 그 언어로 다시 생성해야 한다(상세페이지는 여전히 오버레이 방식).
     const template = mc.templates.items.find((t) => t.id === activeTemplate);
-    const bakesTextIntoImage =
-      template?.layout === "card-news" || (template?.layout === "poster" && activeTemplate === "tpl-poster-luxury");
-    if (generatedResult && bakesTextIntoImage) {
+    if (generatedResult && bakesTextIntoImage(template?.layout)) {
       await runGenerate(langCode === "ko" ? null : langCode);
       return;
     }
@@ -1053,11 +1080,6 @@ export default function MarketingMaterialCreator() {
       setOriginalCopy(null);
       setOriginalSpec(null);
       setActiveLang(null);
-      return;
-    }
-
-    if (!generatedResult) {
-      setActiveLang(langCode);
       return;
     }
 
@@ -1086,9 +1108,28 @@ export default function MarketingMaterialCreator() {
 
   const specLines = parseSpecLines(spec);
   const isBusy = generating || editing;
+  // "이전에 만든 이미지" 썸네일을 눌러 확대해서 본 뒤(viewingVersion), 모달을 닫지 않고도
+  // 좌우로 넘겨가며 다른 버전을 볼 수 있게 목록 안에서의 위치를 계산해둔다.
+  const viewingVersionIndex = viewingVersion ? versionHistory.findIndex((v) => v.id === viewingVersion.id) : -1;
+  const showAdjacentVersion = (delta) => {
+    const next = versionHistory[viewingVersionIndex + delta];
+    if (next) setViewingVersion(next);
+  };
   const activeTemplateItem = mc.templates.items.find((t) => t.id === activeTemplate);
   const activeLayout = activeTemplateItem?.layout;
-  // Step 3에서 지금 "보고 있는" 카테고리 탭의 레이아웃 — activeLayout(실제 선택된 템플릿의
+  // Step 3의 빈칸이 모두 채워졌는지 — 현재 레이아웃에서 실제로 쓰이는 항목만 검사한다
+  // (포스터는 "꼭 들어갔으면 하는 사진"을 안 쓴다). 스펙 정보(상세페이지 전용)는 선택 입력이라
+  // 비어 있어도 통과시킨다. 다 채워져야 "이미지 언어 설정하기"가 활성화되고, 그 뒤 언어를
+  // 실제로 골라야 "이미지 생성하기"가 활성화된다.
+  const step3Complete = Boolean(
+    preview.productName.trim() &&
+      preview.tagline.trim() &&
+      preview.description.trim() &&
+      preview.price.trim() &&
+      (activeLayout === "poster" || preview.mustHavePhoto.trim())
+  );
+  const languageChosen = activeLang !== null;
+  // Step 2에서 지금 "보고 있는" 카테고리 탭의 레이아웃 — activeLayout(실제 선택된 템플릿의
   // 레이아웃)과 달리, 탭만 바꾸고 아직 그 탭의 템플릿을 클릭하지 않은 상태에서도 지금 보이는
   // 탭에 맞는 안내(수량/비율/AI 모델 박스)를 보여줘야 하므로 카테고리 기준으로 따로 구한다.
   const activeCategoryLayout = mc.templates.items.find((t) => t.category === activeCategory)?.layout;
@@ -1109,12 +1150,12 @@ export default function MarketingMaterialCreator() {
 
       {stage === "setup" && (
         <>
-          {generatedResult && (
+          {(generatedResult || generating) && (
             <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-md border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-700">
-              <span>이미 생성해둔 이미지가 있어요.</span>
+              <span>{generating ? "이미지를 생성하고 있어요." : "이미 생성해둔 이미지가 있어요."}</span>
               <Button variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => setStage("result")}>
                 <Icon name="eye" className="w-3.5 h-3.5" />
-                미리보기로 이동
+                {generating ? "생성 현황 보기" : "미리보기로 이동"}
               </Button>
             </div>
           )}
@@ -1125,10 +1166,10 @@ export default function MarketingMaterialCreator() {
             </div>
           )}
 
-          {/* 좌: 1단계 사진 업로드(작게) → 중: 2단계 상품 정보 → 우: 3단계 템플릿(넓게) — 세 단계 모두 처음부터 한 번에 보여준다. */}
-          <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[0.8fr_1fr_1.4fr]">
+          {/* 좌: 1단계 사진 업로드(작게) → 중: 2단계 템플릿(넓게) → 우: 3단계 상품 정보 — 세 단계 모두 처음부터 한 번에 보여준다. */}
+          <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[0.8fr_1.4fr_1fr]">
             <div className="rounded-lg border border-slate-200 bg-white">
-              <SectionCardHeader step={1} title="생성할 이미지의 상품 사진을 넣으세요" />
+              <SectionCardHeader step={1} title="생성할 상품 사진을 넣으세요" />
               <div className="p-4">
                 <p className="mb-2 text-xs font-semibold text-slate-500">1-1) 상품의 이미지를 넣으세요</p>
                 {uploadedImages.length === 0 ? (
@@ -1221,115 +1262,9 @@ export default function MarketingMaterialCreator() {
             </div>
 
             <div className="rounded-lg border border-slate-200 bg-white">
-                <SectionCardHeader step={2} title="상품정보를 입력하세요" />
-                  <div className="p-4 lg:max-h-[calc(100vh-260px)] lg:overflow-y-auto">
-                    <div className="space-y-3">
-                      <label className="block">
-                        <FieldLabel required>상품명</FieldLabel>
-                        <input
-                          className={`${emptyFieldClass(!preview.productName.trim())} h-10`}
-                          value={preview.productName}
-                          onChange={handlePreviewChange("productName")}
-                          placeholder={mc.preview.productName}
-                        />
-                      </label>
-                      <div>
-                        <Button
-                          type="button"
-                          variant="outlineBrand"
-                          className="w-full py-2 text-xs"
-                          title="업로드한 사진과 상품명을 보고 나머지 정보를 채워줍니다."
-                          onClick={handleAiFillInfo}
-                          disabled={aiFillingInfo}
-                        >
-                          <Icon name="sparkle" className="w-3.5 h-3.5" />
-                          {aiFillingInfo ? "채우는 중..." : "AI로 채우기"}
-                        </Button>
-                        <span className="mt-1 block text-[11px] text-slate-400">
-                          상품명을 먼저 입력해야 "AI로 채우기"를 쓸 수 있어요.
-                        </span>
-                        {aiFillError && <p className="mt-2 text-xs font-medium text-red-500">{aiFillError}</p>}
-                      </div>
-                      <label className="block">
-                        <FieldLabel>태그라인</FieldLabel>
-                        <input
-                          className={`${aiFilledFieldClass(aiFilledFields.has("tagline"))} h-10`}
-                          value={preview.tagline}
-                          onChange={handlePreviewChange("tagline")}
-                          placeholder={mc.preview.tagline}
-                        />
-                        {aiFilledFields.has("tagline") && <AiFilledHint />}
-                      </label>
-                      <label className="block">
-                        <FieldLabel>상품 설명</FieldLabel>
-                        <textarea
-                          className={`${aiFilledFieldClass(aiFilledFields.has("description"))} py-2.5`}
-                          rows={2}
-                          value={preview.description}
-                          onChange={handlePreviewChange("description")}
-                          placeholder={mc.preview.description}
-                        />
-                        {aiFilledFields.has("description") && <AiFilledHint />}
-                      </label>
-                      <label className="block">
-                        <FieldLabel>
-                          가격 <span className="font-normal text-slate-400">(KRW, 원)</span>
-                        </FieldLabel>
-                        <input
-                          className={`${aiFilledFieldClass(aiFilledFields.has("price"))} h-10`}
-                          value={preview.price}
-                          onChange={handlePreviewChange("price")}
-                          placeholder={mc.preview.price}
-                        />
-                        {aiFilledFields.has("price") && <AiFilledHint />}
-                        <PriceConverter krwValue={preview.price} onApply={(v) => setPreview((p) => ({ ...p, price: v }))} />
-                      </label>
-                      <label className="block">
-                        <FieldLabel>꼭 들어갔으면 하는 사진</FieldLabel>
-                        <textarea
-                          className={`${aiFilledFieldClass(aiFilledFields.has("mustHavePhoto"))} py-2.5 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400`}
-                          rows={2}
-                          value={preview.mustHavePhoto}
-                          onChange={handlePreviewChange("mustHavePhoto")}
-                          placeholder="예: 제품을 사용하는 모습"
-                          disabled={activeLayout === "poster"}
-                        />
-                        {activeLayout === "poster" ? (
-                          <p className="mt-1.5 text-xs text-slate-400">포스터 템플릿에서는 사용하지 않는 항목이에요.</p>
-                        ) : (
-                          aiFilledFields.has("mustHavePhoto") && <AiFilledHint />
-                        )}
-                      </label>
-                      {activeLayout === "detail" && (
-                        <label className="block">
-                          <FieldLabel>스펙 정보 (상세페이지 전용)</FieldLabel>
-                          <textarea
-                            className={`${CONTROL_CLASS} py-2.5`}
-                            rows={4}
-                            value={spec}
-                            onChange={(e) => setSpec(e.target.value)}
-                            placeholder={"사이즈: 20 x 10 x 5cm\n무게: 320g\n소재: 스테인리스 스틸\n색상: 블랙, 화이트"}
-                          />
-                          <span className="mt-1 block text-xs text-slate-400">
-                            한 줄에 하나씩 라벨: 값 형식으로 입력해주세요.
-                          </span>
-                        </label>
-                      )}
-                    </div>
-                  </div>
-              </div>
-
-            <div className="rounded-lg border border-slate-200 bg-white">
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-6 py-4">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold uppercase tracking-wide text-brand-600">Step 3</span>
-                      <h2 className="text-sm font-bold text-slate-900">템플릿을 선택하세요</h2>
-                    </div>
-                    <TranslateMenu
-                      activeLang={activeLang}
-                      translating={translating || generating}
-                      onTranslate={runTranslate}
-                    />
+                  <div className="flex items-center gap-2 border-b border-slate-200 px-6 py-4">
+                    <span className="text-xs font-bold uppercase tracking-wide text-brand-600">Step 2</span>
+                    <h2 className="text-sm font-bold text-slate-900">템플릿을 선택하세요</h2>
                   </div>
                   <div className="p-4 lg:max-h-[calc(100vh-260px)] lg:overflow-y-auto">
                     <div className="mb-3 flex gap-2">
@@ -1456,15 +1391,143 @@ export default function MarketingMaterialCreator() {
                         ))}
                     </div>
                   </div>
-                  <div className="border-t border-slate-100 p-6 pt-4">
-                    <Button
-                      className="w-full justify-center py-3.5 text-base"
-                      onClick={handleGenerateClick}
-                      disabled={generating}
-                    >
-                      <Icon name="sparkle" className="w-5 h-5" />
-                      이미지 생성하기
-                    </Button>
+              </div>
+
+            <div className="rounded-lg border border-slate-200 bg-white">
+                <SectionCardHeader step={3} title="상품정보를 입력하세요" />
+                  <div className="p-4 lg:max-h-[calc(100vh-260px)] lg:overflow-y-auto">
+                    <div className="space-y-3">
+                      <label className="block">
+                        <FieldLabel required>상품명</FieldLabel>
+                        <input
+                          className={`${emptyFieldClass(!preview.productName.trim())} h-10`}
+                          value={preview.productName}
+                          onChange={handlePreviewChange("productName")}
+                          placeholder={mc.preview.productName}
+                        />
+                      </label>
+                      <div>
+                        <Button
+                          type="button"
+                          variant="outlineBrand"
+                          className="w-full py-2 text-xs"
+                          title="업로드한 사진·로고와 상품명, 선택한 템플릿 스타일을 보고 나머지 정보와 추천 가격까지 채워줍니다."
+                          onClick={handleAiFillInfo}
+                          disabled={aiFillingInfo}
+                        >
+                          <Icon name="sparkle" className="w-3.5 h-3.5" />
+                          {aiFillingInfo ? "채우는 중..." : "AI로 채우기"}
+                        </Button>
+                        <span className="mt-1 block text-[11px] text-slate-400">
+                          상품명을 먼저 입력해야 "AI로 채우기"를 쓸 수 있어요.
+                        </span>
+                        {aiFillError && <p className="mt-2 text-xs font-medium text-red-500">{aiFillError}</p>}
+                      </div>
+                      <label className="block">
+                        <FieldLabel>태그라인</FieldLabel>
+                        <input
+                          className={`${aiFilledFieldClass(aiFilledFields.has("tagline"))} h-10`}
+                          value={preview.tagline}
+                          onChange={handlePreviewChange("tagline")}
+                          placeholder={mc.preview.tagline}
+                        />
+                        {aiFilledFields.has("tagline") && <AiFilledHint />}
+                      </label>
+                      <label className="block">
+                        <FieldLabel>상품 설명</FieldLabel>
+                        <textarea
+                          className={`${aiFilledFieldClass(aiFilledFields.has("description"))} py-2.5`}
+                          rows={2}
+                          value={preview.description}
+                          onChange={handlePreviewChange("description")}
+                          placeholder={mc.preview.description}
+                        />
+                        {aiFilledFields.has("description") && <AiFilledHint />}
+                      </label>
+                      <label className="block">
+                        <FieldLabel>
+                          가격{" "}
+                          <span className="font-normal text-slate-400">
+                            ({activeLang ? EXCHANGE_RATE_PER_KRW[activeLang]?.currency : "KRW, 원"})
+                          </span>
+                        </FieldLabel>
+                        <input
+                          className={`${aiFilledFieldClass(aiFilledFields.has("price"))} h-10`}
+                          value={preview.price}
+                          onChange={handlePreviewChange("price")}
+                          placeholder={mc.preview.price}
+                        />
+                        {aiFilledFields.has("price") && <AiFilledHint />}
+                        {priceReason && (
+                          <p className="mt-1.5 flex items-start gap-1 text-[11px] text-brand-600">
+                            <Icon name="sparkle" className="mt-0.5 w-3 h-3 shrink-0" />
+                            <span>AI 추천 근거: {priceReason}</span>
+                          </p>
+                        )}
+                        {activeLang && (
+                          <p className="mt-1.5 text-[11px] text-slate-400">
+                            이미지 언어를 {TRANSLATE_LANGUAGES.find((l) => l.code === activeLang)?.label}(으)로 설정해서
+                            환율에 맞춰 자동으로 변환된 가격이에요. 참고용 환율이며 실시간 시세와 다를 수 있어요.
+                          </p>
+                        )}
+                      </label>
+                      <label className="block">
+                        <FieldLabel>꼭 들어갔으면 하는 사진</FieldLabel>
+                        <textarea
+                          className={`${aiFilledFieldClass(aiFilledFields.has("mustHavePhoto"))} py-2.5 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400`}
+                          rows={2}
+                          value={preview.mustHavePhoto}
+                          onChange={handlePreviewChange("mustHavePhoto")}
+                          placeholder="예: 제품을 사용하는 모습"
+                          disabled={activeLayout === "poster"}
+                        />
+                        {activeLayout === "poster" ? (
+                          <p className="mt-1.5 text-xs text-slate-400">포스터 템플릿에서는 사용하지 않는 항목이에요.</p>
+                        ) : (
+                          aiFilledFields.has("mustHavePhoto") && <AiFilledHint />
+                        )}
+                      </label>
+                      {activeLayout === "detail" && (
+                        <label className="block">
+                          <FieldLabel>스펙 정보 (상세페이지 전용)</FieldLabel>
+                          <textarea
+                            className={`${CONTROL_CLASS} py-2.5`}
+                            rows={4}
+                            value={spec}
+                            onChange={(e) => setSpec(e.target.value)}
+                            placeholder={"사이즈: 20 x 10 x 5cm\n무게: 320g\n소재: 스테인리스 스틸\n색상: 블랙, 화이트"}
+                          />
+                          <span className="mt-1 block text-xs text-slate-400">
+                            한 줄에 하나씩 라벨: 값 형식으로 입력해주세요.
+                          </span>
+                        </label>
+                      )}
+                    </div>
+                  </div>
+                  <div className="border-t border-slate-200 p-4">
+                    <div className="flex flex-col items-center gap-3 text-center">
+                      <TranslateMenu
+                        activeLang={activeLang}
+                        translating={translating || generating}
+                        onTranslate={runTranslate}
+                        disabled={!step3Complete}
+                      />
+                      <p className="text-xs text-slate-400">
+                        {!step3Complete
+                          ? "Step 3의 빈칸을 모두 채우면 이미지 언어를 설정할 수 있어요."
+                          : !languageChosen
+                            ? "이미지 언어를 설정하면 이미지 생성하기를 누를 수 있어요."
+                            : "이제 이미지를 생성할 수 있어요."}
+                      </p>
+                      <Button
+                        className="w-full justify-center py-3.5 text-base"
+                        onClick={handleGenerateClick}
+                        disabled={generating || !step3Complete || !languageChosen}
+                      >
+                        <Icon name="sparkle" className="w-5 h-5" />
+                        이미지 생성하기
+                      </Button>
+                    </div>
                   </div>
               </div>
           </div>
@@ -1673,6 +1736,26 @@ export default function MarketingMaterialCreator() {
                 />
               </div>
             </div>
+            {viewingVersionIndex > 0 && (
+              <button
+                type="button"
+                onClick={() => showAdjacentVersion(-1)}
+                aria-label="이전 버전 보기"
+                className="absolute left-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-slate-600 shadow-md hover:bg-white"
+              >
+                <Icon name="arrowLeft" className="w-4 h-4" />
+              </button>
+            )}
+            {viewingVersionIndex !== -1 && viewingVersionIndex < versionHistory.length - 1 && (
+              <button
+                type="button"
+                onClick={() => showAdjacentVersion(1)}
+                aria-label="다음 버전 보기"
+                className="absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-slate-600 shadow-md hover:bg-white"
+              >
+                <Icon name="arrowRight" className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
       )}
