@@ -8,6 +8,7 @@ import { govAnnouncementDetails } from "../data/mockData";
 import { useAuth } from "../context/AuthContext";
 import { api, idsParam } from "../lib/api";
 import { isClosed } from "../lib/period";
+import { readDraft } from "../lib/draft";
 
 function reviewStatusKey(submission) {
   if (submission.review_status === "approved") return "approved";
@@ -15,34 +16,25 @@ function reviewStatusKey(submission) {
   return "reviewing";
 }
 
-// 승인 확인 여부는 서버에 저장하지 않고, 이 브라우저에 로컬로만 기록한다 —
-// "사용자가 확인하면 사라진다"는 건 이 사용자 화면에서의 강조 표시가 사라진다는 뜻이라
-// 굳이 새 테이블/컬럼을 만들 필요 없이 localStorage로 충분하다.
-function ackKey(userId) {
-  return `jbxport:approved-ack:${userId}`;
-}
-function loadAcked(userId) {
-  try {
-    return new Set(JSON.parse(localStorage.getItem(ackKey(userId)) || "[]"));
-  } catch {
-    return new Set();
-  }
-}
-function saveAcked(userId, set) {
-  localStorage.setItem(ackKey(userId), JSON.stringify([...set]));
-}
-// submissionId만으로는 "그 서류가 다시 반려됐다가 재승인된" 경우를 구분 못 하니,
-// 승인 시각까지 같이 묶어서 키로 쓴다.
-function approvalAckId(doc) {
-  return `${doc.submissionId}:${doc.reviewedAt || ""}`;
-}
-
-function ProgramRow({ index, program, expanded, onToggle, onViewDocument, onGoToDocs, onFixDocument, isNewApproval }) {
+function ProgramRow({ index, program, expanded, onToggle, onViewDocument, onGoToDocs, onFixDocument }) {
   const closed = program.closed;
+  // 서류 하나라도 펼쳐보지 않아도 이 사업에 신경 쓸 게 있는지 한눈에 보이도록, 이름 앞에 그
+  // 사업 안 서류들의 상태를 요약한 점을 찍는다 — 보완할 서류가 있으면 그게 최우선, 없고
+  // 승인된 서류가 있으면 그다음 우선순위로 보여준다.
+  const hasNeedsRevision = program.documents.some((d) => d.statusKey === "needsRevision");
+  const hasApproved = program.documents.some((d) => d.statusKey === "approved");
+  const programStatusKey = hasNeedsRevision ? "needsRevision" : hasApproved ? "approved" : null;
   return (
     <Card className="overflow-hidden p-0">
       <div className="flex w-full items-center justify-between gap-4 px-5 py-4">
-        <button type="button" onClick={onToggle} className="flex-1 text-left">
+        <button type="button" onClick={onToggle} className="flex flex-1 items-center gap-2 text-left">
+          {programStatusKey && (
+            <span
+              className={`h-2.5 w-2.5 shrink-0 rounded-full ${mas.statusDotClasses[programStatusKey]} ${
+                hasNeedsRevision ? "animate-blink" : ""
+              }`}
+            />
+          )}
           <p className="text-base font-bold text-slate-900">
             {index}) {program.businessName}
           </p>
@@ -56,7 +48,7 @@ function ProgramRow({ index, program, expanded, onToggle, onViewDocument, onGoTo
             disabled={closed}
           >
             <Icon name="documents" className="w-5 h-5" />
-            {closed ? "마감됨" : "서류 작성하러 가기"}
+            {closed ? "마감됨" : "확인하기"}
           </Button>
           <button
             type="button"
@@ -76,7 +68,7 @@ function ProgramRow({ index, program, expanded, onToggle, onViewDocument, onGoTo
             program.documents.map((doc) => {
               const isNeedsRevision = doc.statusKey === "needsRevision";
               const isApproved = doc.statusKey === "approved";
-              const isUnseenApproval = isApproved && isNewApproval(doc);
+              const needsWriting = doc.statusKey === "notStarted" || doc.statusKey === "drafting";
               return (
                 <div key={doc.templateId} className="flex items-center justify-between gap-3 px-5 py-3">
                   <p className="text-sm font-medium text-slate-800">{doc.templateName}</p>
@@ -88,29 +80,31 @@ function ProgramRow({ index, program, expanded, onToggle, onViewDocument, onGoTo
                     >
                       <span
                         className={`h-2.5 w-2.5 rounded-full ${mas.statusDotClasses[doc.statusKey]} ${
-                          isNeedsRevision || isUnseenApproval ? "animate-blink" : ""
+                          isNeedsRevision ? "animate-blink" : ""
                         }`}
                       />
                       {mas.statusLabels[doc.statusKey]}
                     </span>
-                    {isNeedsRevision && (
+                    {(isNeedsRevision || needsWriting) && (
                       <Button
                         type="button"
                         className="px-3 py-1.5 text-xs"
                         onClick={() => onFixDocument(program, doc)}
                         disabled={closed}
                       >
-                        {closed ? "마감됨" : "보완하기"}
+                        {closed ? "마감됨" : isNeedsRevision ? "서류 수정하기" : "서류 작성하기"}
                       </Button>
                     )}
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      className="px-3 py-1.5 text-xs"
-                      onClick={() => onViewDocument(doc)}
-                    >
-                      확인하기
-                    </Button>
+                    {doc.submissionId && (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="px-3 py-1.5 text-xs"
+                        onClick={() => onViewDocument(doc)}
+                      >
+                        확인하기
+                      </Button>
+                    )}
                   </div>
                 </div>
               );
@@ -131,32 +125,15 @@ export default function MyApplicationStatus() {
   const [viewingDoc, setViewingDoc] = useState(null);
   const [bookmarks, setBookmarks] = useState([]);
   const [loadingBookmarks, setLoadingBookmarks] = useState(true);
-  const [ackedApprovals, setAckedApprovals] = useState(new Set());
   const [needsRevisionCount, setNeedsRevisionCount] = useState(0);
 
   useEffect(() => {
     if (!user?.id) return;
-    setAckedApprovals(loadAcked(user.id));
-  }, [user?.id]);
-
-  useEffect(() => {
-    if (!user?.id) return;
     api
-      .get("/submissions?review_status=needs_revision", session?.access_token)
-      .then(({ submissions }) => setNeedsRevisionCount((submissions || []).length))
+      .get("/submissions/needs-revision-count", session?.access_token)
+      .then(({ count }) => setNeedsRevisionCount(count || 0))
       .catch(() => {});
   }, [user?.id, session?.access_token]);
-
-  const isNewApproval = (doc) => !ackedApprovals.has(approvalAckId(doc));
-
-  const acknowledgeApproval = (doc) => {
-    if (!user?.id || doc.statusKey !== "approved") return;
-    const id = approvalAckId(doc);
-    if (ackedApprovals.has(id)) return;
-    const next = new Set(ackedApprovals).add(id);
-    setAckedApprovals(next);
-    saveAcked(user.id, next);
-  };
 
   useEffect(() => {
     if (!user?.id) return;
@@ -232,9 +209,11 @@ export default function MyApplicationStatus() {
         ? await api.get(`/templates?${idsParam("business_id", businessIds)}`)
         : { templates: [] };
       const requiredCountByBusiness = {};
+      const templatesByBusiness = {};
       (allTemplates || []).forEach((t) => {
         if (t.reference_only) return;
         requiredCountByBusiness[t.business_id] = (requiredCountByBusiness[t.business_id] || 0) + 1;
+        (templatesByBusiness[t.business_id] ||= []).push(t);
       });
 
       const latestByTemplate = {};
@@ -265,11 +244,34 @@ export default function MyApplicationStatus() {
       });
 
       // 마감 + 필수 서류를 다 못 낸 경우만 목록에서 제거한다. 진행중인 공고는 완료 여부와
-      // 상관없이 그대로 두고, 마감됐어도 다 낸 경우는 "마감된 지원사업"으로 남겨둔다.
+      // 상관없이 그대로 두고, 마감됐어도 다 낸 경우는 "마감된 지원사업"으로 남겨둔다. 이 판단은
+      // 아래에서 "서류작성전" 항목을 채워 넣기 전, 실제로 제출한 서식 수만으로 해야 한다 —
+      // 채운 뒤에는 항상 documents.length === required가 되어버려 이 필터가 무의미해진다.
       const visiblePrograms = Object.values(byBusiness).filter((p) => {
         if (!p.closed) return true;
         const required = requiredCountByBusiness[p.businessId] ?? p.documents.length;
         return p.documents.length >= required;
+      });
+
+      // 아직 한 번도 제출하지 않은 서식도 같이 보여준다 — "작성중"인지는 서버가 아니라 이
+      // 브라우저에 남은 임시저장 여부로만 판단할 수 있다(임시저장은 의도적으로 서버에 올리지
+      // 않는 값이라 관리자·다른 기기에서는 알 수 없다).
+      visiblePrograms.forEach((program) => {
+        const submittedIds = new Set(program.documents.map((d) => d.templateId));
+        const businessTemplates = templatesByBusiness[program.businessId] || [];
+        businessTemplates.forEach((t) => {
+          if (submittedIds.has(t.id)) return;
+          const hasDraft = Boolean(readDraft(user.id, t.id));
+          program.documents.push({
+            templateId: t.id,
+            templateName: t.name,
+            statusKey: hasDraft ? "drafting" : "notStarted",
+            submissionId: null,
+            reviewedAt: null,
+          });
+        });
+        const sortOrderById = Object.fromEntries(businessTemplates.map((t) => [t.id, t.sort_order ?? 0]));
+        program.documents.sort((a, b) => (sortOrderById[a.templateId] ?? 0) - (sortOrderById[b.templateId] ?? 0));
       });
 
       if (!cancelled) {
@@ -285,14 +287,6 @@ export default function MyApplicationStatus() {
 
   return (
     <div className="mx-auto max-w-3xl px-8 py-8">
-      <button
-        type="button"
-        onClick={() => navigate(-1)}
-        className="mb-4 flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-800"
-      >
-        <Icon name="arrowLeft" className="w-5 h-5" /> 마이페이지로
-      </button>
-
       <h1 className="text-3xl font-extrabold text-slate-900">{mas.title}</h1>
       <p className="mt-2 mb-8 text-sm text-slate-500">{mas.subtitle}</p>
 
@@ -360,17 +354,13 @@ export default function MyApplicationStatus() {
               program={program}
               expanded={expandedId === program.businessId}
               onToggle={() => setExpandedId((id) => (id === program.businessId ? null : program.businessId))}
-              onViewDocument={(doc) => {
-                acknowledgeApproval(doc);
-                setViewingDoc(doc);
-              }}
+              onViewDocument={(doc) => setViewingDoc(doc)}
               onFixDocument={(p, doc) => {
                 if (p.closed) return;
                 navigate(`/docs/fill/${doc.templateId}`, {
                   state: { templateName: doc.templateName, businessId: p.businessId, businessName: p.businessName },
                 });
               }}
-              isNewApproval={isNewApproval}
               onGoToDocs={(p) => {
                 if (p.closed) return;
                 navigate("/docs", { state: { businessId: p.businessId, businessName: p.businessName } });

@@ -216,7 +216,10 @@ function ReferenceDocGroup({ title, templates, onDownload }) {
 }
 
 function orgNameFor(business) {
-  const detail = govAnnouncementDetails[business.id];
+  // 실제로 관리자가 등록한 공고 정보(business.basic_info)를 최우선으로 쓰고, 예전에 미리
+  // 채워둔 데모용 목업(govAnnouncementDetails)은 그 정보가 없는 경우에만 참고한다 — 반대
+  // 순서였을 때는 실제 공고에도 항상 목업이 없다는 이유로 하드코딩된 문구만 나왔었다.
+  const detail = business.basic_info || govAnnouncementDetails[business.id];
   return detail?.recruiter || detail?.org || "전북 지원사업 포털";
 }
 
@@ -584,17 +587,18 @@ export default function DocumentChecklist() {
 
       {selectedBusinessId ? (
         <div className="mb-8">
-          <button
-            type="button"
-            onClick={() => navigate(-1)}
-            className="mb-4 flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-800"
-          >
-            <Icon name="arrowLeft" className="w-5 h-5" /> 지원사업 목록으로
-          </button>
-
-          <div className="mb-3">
-            <p className="text-xs font-semibold text-slate-400">내가 선택한 지원사업</p>
-            <h2 className="text-lg font-bold text-slate-900">{selectedBusinessName}</h2>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-xs font-semibold text-slate-400">내가 선택한 지원사업</p>
+              <h2 className="text-lg font-bold text-slate-900">{selectedBusinessName}</h2>
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate(`/gov-support/${selectedBusinessId}`)}
+              className={SECONDARY_BUTTON_CLASS}
+            >
+              <Icon name="documents" className="w-4 h-4" /> 공고 확인하기
+            </button>
           </div>
           {selectedBusinessClosed && (
             <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">

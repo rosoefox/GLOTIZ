@@ -72,7 +72,7 @@ export default function GovSupportDetail() {
     <div className="mx-auto max-w-6xl px-4 py-6 sm:px-8 sm:py-8">
       <button
         type="button"
-        onClick={() => navigate(-1)}
+        onClick={() => navigate("/gov-support", { state: { skipAutoMatch: true } })}
         className="mb-4 flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-800"
       >
         <Icon name="arrowLeft" className="w-5 h-5" /> 목록으로

@@ -22,9 +22,11 @@ export default function Login() {
     setSubmitting(true);
     try {
       const { accountType: actualAccountType } = await signIn({ email, password });
-      if (accountType === "admin" && actualAccountType !== "admin") {
+      if (accountType !== actualAccountType) {
         await logout();
-        setError("관리자 권한이 없습니다.");
+        setError(
+          accountType === "admin" ? "관리자 권한이 없습니다." : "관리자 계정은 이 탭으로 로그인할 수 없습니다."
+        );
         return;
       }
       navigate(actualAccountType === "admin" ? "/admin" : "/", { replace: true });

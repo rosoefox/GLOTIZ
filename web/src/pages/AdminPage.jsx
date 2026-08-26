@@ -20,43 +20,42 @@ const ACCOUNT_DOC_TYPE_OPTIONS = [
 
 const COMPANY_NAME_KEYS = ["company_name_kr", "company_name"];
 
+// 관리자는 사용자가 브라우저에만 남겨둔 임시저장 여부를 알 수 없어(의도적으로 서버에 올리지
+// 않는 값) "서류작성전"과 "서류작성중"을 구분하지 못한다 — 둘 다 "서류작성중"으로 뭉뚱그린다.
+const REVIEW_STATUS_BADGE = {
+  not_submitted: { label: "서류작성중", className: "bg-slate-100 text-slate-500" },
+  reviewing: { label: "심사중", className: "bg-blue-50 text-blue-600" },
+  needs_revision: { label: "반려", className: "bg-red-50 text-red-600" },
+  approved: { label: "심사완료", className: "bg-emerald-50 text-emerald-600" },
+};
+
 function SubmissionRow({
   item,
   isHistory,
   applicantUserId,
   onViewSubmission,
-  onNotify,
   onSetReviewStatus,
   applicant,
-  notifying,
-  notified,
   downloadingId,
 }) {
-  const key = item.submission ? item.submission.id : `${applicantUserId}:${item.templateId}`;
-  const canNotify = item.statusKey === "not_submitted" || item.statusKey === "needs_revision";
   const isDownloading = item.submission && downloadingId === item.submission.id;
+  const badge = !isHistory && REVIEW_STATUS_BADGE[item.statusKey];
   return (
     <div className={`flex flex-wrap items-center justify-between gap-3 px-4 py-3 ${isHistory ? "bg-slate-50" : ""}`}>
       <div>
-        <p className={`text-sm ${isHistory ? "text-slate-600" : "font-semibold text-slate-900"}`}>
+        <p className={`flex items-center gap-2 text-sm ${isHistory ? "text-slate-600" : "font-semibold text-slate-900"}`}>
           {isHistory ? "이전 제출" : item.templateName}
+          {badge && (
+            <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${badge.className}`}>
+              {badge.label}
+            </span>
+          )}
         </p>
         {item.submission && (
           <p className="text-xs text-slate-400">{new Date(item.submission.created_at).toLocaleString("ko-KR")}</p>
         )}
       </div>
       <div className="flex items-center gap-2">
-        {!isHistory && canNotify && (
-          <Button
-            variant="primary"
-            className="w-[11.5rem] justify-center px-3 py-1.5 text-xs"
-            disabled={notifying[key] || notified[key]}
-            onClick={() => onNotify(applicant, item)}
-          >
-            <Icon name="send" className="w-5 h-5" />
-            {notified[key] ? ap.notifiedLabel : ap.notifyLabel}
-          </Button>
-        )}
         {item.submission && (
           <Button
             variant="secondary"
@@ -101,19 +100,15 @@ function SubmissionRow({
   );
 }
 
-function SubmissionItem({ item, applicant, onViewSubmission, onNotify, onSetReviewStatus, notifying, notified, downloadingId }) {
+function SubmissionItem({ item, applicant, onViewSubmission, onSetReviewStatus, downloadingId }) {
   const [showHistory, setShowHistory] = useState(false);
   return (
     <div>
       <SubmissionRow
         item={item}
-        applicantUserId={applicant.userId}
         applicant={applicant}
         onViewSubmission={onViewSubmission}
-        onNotify={onNotify}
         onSetReviewStatus={onSetReviewStatus}
-        notifying={notifying}
-        notified={notified}
         downloadingId={downloadingId}
       />
       {item.history.length > 0 && (
@@ -132,12 +127,8 @@ function SubmissionItem({ item, applicant, onViewSubmission, onNotify, onSetRevi
                 <SubmissionRow
                   item={h}
                   isHistory
-                  applicantUserId={applicant.userId}
                   applicant={applicant}
                   onViewSubmission={onViewSubmission}
-                  onNotify={onNotify}
-                  notifying={notifying}
-                  notified={notified}
                   downloadingId={downloadingId}
                 />
               </div>
@@ -157,10 +148,7 @@ function ProgramRow({
   expandedApplicantKey,
   onToggleApplicant,
   onViewSubmission,
-  onNotify,
   onSetReviewStatus,
-  notifying,
-  notified,
   downloadingId,
 }) {
   return (
@@ -223,10 +211,7 @@ function ProgramRow({
                         item={item}
                         applicant={applicant}
                         onViewSubmission={onViewSubmission}
-                        onNotify={onNotify}
                         onSetReviewStatus={onSetReviewStatus}
-                        notifying={notifying}
-                        notified={notified}
                         downloadingId={downloadingId}
                       />
                     ))}
@@ -1130,8 +1115,6 @@ export default function AdminPage() {
   const [applicants, setApplicants] = useState([]);
   const [expandedProgramId, setExpandedProgramId] = useState(null);
   const [expandedApplicantKey, setExpandedApplicantKey] = useState(null);
-  const [notifying, setNotifying] = useState({});
-  const [notified, setNotified] = useState({});
   const [reviewStatusError, setReviewStatusError] = useState(null);
   const [downloadingId, setDownloadingId] = useState(null);
   const [search, setSearch] = useState("");
@@ -1346,7 +1329,10 @@ export default function AdminPage() {
         `/generated-file-url?path=${encodeURIComponent(filePath)}&bucket=${bucket}`,
         session?.access_token
       );
-      if (url) window.open(url, "_blank", "noopener,noreferrer");
+      // #toolbar=0 — 크롬 내장 PDF 뷰어의 툴바(다운로드·인쇄·확대와 함께 형광펜 주석 도구까지)를
+      // 통째로 숨긴다. 형광펜 도구 하나만 없애는 옵션은 크롬에 없어서, 서류를 볼 때 다른 사용자가
+      // 실수로 형광펜으로 표시해버리는 일이 없도록 툴바 자체를 껐다.
+      if (url) window.open(`${url}#toolbar=0`, "_blank", "noopener,noreferrer");
     } catch {
       // 다운로드 실패는 조용히 무시 - 버튼을 다시 누르면 재시도된다.
     }
@@ -1380,40 +1366,6 @@ export default function AdminPage() {
     } finally {
       setDownloadingId(null);
     }
-  };
-
-  const handleNotify = async (applicant, item) => {
-    const key = item.submission ? item.submission.id : `${applicant.userId}:${item.templateId}`;
-    if (notifying[key] || notified[key]) return;
-    setNotifying((prev) => ({ ...prev, [key]: true }));
-
-    const type = item.statusKey === "not_submitted" ? "not_submitted" : "needs_revision";
-    const message =
-      type === "not_submitted"
-        ? `[${item.templateName}] 서류가 아직 제출되지 않았습니다. 확인 후 제출해주세요.`
-        : `[${item.templateName}] 제출하신 서류에 보완이 필요합니다.${
-            item.submission?.review_note ? ` (${item.submission.review_note})` : ""
-          }`;
-
-    let ok = true;
-    try {
-      await api.post(
-        "/admin/notifications",
-        {
-          user_id: applicant.userId,
-          submission_id: item.submission?.id ?? null,
-          template_id: item.templateId,
-          type,
-          message,
-        },
-        session?.access_token
-      );
-    } catch {
-      ok = false;
-    }
-
-    setNotifying((prev) => ({ ...prev, [key]: false }));
-    if (ok) setNotified((prev) => ({ ...prev, [key]: true }));
   };
 
   // 상태 변경 + 알림 생성을 백엔드(/admin/submissions/{id}/review-status)에 맡긴다. 백엔드가
@@ -1559,10 +1511,7 @@ export default function AdminPage() {
                       setExpandedApplicantKey((k) => (k === key ? null : key))
                     }
                     onViewSubmission={handleViewSubmission}
-                    onNotify={handleNotify}
                     onSetReviewStatus={handleSetReviewStatus}
-                    notifying={notifying}
-                    notified={notified}
                     downloadingId={downloadingId}
                   />
                 ))}

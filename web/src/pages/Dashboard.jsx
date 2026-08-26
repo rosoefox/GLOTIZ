@@ -391,6 +391,7 @@ export default function Dashboard() {
 
             <Link
               to="/gov-support"
+              state={{ forceWizard: true }}
               className={`mt-6 inline-flex items-center gap-2 rounded-lg bg-white px-8 py-4 text-base font-semibold text-slate-900 transition-colors hover:bg-slate-100 ${revealCls(heroInView)}`}
               style={revealStyle(3)}
             >

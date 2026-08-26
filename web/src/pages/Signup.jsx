@@ -6,6 +6,10 @@ import { brand, login, signup as s } from "../data/mockData";
 import { CATEGORIES, COUNTRIES } from "../data/mockAnalysis";
 import { useAuth } from "../context/AuthContext";
 
+// 관리자 회원가입은 아무나 누르지 못하게 인증번호를 하나 더 받는다 — 정식 인증 시스템 전
+// 임시 값이라 그냥 프론트에 하드코딩해뒀다(실제 발급/검증 체계가 생기면 이 값을 대체한다).
+const ADMIN_VERIFICATION_CODE = "1234";
+
 export default function Signup() {
   const navigate = useNavigate();
   const { signup } = useAuth();
@@ -24,8 +28,30 @@ export default function Signup() {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [needsConfirmation, setNeedsConfirmation] = useState(false);
+  const [showAdminVerify, setShowAdminVerify] = useState(false);
+  const [adminCodeInput, setAdminCodeInput] = useState("");
+  const [adminCodeError, setAdminCodeError] = useState("");
 
   const update = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
+
+  const handleAccountTypeClick = (id) => {
+    if (id === "admin" && accountType !== "admin") {
+      setAdminCodeInput("");
+      setAdminCodeError("");
+      setShowAdminVerify(true);
+      return;
+    }
+    setAccountType(id);
+  };
+
+  const confirmAdminVerify = () => {
+    if (adminCodeInput.trim() !== ADMIN_VERIFICATION_CODE) {
+      setAdminCodeError("인증번호가 올바르지 않습니다.");
+      return;
+    }
+    setAccountType("admin");
+    setShowAdminVerify(false);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -42,9 +68,9 @@ export default function Signup() {
         loginId: form.loginId,
         name: form.name,
         phone: form.phone,
-        company: form.company,
-        categoryId: form.categoryId,
-        country: form.country,
+        company: accountType === "admin" ? null : form.company,
+        categoryId: accountType === "admin" ? null : form.categoryId,
+        country: accountType === "admin" ? null : form.country,
         accountType,
       });
 
@@ -109,7 +135,7 @@ export default function Signup() {
                   <button
                     key={t.id}
                     type="button"
-                    onClick={() => setAccountType(t.id)}
+                    onClick={() => handleAccountTypeClick(t.id)}
                     className={`rounded-md py-2 text-sm font-semibold transition-colors ${
                       accountType === t.id
                         ? "bg-white text-brand-700 shadow-sm"
@@ -168,43 +194,49 @@ export default function Signup() {
               value={form.passwordConfirm}
               onChange={update("passwordConfirm")}
             />
-            <TextField
-              label={s.fields.companyLabel}
-              required
-              placeholder={s.fields.companyPlaceholder}
-              value={form.company}
-              onChange={update("company")}
-            />
+            {accountType !== "admin" && (
+              <TextField
+                label={s.fields.companyLabel}
+                required
+                placeholder={s.fields.companyPlaceholder}
+                value={form.company}
+                onChange={update("company")}
+              />
+            )}
 
-            <label className="block">
-              <span className="mb-1.5 block text-sm font-medium text-slate-700">{s.fields.categoryLabel}</span>
-              <select
-                value={form.categoryId}
-                onChange={update("categoryId")}
-                className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
-              >
-                {CATEGORIES.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {accountType !== "admin" && (
+              <>
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-medium text-slate-700">{s.fields.categoryLabel}</span>
+                  <select
+                    value={form.categoryId}
+                    onChange={update("categoryId")}
+                    className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
+                  >
+                    {CATEGORIES.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
 
-            <label className="block">
-              <span className="mb-1.5 block text-sm font-medium text-slate-700">{s.fields.countryLabel}</span>
-              <select
-                value={form.country}
-                onChange={update("country")}
-                className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
-              >
-                {COUNTRIES.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-medium text-slate-700">{s.fields.countryLabel}</span>
+                  <select
+                    value={form.country}
+                    onChange={update("country")}
+                    className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
+                  >
+                    {COUNTRIES.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </>
+            )}
 
             {error && <p className="text-xs font-medium text-red-500">{error}</p>}
 
@@ -221,6 +253,42 @@ export default function Signup() {
           </p>
         </div>
       </div>
+
+      {showAdminVerify && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setShowAdminVerify(false)}
+        >
+          <div
+            className="w-full max-w-xs rounded-2xl bg-white p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-base font-bold text-slate-900">관리자 인증</h3>
+            <p className="mt-1 text-sm text-slate-500">인증번호를 입력하세요.</p>
+            <input
+              type="text"
+              autoFocus
+              value={adminCodeInput}
+              onChange={(e) => {
+                setAdminCodeInput(e.target.value);
+                setAdminCodeError("");
+              }}
+              onKeyDown={(e) => e.key === "Enter" && confirmAdminVerify()}
+              className="mt-3 w-full rounded-lg border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
+              placeholder="인증번호"
+            />
+            {adminCodeError && <p className="mt-2 text-xs font-medium text-red-500">{adminCodeError}</p>}
+            <div className="mt-4 flex gap-2">
+              <Button variant="secondary" className="flex-1 py-2.5" onClick={() => setShowAdminVerify(false)}>
+                취소
+              </Button>
+              <Button className="flex-1 py-2.5" onClick={confirmAdminVerify}>
+                확인
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

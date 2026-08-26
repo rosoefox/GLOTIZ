@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import Icon from "./Icon";
 import NavUserMenu from "./NavUserMenu";
 import { brand, nav, login } from "../data/mockData";
 import { useAuth } from "../context/AuthContext";
+import { api } from "../lib/api";
 import logoImage from "../../로고최종1.png";
 
 // 홈 화면을 포함한 모든 페이지가 공유하는 단일 상단 네비게이션.
@@ -13,13 +14,46 @@ import logoImage from "../../로고최종1.png";
 // 스크롤(scrolled prop)하거나 마우스를 올리면 부드럽게 불투명+블러 배경으로 전환된다.
 // 다른 페이지는 overlay를 안 넘기므로 기존과 동일하게 항상 불투명한 흰 배경을 쓴다.
 export default function Header({ overlay = false, scrolled = false }) {
-  const { isLoggedIn } = useAuth();
+  const { isLoggedIn, session } = useAuth();
   const navigate = useNavigate();
   const [hovered, setHovered] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [openDropdown, setOpenDropdown] = useState(null); // 데스크톱: 펼쳐진 드롭다운의 path
+  const [openAccordion, setOpenAccordion] = useState(null); // 모바일: 펼쳐진 아코디언의 path
+  const dropdownRef = useRef(null);
+  // 로그인 전이거나, 로그인했어도 신청한 공고가 아직 하나도 없으면 "수출지원사업"은 원래처럼
+  // "/gov-support"로 바로 이동하는 단순 링크로 남는다 — 신청 이력이 생긴 뒤부터만 전체 공고/지원
+  // 공고 목록/작성 중인 서류로 갈라지는 드롭다운(모바일은 아코디언)을 보여준다.
+  const [hasApplied, setHasApplied] = useState(false);
 
   const solid = !overlay || scrolled || hovered || mobileOpen;
   const transparent = overlay && !solid;
+
+  useEffect(() => {
+    if (!isLoggedIn || !session?.access_token) {
+      setHasApplied(false);
+      return;
+    }
+    let cancelled = false;
+    api
+      .get("/submissions", session.access_token)
+      .then(({ submissions }) => {
+        if (!cancelled) setHasApplied((submissions || []).length > 0);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoggedIn, session?.access_token]);
+
+  useEffect(() => {
+    if (!openDropdown) return;
+    const onClickOutside = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setOpenDropdown(null);
+    };
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, [openDropdown]);
 
   const goToLogin = () => {
     setMobileOpen(false);
@@ -55,6 +89,60 @@ export default function Header({ overlay = false, scrolled = false }) {
       <nav className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-8 md:flex">
         {nav.top.map((item) => {
           const locked = item.requiresAuth && !isLoggedIn;
+
+          if (item.children && isLoggedIn && hasApplied) {
+            const linkCls = transparent ? "text-white/80 hover:text-white" : "text-slate-500 hover:text-slate-900";
+            return (
+              <div key={item.path} className="relative" ref={openDropdown === item.path ? dropdownRef : null}>
+                <button
+                  type="button"
+                  onClick={() => setOpenDropdown((p) => (p === item.path ? null : item.path))}
+                  className={`text-sm font-medium transition-colors ${linkCls}`}
+                >
+                  {item.label}
+                </button>
+                {openDropdown === item.path && (
+                  <div className="absolute left-1/2 top-full z-50 mt-2 w-48 -translate-x-1/2 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg">
+                    {item.children.map((child) => {
+                      const childLocked = child.requiresAuth && !isLoggedIn;
+                      if (childLocked) {
+                        return (
+                          <button
+                            key={child.label}
+                            type="button"
+                            onClick={() => {
+                              setOpenDropdown(null);
+                              goToLogin();
+                            }}
+                            className="flex w-full items-center justify-between gap-1.5 rounded-lg px-3 py-2 text-left text-sm font-medium text-slate-400 hover:bg-slate-50"
+                          >
+                            {child.label}
+                            <Icon name="lock" className="w-3.5 h-3.5" />
+                          </button>
+                        );
+                      }
+                      return (
+                        <NavLink
+                          key={child.label}
+                          to={child.path}
+                          state={child.state}
+                          onClick={() => setOpenDropdown(null)}
+                          className={({ isActive }) =>
+                            `block rounded-lg px-3 py-2 text-sm font-medium ${
+                              isActive ? "bg-brand-50 text-brand-700" : "text-slate-600 hover:bg-slate-50"
+                            }`
+                          }
+                        >
+                          {child.label}
+                        </NavLink>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          }
+
           if (locked) {
             return (
               <button
@@ -114,6 +202,58 @@ export default function Header({ overlay = false, scrolled = false }) {
           <nav className="flex flex-col px-4 py-2">
             {nav.top.map((item) => {
               const locked = item.requiresAuth && !isLoggedIn;
+
+              if (item.children && isLoggedIn && hasApplied) {
+                const expanded = openAccordion === item.path;
+                return (
+                  <div key={item.path} className="border-b border-slate-50 last:border-b-0">
+                    <button
+                      type="button"
+                      onClick={() => setOpenAccordion((p) => (p === item.path ? null : item.path))}
+                      className="flex w-full items-center justify-between py-3 text-left text-sm font-medium text-slate-700"
+                    >
+                      {item.label}
+                      <Icon name="chevronDown" className={`w-4 h-4 transition-transform ${expanded ? "rotate-180" : ""}`} />
+                    </button>
+                    {expanded && (
+                      <div className="flex flex-col gap-0.5 pb-2 pl-3">
+                        {item.children.map((child) => {
+                          const childLocked = child.requiresAuth && !isLoggedIn;
+                          if (childLocked) {
+                            return (
+                              <button
+                                key={child.label}
+                                type="button"
+                                onClick={goToLogin}
+                                className="flex items-center gap-1.5 rounded-lg px-2 py-2 text-left text-sm font-medium text-slate-400"
+                              >
+                                {child.label}
+                                <Icon name="lock" className="w-3.5 h-3.5" />
+                              </button>
+                            );
+                          }
+                          return (
+                            <NavLink
+                              key={child.label}
+                              to={child.path}
+                              state={child.state}
+                              onClick={() => setMobileOpen(false)}
+                              className={({ isActive }) =>
+                                `rounded-lg px-2 py-2 text-sm font-medium ${
+                                  isActive ? "text-brand-700" : "text-slate-600"
+                                }`
+                              }
+                            >
+                              {child.label}
+                            </NavLink>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+
               if (locked) {
                 return (
                   <button

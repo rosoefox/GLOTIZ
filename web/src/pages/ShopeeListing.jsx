@@ -127,12 +127,29 @@ function ImagePickerButton({ onPick }) {
 }
 
 function ProductImages({ images, onAdd, onRemove }) {
+  const fileInputRef = useRef(null);
+
   const handleUpload = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     onAdd(URL.createObjectURL(file), file.name);
     e.target.value = "";
   };
+
+  // Ctrl+V로 붙여넣은 이미지(스크린샷 등)도 파일 선택 없이 바로 추가할 수 있게 한다 —
+  // 이 섹션이 페이지에 떠 있는 동안은 다른 입력창에 포커스가 없는 한 붙여넣기를 받는다.
+  useEffect(() => {
+    const handlePaste = (e) => {
+      const item = Array.from(e.clipboardData?.items || []).find((i) => i.type.startsWith("image/"));
+      if (!item) return;
+      const file = item.getAsFile();
+      if (!file) return;
+      e.preventDefault();
+      onAdd(URL.createObjectURL(file), file.name);
+    };
+    window.addEventListener("paste", handlePaste);
+    return () => window.removeEventListener("paste", handlePaste);
+  }, [onAdd]);
 
   return (
     <div>
@@ -142,11 +159,15 @@ function ProductImages({ images, onAdd, onRemove }) {
         </span>
         <div className="flex items-center gap-2">
           <ImagePickerButton onPick={onAdd} />
-          <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-50">
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
+          >
             <Icon name="upload" className="w-3.5 h-3.5" />
             {sl.imageUploadLabel}
-            <input type="file" accept="image/*" className="hidden" onChange={handleUpload} />
-          </label>
+          </button>
+          <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleUpload} />
         </div>
       </div>
       <div className="flex flex-wrap gap-2">
@@ -167,9 +188,14 @@ function ProductImages({ images, onAdd, onRemove }) {
           </div>
         ))}
         {images.length === 0 && (
-          <div className="flex h-20 w-20 items-center justify-center rounded-lg border-2 border-dashed border-slate-200 text-slate-300">
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            title="클릭하거나 이미지를 붙여넣으세요"
+            className="flex h-20 w-20 items-center justify-center rounded-lg border-2 border-dashed border-slate-200 text-slate-300 hover:border-brand-300 hover:text-brand-400"
+          >
             <Icon name="camera" className="w-5 h-5" />
-          </div>
+          </button>
         )}
       </div>
     </div>
@@ -278,6 +304,13 @@ export default function ShopeeListing() {
   sectionRefs.current = [];
   const registerSection = (el) => {
     if (el && !sectionRefs.current.includes(el)) sectionRefs.current.push(el);
+  };
+  // "작성 현황" 패널에서 단계 이름을 누르면 그 단계 카드로 스크롤한다 — 상단에 고정된 헤더/탭
+  // 높이만큼(96px) 보정해서 카드 제목이 헤더에 가려지지 않게 한다.
+  const scrollToStep = (stepIndex) => {
+    const el = sectionRefs.current.find((e) => Number(e.dataset.stepIndex) === stepIndex);
+    if (!el) return;
+    window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 96, behavior: "smooth" });
   };
 
   useEffect(() => {
@@ -523,11 +556,6 @@ export default function ShopeeListing() {
             <p className="mt-1 text-sm text-slate-500">{sl.formSubtitle}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Button type="button" variant="outlineBrand" className="px-3.5 py-2 text-xs" onClick={loadPreviousInfo} disabled={loadingPrevious}>
-              <Icon name="history" className="w-3.5 h-3.5" />
-              {loadingPrevious ? "불러오는 중..." : sl.loadPreviousLabel}
-            </Button>
-            {previousInfoMessage && <span className="text-xs font-medium text-slate-400">{previousInfoMessage}</span>}
             <TranslatePanel values={values} activeLang={activeLang} translating={translating} onTranslate={runTranslate} />
           </div>
         </div>
@@ -543,6 +571,14 @@ export default function ShopeeListing() {
               <div className="p-6">
                 <ProductImages images={images} onAdd={addImage} onRemove={removeImage} />
               </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Button type="button" variant="outlineBrand" className="px-3.5 py-2 text-xs" onClick={loadPreviousInfo} disabled={loadingPrevious}>
+                <Icon name="history" className="w-3.5 h-3.5" />
+                {loadingPrevious ? "불러오는 중..." : sl.loadPreviousLabel}
+              </Button>
+              {previousInfoMessage && <span className="text-xs font-medium text-slate-400">{previousInfoMessage}</span>}
             </div>
 
             {FIELD_GROUPS.map((group, groupIdx) => (
@@ -631,7 +667,11 @@ export default function ShopeeListing() {
               </div>
 
               <div className="mt-5 space-y-3 border-t border-slate-100 pt-4">
-                <div className="flex items-center justify-between gap-2 text-sm">
+                <button
+                  type="button"
+                  onClick={() => scrollToStep(0)}
+                  className="flex w-full items-center justify-between gap-2 text-left text-sm hover:text-brand-700"
+                >
                   <span
                     className={`flex items-center gap-2 ${
                       activeStep === 0 ? "font-semibold text-slate-900" : "text-slate-500"
@@ -644,11 +684,16 @@ export default function ShopeeListing() {
                     상품 이미지
                   </span>
                   <span className="shrink-0 text-xs text-slate-400">{images.length}장</span>
-                </div>
+                </button>
                 {FIELD_GROUPS.map((group, idx) => {
                   const done = group.fields.filter((f) => (values[f.key] ?? "").toString().trim()).length;
                   return (
-                    <div key={group.title} className="flex items-center justify-between gap-2 text-sm">
+                    <button
+                      type="button"
+                      key={group.title}
+                      onClick={() => scrollToStep(idx + 1)}
+                      className="flex w-full items-center justify-between gap-2 text-left text-sm hover:text-brand-700"
+                    >
                       <span
                         className={`flex items-center gap-2 ${
                           activeStep === idx + 1 ? "font-semibold text-slate-900" : "text-slate-500"
@@ -663,7 +708,7 @@ export default function ShopeeListing() {
                       <span className="shrink-0 text-xs text-slate-400">
                         {done}/{group.fields.length}
                       </span>
-                    </div>
+                    </button>
                   );
                 })}
               </div>

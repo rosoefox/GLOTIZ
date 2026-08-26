@@ -4,6 +4,7 @@ import Icon from "../components/Icon";
 import { Button, CONTROL_CLASS, emptyFieldClass, SectionCardHeader, FieldLabel } from "../components/ui";
 import { marketingMaterialCreator as mc } from "../data/mockData";
 import { useMarketingImages } from "../context/MarketingImagesContext";
+import { useMarketingGeneration } from "../context/MarketingGenerationContext";
 import { useAuth } from "../context/AuthContext";
 import { readErrorMessage } from "../lib/apiError";
 import { convertFromKrw, EXCHANGE_RATE_PER_KRW } from "../lib/currency";
@@ -511,8 +512,21 @@ function TranslateMenu({ activeLang, translating, onTranslate, disabled }) {
 
 export default function MarketingMaterialCreator() {
   // "setup" = 1~3단계로 사진/정보/템플릿을 채우는 화면, "result" = 생성된 이미지를 보고
-  // 프롬프트로 다듬거나 저장하는 화면.
-  const [stage, setStage] = useState("setup");
+  // 프롬프트로 다듬거나 저장하는 화면. 이 화면과 생성 진행 상태(generating/결과)는 페이지
+  // 이동으로 사라지면 안 되므로 앱 최상단 컨텍스트에 둔다 — 생성 도중 다른 페이지에 갔다
+  // 돌아와도 진행 상황과 결과를 그대로 이어볼 수 있다(MarketingGenerationContext 참고).
+  const {
+    stage,
+    setStage,
+    generating,
+    setGenerating,
+    generateError,
+    setGenerateError,
+    generatedResult,
+    setGeneratedResult,
+    versionHistory,
+    setVersionHistory,
+  } = useMarketingGeneration();
   const [activeTemplate, setActiveTemplate] = useState(
     mc.templates.items.find((t) => t.selected)?.id
   );
@@ -533,9 +547,6 @@ export default function MarketingMaterialCreator() {
   const [logoImage, setLogoImage] = useState(null);
   const [savingImage, setSavingImage] = useState(false);
   const [saveError, setSaveError] = useState("");
-  const [generating, setGenerating] = useState(false);
-  const [generateError, setGenerateError] = useState("");
-  const [generatedResult, setGeneratedResult] = useState(null);
   const [aiFillingInfo, setAiFillingInfo] = useState(false);
   const [aiFillError, setAiFillError] = useState("");
   const [aiFilledFields, setAiFilledFields] = useState(() => new Set()); // AI가 채운 뒤 아직 사용자가 손대지 않은 필드
@@ -551,7 +562,6 @@ export default function MarketingMaterialCreator() {
   const [editPrompt, setEditPrompt] = useState("");
   const [editing, setEditing] = useState(false);
   const [editError, setEditError] = useState("");
-  const [versionHistory, setVersionHistory] = useState([]);
   const [viewingVersion, setViewingVersion] = useState(null);
   const [savingVersionImage, setSavingVersionImage] = useState(false);
 
@@ -570,7 +580,9 @@ export default function MarketingMaterialCreator() {
     try {
       const saved = JSON.parse(raw);
       if (saved.preview) setPreview(saved.preview);
-      if (typeof saved.spec === "string") setSpec(saved.spec);
+      // 스펙 정보(상세페이지 전용)는 사용자가 그 자리에서 직접 입력했을 때만 값이 있어야 하는
+      // 선택 항목이라, 임시저장 대상에서 제외한다 — 안 그러면 예전에 써둔 값이 계속 자동으로
+      // 되살아나서 "입력하지 않았는데 채워져 있다"는 인상을 준다.
       if (saved.activeTemplate) setActiveTemplate(saved.activeTemplate);
       if (saved.activeCategory) setActiveCategory(saved.activeCategory);
       if (saved.posterAspectRatio) setPosterAspectRatio(saved.posterAspectRatio);
@@ -597,10 +609,13 @@ export default function MarketingMaterialCreator() {
           setLogoImage(saved.logo.dataUrl);
         }
       }
-      // 생성된 이미지도 같이 임시저장해서, 페이지를 새로고침하거나 실수로 벗어나도
-      // 다시 생성할 필요 없이 그대로 이어볼 수 있게 한다.
-      if (saved.generatedResult) setGeneratedResult(saved.generatedResult);
-      if (Array.isArray(saved.versionHistory)) setVersionHistory(saved.versionHistory);
+      // 생성된 이미지도 같이 임시저장해서, 새로고침해도 다시 생성할 필요 없이 이어볼 수 있게
+      // 한다. generatedResult/versionHistory는 이제 페이지 이동에도 살아있는 컨텍스트에 있으므로
+      // (MarketingGenerationContext), 이미 값이 있다면(다른 페이지에 갔다 온 사이 생성이 끝난
+      // 경우 등) 그 살아있는 값을 이 새로고침 전 저장본으로 덮어쓰지 않는다 — 새로고침으로 완전히
+      // 처음 마운트된 경우에만 저장본에서 복원한다.
+      if (saved.generatedResult && generatedResult === null) setGeneratedResult(saved.generatedResult);
+      if (Array.isArray(saved.versionHistory) && versionHistory.length === 0) setVersionHistory(saved.versionHistory);
       if (saved.activeLang !== undefined) setActiveLang(saved.activeLang);
       if (saved.originalPreview) setOriginalPreview(saved.originalPreview);
       if (saved.originalCopy) setOriginalCopy(saved.originalCopy);
@@ -614,7 +629,6 @@ export default function MarketingMaterialCreator() {
   useEffect(() => {
     const payload = {
       preview,
-      spec,
       activeTemplate,
       activeCategory,
       posterAspectRatio,
@@ -638,7 +652,7 @@ export default function MarketingMaterialCreator() {
       // 저장 공간이 부족하면(용량 큰 사진 등) 조용히 건너뛴다 — 화면 동작에는 영향 없다.
     }
   }, [
-    user?.id, preview, spec, activeTemplate, activeCategory, posterAspectRatio, useAiModel,
+    user?.id, preview, activeTemplate, activeCategory, posterAspectRatio, useAiModel,
     uploadedFiles, uploadedImages, logoFile, logoImage,
     generatedResult, versionHistory, activeLang, originalPreview, originalCopy, originalSpec,
   ]);
@@ -648,7 +662,12 @@ export default function MarketingMaterialCreator() {
     setSavingImage(true);
     setSaveError("");
     try {
-      const dataUrl = await toPng(previewRef.current, { pixelRatio: 2 });
+      // skipFonts: true — 상세페이지 헤딩에 쓰는 Google Fonts(Bebas Neue)는 크로스 오리진
+      // 스타일시트라 브라우저가 그 CSSOM(cssRules) 읽기를 막는다 — html-to-image가 폰트를
+      // 그대로 파일에 심으려고 이걸 읽으려다 매번 SecurityError로 저장 자체가 실패했다.
+      // 폰트 임베딩만 건너뛰면(저장된 이미지는 화면과 동일한 폴백 폰트로 나옴) 나머지는
+      // 정상 저장된다.
+      const dataUrl = await toPng(previewRef.current, { pixelRatio: 2, skipFonts: true });
       const a = document.createElement("a");
       a.href = dataUrl;
       a.download = `마케팅이미지_${preview.productName || "이미지"}.png`;
@@ -666,7 +685,7 @@ export default function MarketingMaterialCreator() {
     if (!historyPreviewRef.current) return;
     setSavingVersionImage(true);
     try {
-      const dataUrl = await toPng(historyPreviewRef.current, { pixelRatio: 2 });
+      const dataUrl = await toPng(historyPreviewRef.current, { pixelRatio: 2, skipFonts: true });
       const a = document.createElement("a");
       a.href = dataUrl;
       a.download = `마케팅이미지_${preview.productName || "이미지"}_${viewingVersion?.label || ""}.png`;
@@ -1266,7 +1285,7 @@ export default function MarketingMaterialCreator() {
                     <span className="text-xs font-bold uppercase tracking-wide text-brand-600">Step 2</span>
                     <h2 className="text-sm font-bold text-slate-900">템플릿을 선택하세요</h2>
                   </div>
-                  <div className="p-4 lg:max-h-[calc(100vh-260px)] lg:overflow-y-auto">
+                  <div className="p-4">
                     <div className="mb-3 flex gap-2">
                       {mc.templates.categories.map((c) => (
                         <button
@@ -1342,7 +1361,7 @@ export default function MarketingMaterialCreator() {
                             }`}
                           >
                             <span
-                              className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                              className={`absolute left-0 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${
                                 useAiModel ? "translate-x-4" : "translate-x-0.5"
                               }`}
                             />
@@ -1395,7 +1414,7 @@ export default function MarketingMaterialCreator() {
 
             <div className="rounded-lg border border-slate-200 bg-white">
                 <SectionCardHeader step={3} title="상품정보를 입력하세요" />
-                  <div className="p-4 lg:max-h-[calc(100vh-260px)] lg:overflow-y-auto">
+                  <div className="p-4">
                     <div className="space-y-3">
                       <label className="block">
                         <FieldLabel required>상품명</FieldLabel>
@@ -1771,13 +1790,27 @@ export default function MarketingMaterialCreator() {
           >
             <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
               <p className="text-sm font-bold text-slate-900">이전에 작성한 내용</p>
-              <button
-                type="button"
-                onClick={() => setShowPreviousContent(false)}
-                className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-              >
-                <Icon name="x" className="w-4 h-4" />
-              </button>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="px-3 py-1.5 text-xs"
+                  onClick={() => {
+                    setShowPreviousContent(false);
+                    setStage("setup");
+                  }}
+                >
+                  <Icon name="pencil" className="w-3.5 h-3.5" />
+                  수정하기
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => setShowPreviousContent(false)}
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                >
+                  <Icon name="x" className="w-4 h-4" />
+                </button>
+              </div>
             </div>
             <div className="space-y-5 overflow-y-auto p-5">
               {uploadedImages.length > 0 && (

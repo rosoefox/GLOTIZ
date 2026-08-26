@@ -5,7 +5,9 @@ import os
 import re
 import subprocess
 import tempfile
+import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import quote
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -395,24 +397,31 @@ class ChatRequest(BaseModel):
     history: list[ChatMessage] = []
 
 
-CHATBOT_SYSTEM_PROMPT = """당신은 전북 지역 수출지원사업 공고를 담당하는 지자체 직원입니다. 공고의 안내사항
-(주관기관, 접수기간, 지원대상, 지원내용, 제출서류, 문의처 등)과 수출 서류, 관세·통관, 해외 시장 진출
-관련 사항을 정확히 숙지하고 있는 실무자로서, 민원인에게 직접 말하듯 답변하세요.
+CHATBOT_SYSTEM_PROMPT = """당신은 소상공인 해외 수출 올인원 AI 플랫폼 '글로티즈(glotiz)'의 공식 안내 챗봇 '글로티(Gloti)'입니다.
+수출 준비 과정에서 어려움을 겪는 대표님들이 이 플랫폼(글로티즈)을 활용해 실제로 다음 행동을 할 수 있게 안내하는 게 역할입니다.
 
-답변 형식(반드시 지키세요, 예외 없음):
-- 문서·목록 형식이 아니라, 사람이 직접 대답하는 자연스러운 대화체 문장으로 답하세요.
-- "~에 대해 궁금하시군요" 같은 인사말·서론 없이, 최대한 간단하게 핵심만 바로 말하세요. 불필요한 배경 설명은 빼세요.
-- 문장은 짧게 2~4개 정도로 끊어 말하고, 장황하게 늘어놓지 마세요.
+[답변 범위 — 반드시 지키세요]
+- 이 플랫폼(글로티즈)이 제공하는 기능([주요 안내 영역] 참고)을 중심으로만 답변하세요. 베트남 현지 규제
+  세부사항, 시장 조사 방법론처럼 플랫폼과 무관한 일반 창업·무역 지식을 강의하듯 늘어놓지 마세요.
+- 그런 질문이 오면, 그 주제를 다루는 플랫폼 기능(있다면)으로 바로 연결하고, 플랫폼 밖 전문 영역(세무·통관·현지
+  법률 등)은 길게 설명하지 말고 짧게 "이 부분은 KOTRA나 1:1 전문가 상담을 통해 확인하시는 게 정확해요" 정도로만 안내하세요.
+
+[답변 형식 — 반드시 지키세요, 예외 없음]
+- 사람이 옆에서 말해주듯 자연스러운 구어체 대화 문장으로 답하세요. 보고서·기획서처럼 번호 매긴 목록, 소제목,
+  단계별 나열로 답하지 마세요.
 - **, *, # 같은 마크다운 기호는 절대 쓰지 마세요(그대로 글자로 보입니다).
-- 확실하지 않은 법률·세무 정보는 단정짓지 말고 전문가 상담이 필요하다고 짧게 알려주세요.
-- 답변 맨 마지막은 항상 자연스러운 후속 질문 한 문장으로 마무리하세요 (예: "혹시 더 궁금하신 정보 있으신가요?" 같은 식으로, 매번 표현을 조금씩 바꿔서).
+- 처음 답변은 핵심만 짧고 간결하게 말하세요. 배경 설명, 예상 후속 정보, 세부 절차까지 먼저 다 풀어놓지 말고
+  꼭 필요한 한두 문장으로 끝내세요 — 사용자가 "더 자세히", "그럼 어떻게 해야 해" 처럼 추가로 물어봤을 때만
+  그 부분을 더 설명하세요.
+- 정중하면서도 친절한 말투(~해요체)를 쓰되, 장황하지 않게 깔끔하게 정리해서 답하세요.
+- [등록된 공고 목록]에 사용자 질문과 관련된 공고가 있으면 "그런 지원사업이 있어요" 식으로 뭉뚱그리지 말고
+  그 공고의 정확한 이름을 콕 집어서 알려주세요 (예: "해외규격인증 획득 지원사업이라는 공고가 있어요").
 
-예시:
-사용자: 이번 수출바우처 공고 접수기간이랑 지원대상 알려줘
-AI: 접수기간은 2026년 3월 1일부터 31일까지고요, 수출 초보·유망 중소기업이면 신청하실 수 있어요. 자세한 건 전북경제통상진흥원 수출지원팀으로 문의하시면 됩니다. 혹시 더 궁금하신 정보 있으신가요?
-
-아래 [등록된 공고 목록]에 없는 공고나 항목을 물어보면, 안다고 지어내지 말고 목록에 없다고
-솔직히 말한 뒤 담당 기관에 직접 문의해보라고 안내하세요."""
+[주요 안내 영역]
+- 지원사업: 기업 맞춤형 수출 바우처 및 정부 지원사업 추천/조건 확인
+- 서류 작성: AI 사업계획서, 수출 인보이스, 영문 카탈로그 초안 작성 가이드
+- 마케팅 디자인: 다국어 상세페이지, 글로벌 SNS 콘텐츠 AI 생성 방법
+- 해외 판매: 타깃 국가 설정, 현지 플랫폼(아마존, 쇼피 등) 연동 및 물류 기초 가이드"""
 
 
 def fetch_business_context(include_closed: bool = False) -> str:
@@ -1140,6 +1149,20 @@ def list_my_submissions(
         q = q.eq("review_status", review_status)
     rows = q.order("created_at", desc=True).execute().data or []
     return {"submissions": rows}
+
+
+@app.get("/submissions/needs-revision-count")
+def count_needs_revision(authorization: str | None = Header(None)):
+    """반려(보완 필요) 배지/네비 표시용 개수. 같은 서식을 반려된 뒤 고쳐서 다시 제출하면 예전
+    반려 기록 row는 그대로 DB에 남아있으므로, review_status만 단순히 세면 다시 제출한 뒤에도
+    계속 "보완 필요"로 잡힌다 — 서식별로 가장 최근 제출 1건의 상태만 봐야 한다."""
+    user_id = require_user(authorization)
+    rows = db.table("submissions").select("*").eq("user_id", user_id).order("created_at", desc=True).execute().data or []
+    latest_by_template = {}
+    for r in rows:
+        latest_by_template.setdefault(r["template_id"], r)
+    count = sum(1 for r in latest_by_template.values() if r.get("review_status") == "needs_revision")
+    return {"count": count}
 
 
 @app.get("/submissions/submitted-template-ids")
@@ -2709,6 +2732,9 @@ def build_translation_review_prompt(fields_ko, fields_translated, lang_name):
 - 해당 언어권에서 정치·종교·왕실 관련 민감어, 인종·문화적 금기어, 욕설·비속어 등 현지인이
   불쾌하게 받아들이거나 조심스러워할 만한 단어·표현이 있는지만 확인하세요.
 - 문제가 있으면 같은 의미를 전달하는 무난하고 안전한 표현으로 그 부분만 최소한으로 고치세요.
+- "+", "&", "/" 같은 기호가 단어 연결 용도로 쓰였다면 자연스러운 단어("and" 등)로 풀어써서
+  기호를 최대한 빼세요(예: "Hydrating + Brightening" -> "Hydrating and Brightening"). 다만
+  숫자 뒤에 붙는 표기(SPF50+ 같은 제품 스펙 표기)는 의미가 바뀌므로 그대로 두세요.
 - 문제가 없으면 번역문을 그대로 반환하세요. 문체나 표현을 임의로 바꾸지 마세요.
 
 {lines}
@@ -3208,21 +3234,43 @@ STYLE_REFERENCE_NOTE = (
 )
 
 
+def _with_rate_limit_retry(fn, max_retries: int = 4, base_delay: float = 2.0):
+    """Gemini/Vertex AI가 429(RESOURCE_EXHAUSTED)로 순간적인 사용량 폭주를 거절할 때, 바로
+    실패 처리하지 않고 짧게 쉬었다가 몇 번 더 시도한다 — 상세페이지/카드뉴스처럼 여러 장을
+    한꺼번에 병렬로 요청하면 짧은 순간에 호출이 몰려서 이 순간적인 429가 나기 쉬워졌기 때문에
+    (병렬화 이전에는 순서대로 호출해서 거의 안 나던 에러다). 재시도로도 안 되면 마지막 예외를
+    그대로 던져서 friendly_ai_error가 사용자에게 안내 메시지를 보여주게 한다."""
+    last_error = None
+    for attempt in range(max_retries + 1):
+        try:
+            return fn()
+        except Exception as e:
+            text = str(e)
+            if "RESOURCE_EXHAUSTED" not in text and "429" not in text:
+                raise
+            last_error = e
+            if attempt < max_retries:
+                time.sleep(base_delay * (2**attempt))
+    raise last_error
+
+
 def _generate_image(
     prompt: str, reference_images: list[tuple[bytes, str]], aspect_ratio: str
 ) -> tuple[bytes, str]:
     """Vertex AI 이미지 생성 모델을 호출해 (이미지 bytes, mime_type)을 반환한다.
     reference_images는 (bytes, mime_type) 튜플 목록 — 상품 사진을 여러 장 올렸으면 전부 같이
     넘겨서, 여러 각도/구성을 참고해 더 정확한 이미지를 만들도록 한다."""
-    response = vertex_image_client.models.generate_content(
-        model=IMAGE_GEN_MODEL,
-        contents=[
-            *[types.Part.from_bytes(data=b, mime_type=m) for b, m in reference_images],
-            prompt,
-        ],
-        config=types.GenerateContentConfig(
-            image_config=types.ImageConfig(aspect_ratio=aspect_ratio),
-        ),
+    response = _with_rate_limit_retry(
+        lambda: vertex_image_client.models.generate_content(
+            model=IMAGE_GEN_MODEL,
+            contents=[
+                *[types.Part.from_bytes(data=b, mime_type=m) for b, m in reference_images],
+                prompt,
+            ],
+            config=types.GenerateContentConfig(
+                image_config=types.ImageConfig(aspect_ratio=aspect_ratio),
+            ),
+        )
     )
     if response.candidates:
         for part in response.candidates[0].content.parts:
@@ -3233,10 +3281,12 @@ def _generate_image(
 
 def _generate_copy_json(prompt: str, schema: dict) -> dict:
     """문구(JSON) 생성 — Vertex AI gemini_client를 재사용한다."""
-    response = gemini_client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=[prompt],
-        config=types.GenerateContentConfig(response_mime_type="application/json", response_schema=schema),
+    response = _with_rate_limit_retry(
+        lambda: gemini_client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[prompt],
+            config=types.GenerateContentConfig(response_mime_type="application/json", response_schema=schema),
+        )
     )
     return json.loads(response.text)
 
@@ -3251,6 +3301,27 @@ def _upload_generated_image(user_id: str, gen_id: str, slot: str, image_bytes: b
     return {"slot": slot, "path": path, "url": signed.get("signedURL")}
 
 
+def _generate_slots_parallel(user_id, gen_id, slot_prompts, reference_images, aspect_ratio="1:1"):
+    """카드뉴스/상세페이지처럼 여러 장을 만들 때, 슬롯마다 독립적인 Gemini 이미지 생성 호출을
+    순서대로 기다리지 않고 동시에 실행한다 — 슬롯당 몇 초씩 걸리는 호출이 3~7번 이어지면 체감
+    대기 시간이 그만큼 길어지므로, 서로 의존관계가 없는 호출을 병렬로 묶어 전체 대기 시간을
+    슬롯 수가 아니라 가장 느린 슬롯 하나 수준으로 줄인다. 결과 순서는 상관없다 — 프론트는
+    "slot" 값으로 이미지를 찾아 쓴다.
+    slot_prompts의 각 항목은 (slot, prompt) 2개 또는 (slot, prompt, aspect_ratio) 3개 튜플이다
+    (3개짜리면 그 슬롯만 기본 aspect_ratio 대신 지정된 비율을 쓴다 — 상세페이지 히어로처럼
+    다른 슬롯과 비율이 다른 경우)."""
+    def run(item):
+        slot, prompt, *rest = item
+        ratio = rest[0] if rest else aspect_ratio
+        image_bytes, mime = _generate_image(prompt, reference_images, ratio)
+        return _upload_generated_image(user_id, gen_id, slot, image_bytes, mime)
+
+    # 한꺼번에 너무 많이 몰아서 요청하면 순간적으로 429(사용량 초과)를 유발하기 쉬워서, 동시
+    # 실행 수를 3개로 제한한다 — 순차 실행보다는 훨씬 빠르면서도 폭주는 피하는 절충점.
+    with ThreadPoolExecutor(max_workers=min(len(slot_prompts), 3)) as executor:
+        return list(executor.map(run, slot_prompts))
+
+
 def _style_line(style_hint: str) -> str:
     return f"\n스타일 톤: {style_hint.strip()}" if style_hint and style_hint.strip() else ""
 
@@ -3258,9 +3329,14 @@ def _style_line(style_hint: str) -> str:
 def _poster_prompt(
     product_name: str, description: str, must_have_photo: str, style_hint: str = "",
     aspect_ratio: str = "4:5", tagline: str = "", price: str = "", logo_render_note: str = "",
-    target_language: str = "ko",
+    target_language: str = "ko", use_ai_model: bool = True,
 ) -> str:
     scene = must_have_photo.strip() or "상품을 돋보이게 하는 매력적인 장면을 자유롭게 구성하세요."
+    # "AI 모델 적용"이 꺼져 있으면, 사용자가 적은 장면에 사람이 나온다는 내용이 있어도 사람 없이
+    # 표현해야 한다 — 이 문장이 "반드시 포함"이라고 강하게 지시하는 자리라 뒤에 오는 모델 on/off
+    # 안내보다 우선 적용될 수 있어서, 아예 이 자리에서 같이 명시한다.
+    if not use_ai_model and must_have_photo.strip():
+        scene += " (단, 사람 없이 상품/손·소품만으로 표현하세요.)"
     lang_name = TRANSLATE_LANGUAGE_NAMES.get(target_language) or "Korean"
     logo_line = f"\n{logo_render_note}" if logo_render_note else ""
     return f"""당신은 상업 광고 사진작가 겸 그래픽 디자이너입니다. 아래 정보를 바탕으로 완성된 마케팅 포스터 한 장을 만들어주세요.
@@ -3708,7 +3784,10 @@ def _card_news_copy_prompt(product_name: str, description: str, target_language:
 {language_note} 언어 변경은 화면의 "이미지 언어 설정하기" 버튼으로 사용자가 직접 선택할 때만 이뤄집니다.
 
 features: 상품 설명에서 도출한 핵심 특징 2~4개, 각 8~14자 내외의 짧은 문구 (설명에 근거하여, 지어내지 마세요).
-promoLine: 마지막 장 CTA용 15자 내외 짧고 임팩트 있는 홍보 문구."""
+promoLine: 마지막 장 CTA용 15자 내외 짧고 임팩트 있는 홍보 문구.
+
+"+", "&", "/" 같은 기호로 단어를 잇지 말고 자연스러운 단어(and 등)로 풀어 쓰세요
+(제품 스펙 표기처럼 의미가 바뀌는 경우는 예외)."""
 
 
 def _detail_captions_prompt(product_name: str, description: str) -> str:
@@ -6519,7 +6598,7 @@ def _generate_poster(
     else:
         prompt = _poster_prompt(
             product_name, description, must_have_photo, style_hint, aspect_ratio, tagline, price,
-            logo_render_note, target_language,
+            logo_render_note, target_language, model_note == AI_MODEL_ON_NOTE,
         )
         prompt = _with_notes(prompt, model_note, style_ref_note)
     image_bytes, mime = _generate_image(prompt, gen_reference_images, aspect_ratio)
@@ -6528,7 +6607,7 @@ def _generate_poster(
 
 def _generate_card_news(
     user_id, gen_id, reference_images, product_name, description, must_have_photo, style_hint="",
-    logo_note="", tagline="", price="", brand_name="", target_language="ko", template_id="",
+    logo_note="", tagline="", price="", brand_name="", target_language="ko", template_id="", model_note="",
 ):
     # 카드 장수는 4장으로 고정한다 — 레이아웃마다 다른 건 카드 수가 아니라 프롬프트에 얹는 스타일 톤이다.
     # 여기서 만드는 features/promoLine은 이미지 픽셀에 그대로 구워지므로, 반드시 실제 요청 언어로
@@ -6568,10 +6647,8 @@ def _generate_card_news(
             ("card-3", _clean_editorial_card_prompt("PAGE_03_PRODUCT_DETAIL", clean_values, style_hint)),
             ("card-4", _clean_editorial_card_prompt("PAGE_04_BRAND_CLOSING", clean_values, style_hint)),
         ]
-        images = []
-        for slot, prompt in slot_prompts:
-            image_bytes, mime = _generate_image(prompt, reference_images, "1:1")
-            images.append(_upload_generated_image(user_id, gen_id, slot, image_bytes, mime))
+        slot_prompts = [(slot, _with_notes(prompt, model_note)) for slot, prompt in slot_prompts]
+        images = _generate_slots_parallel(user_id, gen_id, slot_prompts, reference_images, "1:1")
         return {"images": images, "copy": {"features": features, "promoLine": promo_line}}
 
     values = {
@@ -6603,12 +6680,21 @@ def _generate_card_news(
         "brand_logo": logo_render_note,
     }
 
-    must_have_note = (
-        f"MUST-HAVE SCENE (from the user, take priority over the generic usage-context fallback above): "
-        f"{must_have_photo.strip()}"
-        if must_have_photo.strip()
-        else ""
-    )
+    # 사용자가 "꼭 들어갔으면 하는 사진"에 사람이 등장하는 장면을 적어도(예: "사람이 사용하는 모습"),
+    # "AI 모델 적용" 토글이 꺼져 있으면 사람 없이 표현해야 한다 — 안 그러면 이 문구가 "우선한다"고
+    # 강조돼 있어서 뒤에 붙는 AI_MODEL_OFF_NOTE보다 이 지시를 따라 사람을 그려 넣을 수 있다.
+    use_ai_model = model_note == AI_MODEL_ON_NOTE
+    must_have_note = ""
+    if must_have_photo.strip():
+        must_have_note = (
+            f"MUST-HAVE SCENE (from the user, take priority over the generic usage-context fallback above): "
+            f"{must_have_photo.strip()}"
+        )
+        if not use_ai_model:
+            must_have_note += (
+                " (단, 이 장면에 사람이 등장한다는 내용이어도 AI 모델 연출이 꺼져 있으므로 사람 없이 "
+                "상품/손·소품만으로 그 상황을 표현하세요.)"
+            )
     slot_prompts = [
         ("card-1", _shopee_card_prompt("CARD_01_HERO_PRICE", values, style_hint)),
         ("card-2", _shopee_card_prompt("CARD_02_BENEFITS", values, style_hint)),
@@ -6616,10 +6702,8 @@ def _generate_card_news(
         ("card-4", _shopee_card_prompt("CARD_04_PROMOTION", values, style_hint)),
     ]
 
-    images = []
-    for slot, prompt in slot_prompts:
-        image_bytes, mime = _generate_image(prompt, reference_images, "1:1")
-        images.append(_upload_generated_image(user_id, gen_id, slot, image_bytes, mime))
+    slot_prompts = [(slot, _with_notes(prompt, model_note)) for slot, prompt in slot_prompts]
+    images = _generate_slots_parallel(user_id, gen_id, slot_prompts, reference_images, "1:1")
 
     return {"images": images, "copy": {"features": features, "promoLine": promo_line}}
 
@@ -6633,34 +6717,67 @@ def _generate_detail(
     while len(captions) < 3:
         captions.append({"eyebrow": "", "heading": "", "description": ""})
 
-    images = []
-
     # 이 템플릿에 참고 디자인 이미지가 등록돼 있으면(TEMPLATE_STYLE_REFERENCE_IMAGES) 상품 사진/로고
     # 뒤에 맨 마지막으로 덧붙여서, style_hint 텍스트만으로는 전달하기 어려운 실제 톤·구도를 예시로 보여준다.
     style_ref = TEMPLATE_STYLE_REFERENCE_IMAGES.get(template_id)
     gen_reference_images = [*reference_images, style_ref] if style_ref else reference_images
     style_ref_note = STYLE_REFERENCE_NOTE if style_ref else ""
 
-    hero_prompt = _with_notes(_detail_hero_prompt(description, style_hint), logo_note, model_note, style_ref_note)
-    hero_bytes, hero_mime = _generate_image(hero_prompt, gen_reference_images, "16:9")
-    images.append(_upload_generated_image(user_id, gen_id, "hero", hero_bytes, hero_mime))
-
-    for i, caption in enumerate(captions, start=1):
-        feature_prompt = _with_notes(_detail_feature_prompt(caption, style_hint), logo_note, model_note, style_ref_note)
-        f_bytes, f_mime = _generate_image(feature_prompt, gen_reference_images, "1:1")
-        images.append(_upload_generated_image(user_id, gen_id, f"feature-{i}", f_bytes, f_mime))
-
     angle_slots = [
         ("angle-front", "정면에서 본 모습"),
         ("angle-back", "후면에서 본 모습"),
         ("angle-top", "위에서 내려다본 모습"),
     ]
-    for slot, label in angle_slots:
-        angle_prompt = _with_notes(_detail_angle_prompt(label, style_hint), logo_note, model_note, style_ref_note)
-        a_bytes, a_mime = _generate_image(angle_prompt, gen_reference_images, "1:1")
-        images.append(_upload_generated_image(user_id, gen_id, slot, a_bytes, a_mime))
+    slot_prompts = [
+        ("hero", _with_notes(_detail_hero_prompt(description, style_hint), logo_note, model_note, style_ref_note), "16:9"),
+        *[
+            (f"feature-{i}", _with_notes(_detail_feature_prompt(caption, style_hint), logo_note, model_note, style_ref_note))
+            for i, caption in enumerate(captions, start=1)
+        ],
+        *[
+            (slot, _with_notes(_detail_angle_prompt(label, style_hint), logo_note, model_note, style_ref_note))
+            for slot, label in angle_slots
+        ],
+    ]
+    # 히어로(16:9) + 특징 3장 + 각도 3장, 총 7장을 순서대로 기다리지 않고 한 번에 병렬 요청한다
+    # (앞서 정의한 _generate_slots_parallel 참고) — 이게 "상세페이지 생성이 유독 오래 걸린다"는
+    # 체감의 가장 큰 원인이었다.
+    images = _generate_slots_parallel(user_id, gen_id, slot_prompts, gen_reference_images, "1:1")
 
     return {"images": images, "copy": {"captions": captions}}
+
+
+@app.get("/marketing/images")
+def list_marketing_images(authorization: str | None = Header(None)):
+    """이 사용자가 지금까지 만든 마케팅 이미지를 생성 회차(gen_id)별로 묶어서 최신순으로
+    돌려준다. 업로드 경로 자체가 marketing-images/{user_id}/{gen_id}/{slot}.ext 구조라 별도
+    DB 테이블 없이도 GCS 목록만으로 사용자별 이력을 재구성할 수 있다 — 그래서 브라우저를
+    새로고침하거나 다른 기기에서 다시 로그인해도 예전에 만든 이미지를 계속 볼 수 있다."""
+    user_id = require_user(authorization)
+    prefix = f"marketing-images/{user_id}/"
+    bucket = _gcs_client.bucket(GENERATED_BUCKET)
+
+    generations: dict[str, dict] = {}
+    for blob in _gcs_client.list_blobs(bucket, prefix=prefix):
+        rel = blob.name[len(prefix):]
+        parts = rel.split("/")
+        if len(parts) != 2:
+            continue
+        gen_id, filename = parts
+        slot = filename.rsplit(".", 1)[0]
+        entry = generations.setdefault(gen_id, {"gen_id": gen_id, "created_at": blob.time_created, "images": []})
+        if blob.time_created and (entry["created_at"] is None or blob.time_created < entry["created_at"]):
+            entry["created_at"] = blob.time_created
+        signed = gcs.from_(GENERATED_BUCKET).create_signed_url(blob.name, 3600)
+        entry["images"].append({"slot": slot, "path": blob.name, "url": signed.get("signedURL")})
+
+    ordered = sorted(
+        generations.values(), key=lambda g: g["created_at"] or datetime.min, reverse=True
+    )
+    for g in ordered:
+        g["created_at"] = g["created_at"].isoformat() if g["created_at"] else None
+
+    return {"generations": ordered}
 
 
 @app.post("/marketing/generate")
@@ -6736,7 +6853,7 @@ def generate_marketing_images(
         elif layout == "card-news":
             result = _generate_card_news(
                 user_id, gen_id, reference_images, product_name, description, must_have_photo,
-                style_hint, logo_note, tagline, price, brand_name, target_language, template_id,
+                style_hint, logo_note, tagline, price, brand_name, target_language, template_id, model_note,
             )
         else:
             result = _generate_detail(

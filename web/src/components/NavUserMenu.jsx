@@ -1,11 +1,37 @@
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { login } from "../data/mockData";
 import { Button } from "./ui";
+import { api } from "../lib/api";
 
 export default function NavUserMenu({ light = false, mobile = false, onNavigate }) {
-  const { isLoggedIn, logout } = useAuth();
+  const { isLoggedIn, session, logout } = useAuth();
   const navigate = useNavigate();
+  const [needsRevisionCount, setNeedsRevisionCount] = useState(0);
+
+  // 사용자가 "보완이 필요해요" 알림을 읽고 넘겨도, 실제로 그 서류를 고쳐서 다시 제출하기 전까지는
+  // 상단 "나의 지원사업 현황"에 빨간 점이 계속 깜빡이게 해서 놓치지 않게 한다.
+  useEffect(() => {
+    if (!isLoggedIn || !session?.access_token) {
+      setNeedsRevisionCount(0);
+      return;
+    }
+    let cancelled = false;
+    api
+      .get("/submissions/needs-revision-count", session.access_token)
+      .then(({ count }) => {
+        if (!cancelled) setNeedsRevisionCount(count || 0);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoggedIn, session?.access_token]);
+
+  const needsRevisionDot = needsRevisionCount > 0 && (
+    <span className="h-2 w-2 shrink-0 animate-blink rounded-full bg-red-500" aria-label="보완 필요" />
+  );
 
   const handleMyPageClick = () => {
     onNavigate?.();
@@ -47,9 +73,10 @@ export default function NavUserMenu({ light = false, mobile = false, onNavigate 
         <button
           type="button"
           onClick={handleMyApplicationsClick}
-          className={`rounded-lg px-3 py-2.5 text-left text-sm font-semibold ${mobileLinkCls}`}
+          className={`flex items-center gap-1.5 rounded-lg px-3 py-2.5 text-left text-sm font-semibold ${mobileLinkCls}`}
         >
           나의 지원사업 현황
+          {needsRevisionDot}
         </button>
         <button
           type="button"
@@ -86,8 +113,9 @@ export default function NavUserMenu({ light = false, mobile = false, onNavigate 
 
   return (
     <div className={`flex items-center gap-1.5 text-sm font-semibold transition-colors ${light ? "text-white/90" : "text-slate-600"}`}>
-      <button type="button" onClick={handleMyApplicationsClick} className={`${actionCls} ${linkCls}`}>
+      <button type="button" onClick={handleMyApplicationsClick} className={`${actionCls} ${linkCls} gap-1.5`}>
         나의 지원사업 현황
+        {needsRevisionDot}
       </button>
       <span className={`px-0.5 ${light ? "text-white/40" : "text-slate-300"}`}>|</span>
       <button type="button" onClick={handleMyPageClick} className={`${actionCls} ${linkCls}`}>

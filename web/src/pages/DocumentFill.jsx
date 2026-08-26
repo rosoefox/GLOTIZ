@@ -328,6 +328,13 @@ export default function DocumentFill() {
   const registerSection = (el) => {
     if (el && !sectionRefs.current.includes(el)) sectionRefs.current.push(el);
   };
+  // "작성 현황" 패널에서 단계 이름을 누르면 그 단계 카드로 스크롤한다 — 상단 고정 표시줄 높이만큼
+  // (96px) 보정해서 카드 제목이 가려지지 않게 한다.
+  const scrollToStep = (stepIndex) => {
+    const el = sectionRefs.current.find((e) => Number(e.dataset.stepIndex) === stepIndex);
+    if (!el) return;
+    window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 96, behavior: "smooth" });
+  };
 
   useEffect(() => {
     const els = sectionRefs.current;
@@ -543,8 +550,25 @@ export default function DocumentFill() {
     }
   };
 
-  // 데모용: "정보 이전"과 "AI 채우기"가 각각 채우던 값을 한 번에 채운다.
-  // AI 추정값(빨간 테두리)은 그대로 needs-review 상태로 남긴다.
+  // "한번에 채우기": 정보 이전 → 업로드한 서류에서 불러오기 → (있으면) 마이페이지에서 가져오기
+  // → AI 채우기를 실제로 순서대로 실행한다. 각 단계는 이미 채워진 칸은 건드리지 않고 빈 칸만
+  // 채우도록 만들어져 있어서, 그냥 순서대로 호출하기만 해도 안전하게 합쳐진다.
+  const handleFillAll = async () => {
+    if (businessClosed) return;
+    setOneTouchFilling(true);
+    setError(null);
+    try {
+      await handleTransferInfo();
+      await handleExtractFromUploads();
+      if (hasAccountDocs) await handleImportFromAccountDocs();
+      await handleAiFill();
+    } finally {
+      setOneTouchFilling(false);
+    }
+  };
+
+  // 베트남 데모 서식 전용: "정보 이전"과 "AI 채우기"가 각각 채우던 값을 하드코딩된 데모 값으로
+  // 한 번에 채운다. 실제 파일 업로드가 없는 데모 환경에서 즉시 결과를 보여주기 위한 특수 경로.
   const handleOneTouchFill = async () => {
     if (businessClosed) return;
     setOneTouchFilling(true);
@@ -709,7 +733,7 @@ export default function DocumentFill() {
       )}
 
       <div className="mt-4 flex flex-wrap gap-2">
-        <Button type="button" variant="outlineBrand" className="px-3.5 py-2 text-xs" onClick={handleTransferInfo} disabled={businessClosed || transferring}>
+        <Button type="button" variant="outlineBrand" className="px-3.5 py-2 text-xs" onClick={handleTransferInfo} disabled={businessClosed || transferring || oneTouchFilling}>
           <Icon name="user" className="w-3.5 h-3.5" />
           {transferring ? "불러오는 중..." : "정보 이전"}
         </Button>
@@ -718,7 +742,7 @@ export default function DocumentFill() {
           variant="outlineBrand"
           className="px-3.5 py-2 text-xs"
           onClick={handleExtractFromUploads}
-          disabled={businessClosed || extractingUploads}
+          disabled={businessClosed || extractingUploads || oneTouchFilling}
         >
           <Icon name="upload" className="w-3.5 h-3.5" />
           {extractingUploads ? "서류 읽는 중..." : "업로드한 서류에서 불러오기"}
@@ -729,22 +753,25 @@ export default function DocumentFill() {
             variant="outlineBrand"
             className="px-3.5 py-2 text-xs"
             onClick={handleImportFromAccountDocs}
-            disabled={businessClosed || importingAccountDocs}
+            disabled={businessClosed || importingAccountDocs || oneTouchFilling}
           >
             <Icon name="documents" className="w-3.5 h-3.5" />
             {importingAccountDocs ? "서류 읽는 중..." : "마이페이지에서 가져오기"}
           </Button>
         )}
-        <Button type="button" variant="outlineBrand" className="px-3.5 py-2 text-xs" onClick={handleAiFill} disabled={businessClosed || aiFilling}>
+        <Button type="button" variant="outlineBrand" className="px-3.5 py-2 text-xs" onClick={handleAiFill} disabled={businessClosed || aiFilling || oneTouchFilling}>
           <Icon name="sparkle" className="w-3.5 h-3.5" />
           {aiFilling ? "AI가 채우는 중..." : "AI 채우기"}
         </Button>
-        {isVietnamDemoApplication && (
-          <Button type="button" className="px-4 py-2.5 text-sm" onClick={handleOneTouchFill} disabled={businessClosed || oneTouchFilling}>
-            <Icon name="sparkle" className="h-4 w-4" />
-            {oneTouchFilling ? "전체 입력 중..." : "전체 한 번에 채우기"}
-          </Button>
-        )}
+        <Button
+          type="button"
+          className="px-4 py-2.5 text-sm"
+          onClick={isVietnamDemoApplication ? handleOneTouchFill : handleFillAll}
+          disabled={businessClosed || oneTouchFilling || transferring || extractingUploads || importingAccountDocs || aiFilling}
+        >
+          <Icon name="sparkle" className="h-4 w-4" />
+          {oneTouchFilling ? "전체 입력 중..." : "한번에 채우기"}
+        </Button>
       </div>
 
       {error && (
@@ -813,7 +840,12 @@ export default function DocumentFill() {
                   const groupFilledCount = group.fields.filter((f) => isFieldFilled(f, values)).length;
                   const groupDone = groupFilledCount === group.fields.length;
                   return (
-                    <div key={group.name} className="flex items-center justify-between gap-2 text-sm">
+                    <button
+                      type="button"
+                      key={group.name}
+                      onClick={() => scrollToStep(idx)}
+                      className="flex w-full items-center justify-between gap-2 text-left text-sm hover:text-brand-700"
+                    >
                       <span
                         className={`flex min-w-0 items-center gap-2 ${
                           activeStep === idx ? "font-semibold text-slate-900" : "text-slate-500"
@@ -828,7 +860,7 @@ export default function DocumentFill() {
                       <span className="shrink-0 text-xs text-slate-400">
                         {groupFilledCount}/{group.fields.length}
                       </span>
-                    </div>
+                    </button>
                   );
                 })}
               </div>

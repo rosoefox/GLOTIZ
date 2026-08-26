@@ -1,16 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Card, Button } from "../components/ui";
 import Icon from "../components/Icon";
 import { govSupport as gs, dashboard, govAnnouncementDetails, login } from "../data/mockData";
 import { displayPeriod, isClosed, periodEndDate, periodStartDate } from "../lib/period";
-import { api } from "../lib/api";
+import { api, idsParam } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 
 const PAGE_SIZE = 6;
 
 function orgNameFor(business) {
-  const detail = govAnnouncementDetails[business.id];
+  // 실제로 관리자가 등록한 공고 정보(business.basic_info)를 최우선으로 쓰고, 예전에 미리
+  // 채워둔 데모용 목업(govAnnouncementDetails)은 그 정보가 없는 경우에만 참고한다.
+  const detail = business.basic_info || govAnnouncementDetails[business.id];
   return detail?.recruiter || detail?.org || "전북 지원사업 포털";
 }
 
@@ -92,7 +94,7 @@ const D_DAY_TONE_CLASS = {
   closed: "bg-slate-100 text-slate-400",
 };
 
-function AnnouncementCard({ business, highlighted, bookmarked, closed, onClick, onToggleBookmark }) {
+function AnnouncementCard({ business, highlighted, inProgress, bookmarked, closed, onClick, onToggleBookmark }) {
   const period = periodLabel(business);
   const detail = detailFor(business);
   const dDay = dDayLabel(periodEndDate(business, govAnnouncementDetails));
@@ -104,7 +106,11 @@ function AnnouncementCard({ business, highlighted, bookmarked, closed, onClick, 
       className={`group relative flex h-full flex-col overflow-hidden p-6 transition-transform duration-200 cursor-pointer hover:-translate-y-0.5 ${
         closed ? "border-slate-200 grayscale" : ""
       } ${
-        highlighted && !closed ? "border-brand-400 ring-2 ring-brand-100" : ""
+        inProgress && !closed
+          ? "border-emerald-400 ring-2 ring-emerald-100"
+          : highlighted && !closed
+            ? "border-blue-400 ring-2 ring-blue-100"
+            : ""
       }`}
     >
       {closed && (
@@ -118,6 +124,11 @@ function AnnouncementCard({ business, highlighted, bookmarked, closed, onClick, 
           {orgNameFor(business)}
         </span>
         <div className="flex shrink-0 items-center gap-2">
+          {inProgress && (
+            <span className="rounded-full bg-emerald-100 px-2 py-1 text-[11px] font-bold text-emerald-700">
+              작성중
+            </span>
+          )}
           <span className={`rounded-full px-2 py-1 text-[11px] font-bold ${D_DAY_TONE_CLASS[dDay.tone]}`}>
             {dDay.label}
           </span>
@@ -357,6 +368,7 @@ function WizardShell({ title, subtitle, onBack, backLabel, onSkipAll, children, 
 
 export default function GovSupport() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, session } = useAuth();
 
   const [announcements, setAnnouncements] = useState([]);
@@ -367,7 +379,13 @@ export default function GovSupport() {
   // 완료했으면(아래 useEffect가 localStorage를 읽어 감지) 매번 다시 태우지 않고 바로 전체 목록
   // (browse-all)으로 건너뛴다. 매칭은 AI 호출 없이 각 공고의 지역/품목 키워드를 즉시 대조해서
   // 계산하고, 결과는 별도 화면이 아니라 browse-all 화면에 강조 표시로 합쳐서 보여준다.
-  const [mode, setMode] = useState("wizard-region"); // wizard-region | wizard-category | browse-all
+  // "지원사업 목록으로"/"목록으로"(skipAutoMatch)로 돌아온 경우는 전체 목록(browse-all)에서
+  // 바로 시작한다 — 이게 없으면, 마법사를 한 번도 완료하지 않고 "전체 공고 보기"로 건너뛴
+  // 사용자가 공고를 봤다가 뒤로 돌아왔을 때 저장된 지역/품목 선택이 없어서 마법사 1단계로
+  // 다시 떨어지는 문제가 있었다.
+  const [mode, setMode] = useState(() =>
+    location.state?.skipAutoMatch ? "browse-all" : "wizard-region"
+  ); // wizard-region | wizard-category | browse-all
   const [wizardRegions, setWizardRegions] = useState([]);
   const [wizardCategories, setWizardCategories] = useState([]);
   const [matchedIds, setMatchedIds] = useState(null);
@@ -380,8 +398,43 @@ export default function GovSupport() {
   const [search, setSearch] = useState("");
 
   const [bookmarkedIds, setBookmarkedIds] = useState(new Map());
+  // 서식 하나라도 제출한 적 있는 사업 = "작성중"으로 표시할 사업. businessId -> businessName.
+  const [inProgressBusinesses, setInProgressBusinesses] = useState(new Map());
 
   useEffect(() => {
+    if (!user?.id) {
+      setInProgressBusinesses(new Map());
+      return;
+    }
+    let cancelled = false;
+    async function loadInProgress() {
+      const { submissions } = await api.get("/submissions", session?.access_token).catch(() => ({ submissions: [] }));
+      const templateIds = [...new Set((submissions || []).map((s) => s.template_id))];
+      if (!templateIds.length) {
+        if (!cancelled) setInProgressBusinesses(new Map());
+        return;
+      }
+      const { templates } = await api
+        .get(`/templates?${idsParam("id", templateIds)}`)
+        .catch(() => ({ templates: [] }));
+      const map = new Map();
+      (templates || []).forEach((t) => {
+        const biz = announcements.find((a) => a.id === t.business_id);
+        if (biz) map.set(biz.id, biz.name);
+      });
+      if (!cancelled) setInProgressBusinesses(map);
+    }
+    loadInProgress();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, session?.access_token, announcements]);
+
+  useEffect(() => {
+    // 홈 화면 "수출 시작하기"로 들어온 경우는 예전에 마법사를 완료해서 저장된 선택이 있어도
+    // "맞춤 추천 다시 받기"를 누른 것과 똑같이 처음부터 다시 받게 한다 — 저장된 값을 복원하지
+    // 않고 마법사(1단계)부터 시작한다.
+    if (location.state?.forceWizard) return;
     const raw = localStorage.getItem(wizardStorageKey(user?.id));
     if (!raw) return;
     try {
@@ -394,6 +447,7 @@ export default function GovSupport() {
     } catch {
       // 저장된 추천 정보가 깨졌으면 무시하고 새로 시작한다.
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
   useEffect(() => {
@@ -407,7 +461,9 @@ export default function GovSupport() {
   // 계산해두지 않는다. 공고 목록(announcements)이 비동기로 늦게 로딩되기 때문에, 둘 다 준비되면
   // 한 번만 자동으로 매칭을 계산해서 "맞춤 공고" 화면이 새로고침/재방문 후에도 그대로 보이게 한다.
   // (사용자가 "전체 공고 보기"로 matchedIds를 직접 지운 뒤에는 다시 끼어들지 않도록 최초 1회만 동작.)
-  const restoredMatchRef = useRef(false);
+  // "지원사업 목록으로"/"목록으로"처럼 전체 목록을 보려고 명시적으로 돌아온 경우(location.state.
+  // skipAutoMatch)는 이 자동 복원을 건너뛴다 — 안 그러면 항상 맞춤 공고 화면으로 되돌아가버린다.
+  const restoredMatchRef = useRef(Boolean(location.state?.skipAutoMatch));
   useEffect(() => {
     if (restoredMatchRef.current) return;
     if (announcements.length === 0) return;
@@ -776,6 +832,7 @@ export default function GovSupport() {
                   key={b.id}
                   business={b}
                   highlighted={hasActiveFilter || (matchedIds ? matchedIds.has(b.id) : false)}
+                  inProgress={inProgressBusinesses.has(b.id)}
                   bookmarked={bookmarkedIds.has(b.id)}
                   closed={isClosed(b, govAnnouncementDetails)}
                   onClick={() => handleAnnouncementClick(b)}

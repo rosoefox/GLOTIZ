@@ -25,7 +25,18 @@ export const user = {
 
 export const nav = {
   top: [
-    { path: "/gov-support", label: "수출지원사업" },
+    {
+      path: "/gov-support",
+      label: "수출지원사업",
+      // 로그인 후 신청한 공고가 하나라도 있는 사용자에게만 이 드롭다운(모바일은 아코디언)을
+      // 보여준다(Header.jsx의 hasApplied 참고) — 로그인 전이거나 아직 신청 전이면 그냥
+      // "/gov-support"로 바로 이동하는 단순 링크로 남는다(원래 동작 그대로).
+      children: [
+        { path: "/gov-support", label: "맞춤 공고 확인" },
+        { path: "/gov-support", state: { skipAutoMatch: true }, label: "전체 공고 확인" },
+        { path: "/docs", label: "작성 중인 서류", requiresAuth: true },
+      ],
+    },
     { path: "/marketing", label: "AI 이미지 생성", requiresAuth: true },
     { path: "/shopee", label: "해외 수출 플랫폼 입점 가이드", requiresAuth: true },
     { path: "/help", label: "고객지원" },
@@ -67,11 +78,15 @@ export const myApplicationStatus = {
   emptyMessage: "아직 서류를 제출한 지원사업이 없습니다.",
   documentsEmptyMessage: "제출한 서류가 없습니다.",
   statusLabels: {
+    notStarted: "서류작성전",
+    drafting: "서류작성중",
     reviewing: "심사진행중",
     needsRevision: "서류보완필요",
     approved: "심사완료",
   },
   statusDotClasses: {
+    notStarted: "bg-slate-300",
+    drafting: "bg-amber-400",
     reviewing: "bg-blue-400",
     needsRevision: "bg-red-500",
     approved: "bg-emerald-500",
@@ -899,7 +914,7 @@ export const helpAndFaq = {
     },
   ],
   floatingChatbot: {
-    title: "AI 상담",
+    title: "Gloti 상담",
     greeting: "안녕하세요. 해외 수출에 궁금하신 점을 물어보세요.",
     suggestionsLabel: "자주 묻는 질문",
     inputPlaceholder: "궁금한 점을 입력하세요...",
@@ -1091,8 +1106,6 @@ export const adminPanel = {
     notSubmitted: "미제출",
   },
   percentLabel: "제출 완료율",
-  notifyLabel: "알림 보내기",
-  notifiedLabel: "알림 전송됨",
   emptyMessage: "아직 제출된 신청서가 없습니다.",
   viewDocumentLabel: "제출 내용 보기",
   generatingLabel: "문서 생성 중...",
