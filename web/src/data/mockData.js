@@ -299,15 +299,8 @@ export const login = {
     idPlaceholder: "이메일을 입력하세요",
     passwordPlaceholder: "비밀번호를 입력하세요",
   },
-  options: ["로그인 상태 유지", "비밀번호를 잊으셨나요?"],
-  socialLogins: ["Google로 로그인", "기업/기관 SSO 로그인"],
-  socialLoginUrls: {
-    google: "https://accounts.google.com/signin",
-    enterprise: "https://www.bizinfo.go.kr",
-  },
   signupPrompt: { text: "아직 계정이 없으신가요?", cta: "회원가입" },
   submitLabel: "로그인",
-  dividerLabel: "또는 다른 방법으로 계속하기",
 };
 
 export const signup = {

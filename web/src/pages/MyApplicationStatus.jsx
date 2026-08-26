@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Icon from "../components/Icon";
 import { Card, Button } from "../components/ui";
@@ -125,15 +125,15 @@ export default function MyApplicationStatus() {
   const [viewingDoc, setViewingDoc] = useState(null);
   const [bookmarks, setBookmarks] = useState([]);
   const [loadingBookmarks, setLoadingBookmarks] = useState(true);
-  const [needsRevisionCount, setNeedsRevisionCount] = useState(0);
 
-  useEffect(() => {
-    if (!user?.id) return;
-    api
-      .get("/submissions/needs-revision-count", session?.access_token)
-      .then(({ count }) => setNeedsRevisionCount(count || 0))
-      .catch(() => {});
-  }, [user?.id, session?.access_token]);
+  // 배너 문구는 반드시 아래 목록에 실제로 보이는 서류와 같은 개수여야 하므로, 별도 API로
+  // 다시 세지 않고 화면에 이미 그리고 있는 programs(마감+미제출 사업은 제외된 상태)에서
+  // 그대로 센다 — 그래야 "N건 있다"고 해놓고 목록에는 안 보이는 불일치가 안 생긴다.
+  const needsRevisionCount = useMemo(
+    () =>
+      programs.reduce((sum, p) => sum + p.documents.filter((d) => d.statusKey === "needsRevision").length, 0),
+    [programs]
+  );
 
   useEffect(() => {
     if (!user?.id) return;

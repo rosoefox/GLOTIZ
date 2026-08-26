@@ -569,7 +569,7 @@ export default function MarketingMaterialCreator() {
   const logoInputRef = useRef(null);
   const previewRef = useRef(null);
   const historyPreviewRef = useRef(null);
-  const { addImage } = useMarketingImages();
+  const { images: mktImages, bookmarkedImages, addImage, toggleBookmark } = useMarketingImages();
   const { session, user } = useAuth();
   const [showPreviousContent, setShowPreviousContent] = useState(false);
 
@@ -923,7 +923,9 @@ export default function MarketingMaterialCreator() {
 
       setGeneratedResult(finalResult);
       pushVersion(finalResult, previewSnapshot, specSnapshot);
-      (finalResult.images || []).forEach((img) => addImage(img.url, `${previewSnapshot.productName} - ${img.slot}`));
+      (finalResult.images || []).forEach((img) =>
+        addImage(img.url, `${previewSnapshot.productName} - ${img.slot}`, img.path)
+      );
     } catch (err) {
       setGenerateError(err.message || "이미지 생성에 실패했습니다.");
     } finally {
@@ -976,7 +978,9 @@ export default function MarketingMaterialCreator() {
       const nextResult = { ...generatedResult, images: data.images };
       setGeneratedResult(nextResult);
       pushVersion(nextResult, preview, spec);
-      (data.images || []).forEach((img) => addImage(img.url, `${preview.productName} - ${img.slot} (수정)`));
+      (data.images || []).forEach((img) =>
+        addImage(img.url, `${preview.productName} - ${img.slot} (수정)`, img.path)
+      );
       setEditPrompt("");
     } catch (err) {
       setEditError(err.message || "이미지 수정에 실패했습니다.");
@@ -1159,6 +1163,15 @@ export default function MarketingMaterialCreator() {
     (activeTemplateItem?.category === activeCategory ? activeTemplateItem.name : null) ||
     mc.templates.items.find((t) => t.category === activeCategory)?.name ||
     "-";
+
+  // 미리보기 패널의 대표 이미지(레이아웃별 MAIN_SLOT_BY_LAYOUT 슬롯) 북마크 여부 - "이전에
+  // 만든 이미지"와 같은 방식으로 공용 목록(useMarketingImages)의 path 기준으로 조회한다.
+  const previewMainImage = generatedResult?.images?.find(
+    (img) => img.slot === MAIN_SLOT_BY_LAYOUT[generatedResult.layout]
+  );
+  const previewMktMatch = previewMainImage?.path
+    ? mktImages.find((img) => img.path === previewMainImage.path)
+    : null;
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-8 sm:px-8">
@@ -1628,7 +1641,14 @@ export default function MarketingMaterialCreator() {
                   ) : (
                     <div className="flex flex-wrap gap-2">
                       {versionHistory.map((v) => {
-                        const thumbUrl = findImage(v.images, MAIN_SLOT_BY_LAYOUT[v.layout]);
+                        const mainSlot = MAIN_SLOT_BY_LAYOUT[v.layout];
+                        const mainImage = v.images?.find((img) => img.slot === mainSlot);
+                        const thumbUrl = mainImage?.url;
+                        // 이 버전의 대표 이미지가 공용 마케팅 이미지 목록(useMarketingImages)에도
+                        // 같은 path로 들어있으므로, 거기서 현재 북마크 여부를 그대로 가져와 보여준다.
+                        const mktMatch = mainImage?.path
+                          ? mktImages.find((img) => img.path === mainImage.path)
+                          : null;
                         return (
                           <button
                             key={v.id}
@@ -1647,9 +1667,59 @@ export default function MarketingMaterialCreator() {
                             <span className="absolute inset-x-0 bottom-0 truncate bg-black/50 px-1 text-[9px] font-semibold text-white opacity-0 group-hover:opacity-100">
                               {v.label}
                             </span>
+                            {mainImage?.path && (
+                              <span
+                                role="button"
+                                tabIndex={0}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleBookmark(mktMatch || { id: mainImage.path, path: mainImage.path, bookmarked: false });
+                                }}
+                                aria-label={mktMatch?.bookmarked ? "북마크 해제" : "북마크"}
+                                className={`absolute right-0.5 top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-black/40 transition-opacity ${
+                                  mktMatch?.bookmarked ? "text-amber-400 opacity-100" : "text-white opacity-0 group-hover:opacity-100"
+                                }`}
+                              >
+                                <Icon name="bookmark" filled={Boolean(mktMatch?.bookmarked)} className="w-3 h-3" />
+                              </span>
+                            )}
                           </button>
                         );
                       })}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-slate-200 bg-white">
+                <div className="border-b border-slate-200 px-5 py-3">
+                  <h2 className="flex items-center gap-1.5 text-sm font-bold text-slate-900">
+                    <Icon name="bookmark" filled className="w-3.5 h-3.5 text-amber-400" />
+                    북마크
+                  </h2>
+                </div>
+                <div className="p-4">
+                  {bookmarkedImages.length === 0 ? (
+                    <p className="text-xs text-slate-400">북마크한 이미지가 아직 없어요.</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {bookmarkedImages.map((img) => (
+                        <div
+                          key={img.id}
+                          title={img.name}
+                          className="group relative h-16 w-16 shrink-0 overflow-hidden rounded-md border border-slate-200"
+                        >
+                          <img src={img.url} alt={img.name} className="h-full w-full object-cover" />
+                          <button
+                            type="button"
+                            onClick={() => toggleBookmark(img)}
+                            aria-label="북마크 해제"
+                            className="absolute right-0.5 top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-black/40 text-amber-400"
+                          >
+                            <Icon name="bookmark" filled className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -1662,15 +1732,35 @@ export default function MarketingMaterialCreator() {
                   <Icon name="eye" className="w-5 h-5" />
                   {mc.previewTitle}
                 </h2>
-                <Button
-                  variant="secondary"
-                  className="px-3 py-1.5 text-xs"
-                  onClick={handleSaveImage}
-                  disabled={savingImage || isBusy || !generatedResult}
-                >
-                  <Icon name="download" className="w-3.5 h-3.5" />
-                  {savingImage ? "저장 중..." : mc.actions.saveImage}
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="secondary"
+                    className="px-3 py-1.5 text-xs"
+                    onClick={() =>
+                      previewMainImage?.path &&
+                      toggleBookmark(
+                        previewMktMatch || { id: previewMainImage.path, path: previewMainImage.path, bookmarked: false }
+                      )
+                    }
+                    disabled={isBusy || !previewMainImage?.path}
+                  >
+                    <Icon
+                      name="bookmark"
+                      filled={Boolean(previewMktMatch?.bookmarked)}
+                      className={`w-3.5 h-3.5 ${previewMktMatch?.bookmarked ? "text-amber-400" : ""}`}
+                    />
+                    {previewMktMatch?.bookmarked ? "북마크됨" : "북마크"}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    className="px-3 py-1.5 text-xs"
+                    onClick={handleSaveImage}
+                    disabled={savingImage || isBusy || !generatedResult}
+                  >
+                    <Icon name="download" className="w-3.5 h-3.5" />
+                    {savingImage ? "저장 중..." : mc.actions.saveImage}
+                  </Button>
+                </div>
               </div>
               <div className="p-6">
                 {isBusy && (

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, NavLink, useNavigate } from "react-router-dom";
+import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import Icon from "./Icon";
 import NavUserMenu from "./NavUserMenu";
 import { brand, nav, login } from "../data/mockData";
@@ -16,14 +16,15 @@ import logoImage from "../../로고최종1.png";
 export default function Header({ overlay = false, scrolled = false }) {
   const { isLoggedIn, session } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [hovered, setHovered] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [openDropdown, setOpenDropdown] = useState(null); // 데스크톱: 펼쳐진 드롭다운의 path
   const [openAccordion, setOpenAccordion] = useState(null); // 모바일: 펼쳐진 아코디언의 path
   const dropdownRef = useRef(null);
   // 로그인 전이거나, 로그인했어도 신청한 공고가 아직 하나도 없으면 "수출지원사업"은 원래처럼
-  // "/gov-support"로 바로 이동하는 단순 링크로 남는다 — 신청 이력이 생긴 뒤부터만 전체 공고/지원
-  // 공고 목록/작성 중인 서류로 갈라지는 드롭다운(모바일은 아코디언)을 보여준다.
+  // "/gov-support"로 바로 이동하는 단순 링크로 남는다 — 신청 이력이 생긴 뒤부터만 맞춤 공고/전체
+  // 공고/작성 중인 서류로 갈라지는 드롭다운(모바일은 아코디언)을 보여준다.
   const [hasApplied, setHasApplied] = useState(false);
 
   const solid = !overlay || scrolled || hovered || mobileOpen;
@@ -54,6 +55,17 @@ export default function Header({ overlay = false, scrolled = false }) {
     document.addEventListener("mousedown", onClickOutside);
     return () => document.removeEventListener("mousedown", onClickOutside);
   }, [openDropdown]);
+
+  // "맞춤 공고 확인"/"전체 공고 확인"이 둘 다 to="/gov-support"라서, 경로만 보는 NavLink의
+  // 기본 isActive로는 둘 다 동시에 "선택됨"으로 파랗게 뜬다 — 실제로 어느 화면인지는
+  // location.state(skipAutoMatch)로만 구분되므로 그것까지 같이 비교해야 진짜 활성 메뉴만 표시된다.
+  const isChildActive = (child) => {
+    if (location.pathname !== child.path) return false;
+    if (child.path === "/gov-support") {
+      return Boolean(child.state?.skipAutoMatch) === Boolean(location.state?.skipAutoMatch);
+    }
+    return true;
+  };
 
   const goToLogin = () => {
     setMobileOpen(false);
@@ -122,19 +134,17 @@ export default function Header({ overlay = false, scrolled = false }) {
                         );
                       }
                       return (
-                        <NavLink
+                        <Link
                           key={child.label}
                           to={child.path}
                           state={child.state}
                           onClick={() => setOpenDropdown(null)}
-                          className={({ isActive }) =>
-                            `block rounded-lg px-3 py-2 text-sm font-medium ${
-                              isActive ? "bg-brand-50 text-brand-700" : "text-slate-600 hover:bg-slate-50"
-                            }`
-                          }
+                          className={`block rounded-lg px-3 py-2 text-sm font-medium ${
+                            isChildActive(child) ? "bg-brand-50 text-brand-700" : "text-slate-600 hover:bg-slate-50"
+                          }`}
                         >
                           {child.label}
-                        </NavLink>
+                        </Link>
                       );
                     })}
                   </div>
@@ -233,19 +243,17 @@ export default function Header({ overlay = false, scrolled = false }) {
                             );
                           }
                           return (
-                            <NavLink
+                            <Link
                               key={child.label}
                               to={child.path}
                               state={child.state}
                               onClick={() => setMobileOpen(false)}
-                              className={({ isActive }) =>
-                                `rounded-lg px-2 py-2 text-sm font-medium ${
-                                  isActive ? "text-brand-700" : "text-slate-600"
-                                }`
-                              }
+                              className={`rounded-lg px-2 py-2 text-sm font-medium ${
+                                isChildActive(child) ? "text-brand-700" : "text-slate-600"
+                              }`}
                             >
                               {child.label}
-                            </NavLink>
+                            </Link>
                           );
                         })}
                       </div>

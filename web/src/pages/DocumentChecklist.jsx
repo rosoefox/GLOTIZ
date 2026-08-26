@@ -226,21 +226,27 @@ function orgNameFor(business) {
 function ProgramCard({ business, progress, onClick }) {
   const { done, total } = progress;
   const complete = total > 0 && done >= total;
+  const closed = isClosed(business, govAnnouncementDetails);
   return (
     <Card
-      interactive
-      onClick={onClick}
-      className={`flex h-full flex-col justify-between overflow-hidden p-4 ${
-        complete ? "ring-2 ring-emerald-300" : "ring-2 ring-amber-300"
+      interactive={!closed}
+      onClick={closed ? undefined : onClick}
+      className={`relative flex h-full flex-col justify-between overflow-hidden p-4 ${
+        closed ? "cursor-not-allowed grayscale" : complete ? "ring-2 ring-emerald-300" : "ring-2 ring-amber-300"
       }`}
     >
+      {closed && <div className="absolute inset-0 z-10 rounded-2xl bg-slate-200/50" aria-hidden="true" />}
       <div>
         <div className="mb-2 flex items-center justify-between gap-2">
           <Badge tone="brand">모집 공고</Badge>
-          <Badge tone={complete ? "success" : "warning"}>
-            <Icon name={complete ? "checkCircle" : "history"} className="w-3.5 h-3.5" />
-            제출 {done}/{total}
-          </Badge>
+          {closed ? (
+            <Badge tone="neutral">마감</Badge>
+          ) : (
+            <Badge tone={complete ? "success" : "warning"}>
+              <Icon name={complete ? "checkCircle" : "history"} className="w-3.5 h-3.5" />
+              제출 {done}/{total}
+            </Badge>
+          )}
         </div>
         <h3 className="line-clamp-3 text-sm font-bold leading-snug text-slate-900">{business.name}</h3>
       </div>
@@ -594,7 +600,7 @@ export default function DocumentChecklist() {
             </div>
             <button
               type="button"
-              onClick={() => navigate(`/gov-support/${selectedBusinessId}`)}
+              onClick={() => navigate(`/gov-support/${selectedBusinessId}`, { state: { from: "docs" } })}
               className={SECONDARY_BUTTON_CLASS}
             >
               <Icon name="documents" className="w-4 h-4" /> 공고 확인하기

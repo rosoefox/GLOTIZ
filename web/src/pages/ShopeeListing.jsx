@@ -86,9 +86,37 @@ function CopyButton({ copied, onClick }) {
   );
 }
 
+// 썸네일 위에 얹는 북마크 토글 — 클릭해도 아래 썸네일 선택(onPick)이 같이 눌리지 않도록 막는다.
+function ImageThumb({ img, onPick, onToggleBookmark }) {
+  return (
+    <div
+      className="group relative h-14 w-full overflow-hidden rounded-lg border border-slate-200 bg-cover bg-center"
+      style={{ backgroundImage: `url(${img.url})` }}
+    >
+      <button type="button" onClick={onPick} aria-label={img.name} className="absolute inset-0 hover:ring-2 hover:ring-inset hover:ring-brand-400" />
+      {img.path && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleBookmark(img);
+          }}
+          aria-label={img.bookmarked ? "북마크 해제" : "북마크"}
+          className={`absolute right-0.5 top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-black/40 transition-opacity ${
+            img.bookmarked ? "text-amber-400 opacity-100" : "text-white opacity-0 group-hover:opacity-100"
+          }`}
+        >
+          <Icon name="bookmark" filled={img.bookmarked} className="w-3 h-3" />
+        </button>
+      )}
+    </div>
+  );
+}
+
 function ImagePickerButton({ onPick }) {
   const [open, setOpen] = useState(false);
-  const { images } = useMarketingImages();
+  const { bookmarkedImages, recentImages, toggleBookmark } = useMarketingImages();
+  const isEmpty = bookmarkedImages.length === 0 && recentImages.length === 0;
   return (
     <div className="relative">
       <button
@@ -100,24 +128,50 @@ function ImagePickerButton({ onPick }) {
         {sl.imagePickerLabel}
       </button>
       {open && (
-        <div className="absolute left-0 top-full z-10 mt-2 w-64 rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
-          {images.length === 0 ? (
+        <div className="absolute left-0 top-full z-10 mt-2 w-64 max-h-80 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
+          {isEmpty ? (
             <p className="px-2 py-3 text-xs text-slate-400">{sl.imagePickerEmpty}</p>
           ) : (
-            <div className="grid grid-cols-3 gap-2">
-              {images.map((img) => (
-                <button
-                  key={img.id}
-                  type="button"
-                  onClick={() => {
-                    onPick(img.url, img.name);
-                    setOpen(false);
-                  }}
-                  className="h-14 w-full overflow-hidden rounded-lg border border-slate-200 bg-cover bg-center hover:ring-2 hover:ring-brand-400"
-                  style={{ backgroundImage: `url(${img.url})` }}
-                  aria-label={img.name}
-                />
-              ))}
+            <div className="space-y-3">
+              {bookmarkedImages.length > 0 && (
+                <div>
+                  <p className="mb-1.5 flex items-center gap-1 px-1 text-[11px] font-bold text-slate-500">
+                    <Icon name="bookmark" filled className="w-3 h-3 text-amber-400" />
+                    북마크
+                  </p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {bookmarkedImages.map((img) => (
+                      <ImageThumb
+                        key={img.id}
+                        img={img}
+                        onPick={() => {
+                          onPick(img.url, img.name);
+                          setOpen(false);
+                        }}
+                        onToggleBookmark={toggleBookmark}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+              {recentImages.length > 0 && (
+                <div>
+                  <p className="mb-1.5 px-1 text-[11px] font-bold text-slate-500">최근 생성</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {recentImages.map((img) => (
+                      <ImageThumb
+                        key={img.id}
+                        img={img}
+                        onPick={() => {
+                          onPick(img.url, img.name);
+                          setOpen(false);
+                        }}
+                        onToggleBookmark={toggleBookmark}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

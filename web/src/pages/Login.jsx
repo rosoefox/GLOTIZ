@@ -7,7 +7,6 @@ import { useAuth } from "../context/AuthContext";
 
 export default function Login() {
   const [accountType, setAccountType] = useState("user");
-  const [remember, setRemember] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -35,10 +34,6 @@ export default function Login() {
     } finally {
       setSubmitting(false);
     }
-  };
-
-  const handleSocialLogin = (url) => {
-    window.open(url, "_blank", "noopener,noreferrer");
   };
 
   return (
@@ -156,21 +151,6 @@ export default function Login() {
               </div>
             </label>
 
-            <div className="flex items-center justify-between text-sm">
-              <label className="flex items-center gap-2 text-slate-600">
-                <input
-                  type="checkbox"
-                  checked={remember}
-                  onChange={(e) => setRemember(e.target.checked)}
-                  className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
-                />
-                {login.options[0]}
-              </label>
-              <Link to="/reset-password" className="font-medium text-brand-600 hover:underline">
-                {login.options[1]}
-              </Link>
-            </div>
-
             {error && (
               <p className="rounded-lg bg-red-50 px-3.5 py-2.5 text-xs font-medium text-red-600">{error}</p>
             )}
@@ -178,30 +158,6 @@ export default function Login() {
             <Button type="submit" className="w-full justify-center rounded-xl py-3" disabled={submitting}>
               {submitting ? "로그인 중..." : login.submitLabel}
             </Button>
-
-            <div className="relative py-1 text-center text-xs text-slate-400">
-              <span className="relative bg-white px-3">{login.dividerLabel}</span>
-              <div className="absolute inset-x-0 top-1/2 -z-10 border-t border-slate-200" />
-            </div>
-
-            <div className="grid grid-cols-2 gap-2.5">
-              <button
-                type="button"
-                onClick={() => handleSocialLogin(login.socialLoginUrls.google)}
-                className="flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-2.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50"
-              >
-                <Icon name="globe" className="w-5 h-5" />
-                Google
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSocialLogin(login.socialLoginUrls.enterprise)}
-                className="flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-2.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50"
-              >
-                <Icon name="building" className="w-5 h-5" />
-                기업/기관 SSO
-              </button>
-            </div>
           </form>
 
           <p className="mt-7 text-center text-sm text-slate-500">

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import Icon from "../components/Icon";
 import { Card, CardHeader, CardTitle, CardContent, Button } from "../components/ui";
 import { govSupport as gs, govAnnouncementDetails } from "../data/mockData";
@@ -20,6 +20,10 @@ function Row({ label, value }) {
 export default function GovSupportDetail() {
   const { businessId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  // 서류 제출 화면("공고 확인하기")에서 들어온 경우만 "이전으로"로 바꿔 서류 제출 화면으로
+  // 돌아가게 한다 — 그 외 진입 경로(전체 공고 목록 등)는 원래대로 목록 화면으로 돌아간다.
+  const fromDocs = location.state?.from === "docs";
   const [business, setBusiness] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -72,10 +76,12 @@ export default function GovSupportDetail() {
     <div className="mx-auto max-w-6xl px-4 py-6 sm:px-8 sm:py-8">
       <button
         type="button"
-        onClick={() => navigate("/gov-support", { state: { skipAutoMatch: true } })}
+        onClick={() =>
+          fromDocs ? navigate(-1) : navigate("/gov-support", { state: { skipAutoMatch: true } })
+        }
         className="mb-4 flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-800"
       >
-        <Icon name="arrowLeft" className="w-5 h-5" /> 목록으로
+        <Icon name="arrowLeft" className="w-5 h-5" /> {fromDocs ? "이전으로" : "목록으로"}
       </button>
 
       <h1 className="text-3xl font-extrabold text-slate-900">{gs.detailPageTitle}</h1>

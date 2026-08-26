@@ -3,10 +3,11 @@ import { Link, useNavigate } from "react-router-dom";
 import Icon from "../components/Icon";
 import { Badge, Card, Button, TextField, CONTROL_CLASS } from "../components/ui";
 import Modal from "../components/Modal";
-import { brand, adminPanel as ap } from "../data/mockData";
+import { brand, adminPanel as ap, govAnnouncementDetails } from "../data/mockData";
 import { useAuth } from "../context/AuthContext";
 import { api, idsParam } from "../lib/api";
 import { readErrorMessage } from "../lib/apiError";
+import { isClosed } from "../lib/period";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
 const FIELD_TYPE_OPTIONS = ["text", "number", "date", "select", "checkbox", "textarea", "long_text"];
@@ -71,11 +72,7 @@ function SubmissionRow({
           <button
             type="button"
             onClick={() => onSetReviewStatus(applicant, item, "needs_revision")}
-            className={`flex w-[5.5rem] items-center justify-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
-              item.statusKey === "needs_revision"
-                ? "bg-slate-200 text-slate-500"
-                : "bg-red-600 text-white hover:bg-red-700"
-            }`}
+            className="flex w-[5.5rem] items-center justify-center gap-1 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-red-700"
           >
             <Icon name="x" className="w-5 h-5" />
             {ap.markNeedsRevisionLabel}
@@ -85,11 +82,7 @@ function SubmissionRow({
           <button
             type="button"
             onClick={() => onSetReviewStatus(applicant, item, "approved")}
-            className={`flex w-[5.5rem] items-center justify-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
-              item.statusKey === "approved"
-                ? "bg-slate-200 text-slate-500"
-                : "bg-emerald-600 text-white hover:bg-emerald-700"
-            }`}
+            className="flex w-[5.5rem] items-center justify-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-700"
           >
             <Icon name="check" className="w-5 h-5" />
             {ap.markApprovedLabel}
@@ -150,16 +143,22 @@ function ProgramRow({
   onViewSubmission,
   onSetReviewStatus,
   downloadingId,
+  onDeleteApplicant,
+  deletingApplicantKey,
 }) {
+  const closed = program.closed;
   return (
-    <Card className="p-0">
+    <Card className={`p-0 ${closed ? "opacity-60 grayscale" : ""}`}>
       <button
         type="button"
         onClick={onToggle}
         className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left"
       >
         <div>
-          <p className="font-bold text-slate-900">{program.businessName}</p>
+          <p className="flex items-center gap-2 font-bold text-slate-900">
+            {program.businessName}
+            {closed && <Badge tone="neutral">마감</Badge>}
+          </p>
           <p className="mt-1 text-xs text-slate-400">
             {ap.tableHeaders.lastUpdated} {program.lastUpdated}
           </p>
@@ -180,6 +179,7 @@ function ProgramRow({
           {program.applicants.map((applicant) => {
             const key = `${program.businessId}:${applicant.userId}`;
             const applicantExpanded = expandedApplicantKey === key;
+            const isDeleting = deletingApplicantKey === key;
             return (
               <div key={key} className="overflow-hidden rounded-xl border border-slate-200">
                 <button
@@ -197,6 +197,23 @@ function ProgramRow({
                     <Badge tone={applicant.percent === 100 ? "success" : "brand"}>
                       {ap.percentLabel} {applicant.percent}%
                     </Badge>
+                    {closed && (
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!isDeleting) onDeleteApplicant(program, applicant);
+                        }}
+                        onKeyDown={(e) => e.key === "Enter" && e.stopPropagation()}
+                        className={`flex items-center gap-1 rounded-lg border border-red-200 px-2 py-1 text-xs font-semibold text-red-600 transition-colors hover:bg-red-50 ${
+                          isDeleting ? "pointer-events-none opacity-50" : ""
+                        }`}
+                      >
+                        <Icon name="trash" className="w-3.5 h-3.5" />
+                        {isDeleting ? "삭제 중..." : "삭제"}
+                      </span>
+                    )}
                     <Icon
                       name="chevronDown"
                       className={`h-3.5 w-3.5 text-slate-400 transition-transform ${applicantExpanded ? "rotate-180" : ""}`}
@@ -1113,9 +1130,11 @@ export default function AdminPage() {
   const [activeTab, setActiveTab] = useState("submissions");
   const [loading, setLoading] = useState(true);
   const [applicants, setApplicants] = useState([]);
+  const [businessRows, setBusinessRows] = useState([]);
   const [expandedProgramId, setExpandedProgramId] = useState(null);
   const [expandedApplicantKey, setExpandedApplicantKey] = useState(null);
   const [reviewStatusError, setReviewStatusError] = useState(null);
+  const [deletingApplicantKey, setDeletingApplicantKey] = useState(null);
   const [downloadingId, setDownloadingId] = useState(null);
   const [search, setSearch] = useState("");
   const [showBusinessModal, setShowBusinessModal] = useState(false);
@@ -1131,6 +1150,7 @@ export default function AdminPage() {
       api.get("/generated_documents", session?.access_token),
     ]);
 
+    setBusinessRows(businesses || []);
     const businessNameById = Object.fromEntries((businesses || []).map((b) => [b.id, b.name]));
     const templateById = Object.fromEntries((templates || []).map((t) => [t.id, t]));
     const templatesByBusiness = {};
@@ -1284,6 +1304,12 @@ export default function AdminPage() {
     return { applicants: applicants.length, programs: programCount, needsApproval: needsApprovalCount };
   }, [applicants]);
 
+  const closedByBusinessId = useMemo(() => {
+    const map = {};
+    for (const b of businessRows) map[b.id] = isClosed(b, govAnnouncementDetails);
+    return map;
+  }, [businessRows]);
+
   // 신청자 기준으로 모아둔 applicants를 지원사업(공고) 기준으로 다시 묶는다 —
   // 각 사업에 신청한 기업 수를 먼저 보여주고, 펼치면 기업별 서류를 볼 수 있게 하기 위함.
   const programGroups = useMemo(() => {
@@ -1294,6 +1320,7 @@ export default function AdminPage() {
           byBusiness[program.businessId] = {
             businessId: program.businessId,
             businessName: program.businessName,
+            closed: Boolean(closedByBusinessId[program.businessId]),
             applicants: [],
             lastUpdated: applicant.lastUpdated,
           };
@@ -1309,7 +1336,7 @@ export default function AdminPage() {
       }
     }
     return Object.values(byBusiness).sort((a, b) => b.applicants.length - a.applicants.length);
-  }, [applicants]);
+  }, [applicants, closedByBusinessId]);
 
   // 사업명 또는 그 사업에 신청한 기업(회사)명으로 찾는다 — 둘 중 하나만 맞아도 그 사업
   // 전체(신청 기업 목록 포함)를 보여준다.
@@ -1389,6 +1416,36 @@ export default function AdminPage() {
       return;
     }
 
+    await load();
+  };
+
+  // 마감된 지원사업에서 특정 신청 기업의 제출 내역을 통째로 정리할 때 쓴다 — 되돌릴 수
+  // 없으므로 반드시 확인을 받는다.
+  const handleDeleteApplicant = async (program, applicant) => {
+    if (
+      !window.confirm(
+        `"${applicant.name}"의 "${program.businessName}" 신청 내역을 삭제할까요?\n제출된 서류가 전부 함께 삭제되며 되돌릴 수 없습니다.`
+      )
+    )
+      return;
+    const key = `${program.businessId}:${applicant.userId}`;
+    setDeletingApplicantKey(key);
+    setReviewStatusError(null);
+    try {
+      const res = await fetch(
+        `${BACKEND_URL}/admin/businesses/${program.businessId}/applicants/${applicant.userId}`,
+        {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        }
+      );
+      if (!res.ok) throw new Error(await readErrorMessage(res, "신청 내역 삭제에 실패했습니다."));
+    } catch (err) {
+      setReviewStatusError(err.message);
+      setDeletingApplicantKey(null);
+      return;
+    }
+    setDeletingApplicantKey(null);
     await load();
   };
 
@@ -1513,6 +1570,8 @@ export default function AdminPage() {
                     onViewSubmission={handleViewSubmission}
                     onSetReviewStatus={handleSetReviewStatus}
                     downloadingId={downloadingId}
+                    onDeleteApplicant={handleDeleteApplicant}
+                    deletingApplicantKey={deletingApplicantKey}
                   />
                 ))}
               </div>

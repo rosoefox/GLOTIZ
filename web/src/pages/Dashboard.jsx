@@ -4,6 +4,7 @@ import Icon from "../components/Icon";
 import Header from "../components/Header";
 import HeroOceanScene from "../components/HeroOceanScene";
 import FloatingChatbot from "../components/FloatingChatbot";
+import MaskedHeading from "../components/MaskedHeading";
 import { brand, dashboard, govAnnouncementDetails } from "../data/mockData";
 import { useAuth } from "../context/AuthContext";
 import { api, idsParam } from "../lib/api";
@@ -72,6 +73,23 @@ function useSectionReveal(threshold = 0.35) {
   return [ref, inView];
 }
 
+// MaskedHeading의 align prop은 인라인 textAlign이라 Tailwind의 md: 반응형 클래스로는 못
+// 바꾼다 — 뷰포트 폭을 직접 추적해서, 모바일에서는 지그재그 우측 정렬 항목의 타이틀도 좌측
+// 정렬로 강제로 통일한다(본문/설명/링크는 이미 Tailwind 클래스로 처리됨).
+function useIsDesktop(breakpoint = 768) {
+  const [isDesktop, setIsDesktop] = useState(
+    () => typeof window !== "undefined" && window.innerWidth >= breakpoint
+  );
+  useEffect(() => {
+    const mql = window.matchMedia(`(min-width: ${breakpoint}px)`);
+    const onChange = () => setIsDesktop(mql.matches);
+    onChange();
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }, [breakpoint]);
+  return isDesktop;
+}
+
 // 제목(H2)/본문(P)/버튼 요소에 공통으로 적용하는 스태거 리빌 스타일. index가 클수록
 // 0.15초씩 늦게 나타나 순차적으로 아래에서 위로 올라오며 페이드인된다.
 function revealCls(inView) {
@@ -79,6 +97,20 @@ function revealCls(inView) {
 }
 function revealStyle(index) {
   return { transitionDelay: `${index * 150}ms` };
+}
+
+// "3: 서비스 소개" Z-패턴 섹션 전용 Scroll Float 스타일 — 순번(0) → 타이틀(1) → 설명(2) →
+// 액션 링크(3) 순서로 0.15초씩 늦게 나타난다(같은 tier는 3개 행이 동시에 뜬다). 다른 섹션의
+// revealCls/revealStyle(ease-out, 24px)보다 더 크게 뜨고(45px) 더 부드럽게 감속하는
+// cubic-bezier를 쓰기 때문에 공용 헬퍼를 그대로 쓰지 않고 이 섹션만 따로 둔다.
+function floatStyle(tier, inView, extra) {
+  return {
+    opacity: inView ? 1 : 0,
+    transform: inView ? "translateY(0)" : "translateY(45px)",
+    transition: "opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1), transform 0.8s cubic-bezier(0.16, 1, 0.3, 1)",
+    transitionDelay: `${tier * 150}ms`,
+    ...extra,
+  };
 }
 
 function useCountUp(target, { duration = 1500, decimals = 0 } = {}) {
@@ -188,7 +220,19 @@ export default function Dashboard() {
   // 섹션별 스크롤 트리거 스태거 애니메이션용 ref/inView (섹션마다 독립적으로 재진입 감지)
   const [heroRef, heroInView] = useSectionReveal();
   const [programsRef, programsInView] = useSectionReveal();
-  const [featuresRef, featuresInView] = useSectionReveal();
+  // "3: 서비스 소개"는 이제 세 항목이 각각 자기 화면을 차지하는 별도 스냅 섹션이라, 항목별로
+  // 독립된 감지가 필요하다 — 하나로 묶어두면 스크롤이 그 사이에 걸쳐 있을 때 두 항목이 동시에
+  // 보이거나, 아직 화면에 안 들어온 항목까지 같이 애니메이션이 튀는 문제가 있었다.
+  const [feature0Ref, feature0InView] = useSectionReveal();
+  const [feature1Ref, feature1InView] = useSectionReveal();
+  const [feature2Ref, feature2InView] = useSectionReveal();
+  const featureSections = [
+    [feature0Ref, feature0InView],
+    [feature1Ref, feature1InView],
+    [feature2Ref, feature2InView],
+  ];
+  const FEATURE_MEDIA = ["/hero-ship.png", "/case-studies/case-01.jpg", "/shopee-onboarding-part1.png"];
+  const isDesktop = useIsDesktop();
   const [caseStudiesRef, caseStudiesInView] = useSectionReveal();
   const [satisfactionRef, satisfactionInView] = useSectionReveal();
 
@@ -573,36 +617,75 @@ export default function Dashboard() {
           </div>
         </section>
 
-        {/* 3: GLOTIZ로 서류 작성/디자인 고민을 해결해보세요! */}
-        <section
-          ref={featuresRef}
-          className="flex h-[calc(100dvh-4rem)] w-full snap-start flex-col items-center justify-center overflow-hidden bg-slate-50 px-6 py-6 sm:py-8 lg:py-10"
-        >
-          <div className="mx-auto max-w-4xl text-center">
-            <h2 className={`text-xl font-bold text-slate-900 sm:text-2xl ${revealCls(featuresInView)}`} style={revealStyle(0)}>
-              {dashboard.featuresTitle}
-            </h2>
-
-            <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4 lg:gap-5">
-              {dashboard.features.map((f, i) => (
-                <Link
-                  key={f.title}
-                  to={f.to}
-                  className={`flex flex-col items-center rounded-2xl border border-slate-200 bg-white p-4 text-center hover:shadow-md sm:p-5 ${revealCls(featuresInView)}`}
-                  style={revealStyle(i + 1)}
+        {/* 3-1~3-3: GLOTIZ로 서류 작성/디자인 고민을 해결해보세요! — 세 항목을 각각 독립된
+            스냅 섹션으로 나눠서(예전엔 한 섹션에 다 몰아넣어 스크롤이 항목 사이에 걸쳐 보였다)
+            한 번에 하나씩만 화면에 뜨게 한다. 카드 박스 없이 순수 텍스트만으로 Z-패턴(지그재그)
+            배치하고, 타이틀은 React Bits의 MaskedHeading으로 바꿔 글자 모양대로 이미지가
+            비치는 인터랙션을 주고, 나머지(순번/설명/링크)는 스크롤 진입 시 순서대로 떠오르는
+            Scroll Float를 유지한다. */}
+        {dashboard.features.map((f, i) => {
+          const rightAlign = i === 1; // 2번(AI 이미지 생성)만 우측 정렬, 1·3번은 좌측
+          const [featureRef, featureInView] = featureSections[i];
+          return (
+            <section
+              key={f.title}
+              ref={featureRef}
+              className="flex h-[calc(100dvh-4rem)] w-full snap-start flex-col items-center justify-center overflow-hidden bg-black px-6 py-6 sm:py-8 lg:py-10"
+            >
+              <div className="mx-auto w-full max-w-3xl">
+                {i === 0 && (
+                  <h2
+                    className="mb-10 text-center text-lg font-bold text-white sm:mb-14 sm:text-xl"
+                    style={floatStyle(0, featureInView)}
+                  >
+                    {dashboard.featuresTitle}
+                  </h2>
+                )}
+                <div
+                  className={`flex flex-col items-start text-left ${
+                    rightAlign ? "md:items-end md:text-right" : ""
+                  }`}
                 >
-                  <Icon name={f.icon} className="mb-3 w-5 h-5 text-slate-500" />
-                  <p className="mb-1 text-sm font-bold text-slate-900 sm:text-base">{f.title}</p>
-                  <p className="mb-3 text-xs leading-relaxed text-slate-500 sm:text-sm">{f.description}</p>
-                  <span className="mt-auto inline-flex items-center gap-1 text-xs font-semibold text-brand-600 sm:text-sm">
-                    {f.linkLabel}
-                    <Icon name="arrowRight" className="w-5 h-5" />
+                  <span
+                    className="text-[0.9rem] font-semibold text-[#666666]"
+                    style={floatStyle(1, featureInView, { letterSpacing: "1px" })}
+                  >
+                    {String(i + 1).padStart(2, "0")}
                   </span>
-                </Link>
-              ))}
-            </div>
-          </div>
-        </section>
+                  <MaskedHeading
+                    text={f.title}
+                    tag="h3"
+                    src={FEATURE_MEDIA[i]}
+                    align={rightAlign && isDesktop ? "right" : "left"}
+                    weight={800}
+                    textScale={0.09}
+                    className="mt-3 w-full"
+                    style={{ minHeight: "1.2em" }}
+                  />
+                  <p
+                    className={`mt-4 max-w-md text-[1.05rem] font-normal leading-[1.7] text-[#aaaaaa] ${
+                      rightAlign ? "md:ml-auto" : ""
+                    }`}
+                    style={floatStyle(3, featureInView)}
+                  >
+                    {f.description}
+                  </p>
+                  <Link
+                    to={f.to}
+                    className="group mt-5 inline-flex items-center gap-1.5 border-b-2 border-brand-400 pb-1 text-[1.25rem] font-bold text-brand-400"
+                    style={floatStyle(4, featureInView)}
+                  >
+                    {f.linkLabel}
+                    <Icon
+                      name="arrowRight"
+                      className="w-5 h-5 transition-transform duration-300 ease-out group-hover:translate-x-1.5"
+                    />
+                  </Link>
+                </div>
+              </div>
+            </section>
+          );
+        })}
 
         {/* 4: AI · 디자인 진행 사례 */}
         <section

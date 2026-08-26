@@ -1818,6 +1818,56 @@ def delete_template(template_id: str, authorization: str | None = Header(None)):
     return {"deleted": True}
 
 
+@app.delete("/admin/businesses/{business_id}/applicants/{user_id}")
+def delete_applicant_submissions(business_id: str, user_id: str, authorization: str | None = Header(None)):
+    """마감된 지원사업에서 특정 신청 기업의 제출 내역(그 사업에 낸 서식 전부)을 통째로
+    삭제한다 - 관리자가 종료된 공고의 신청 목록을 정리할 때 쓴다."""
+    require_admin(authorization)
+
+    template_ids = [
+        t["id"]
+        for t in (db.table("templates").select("id").eq("business_id", business_id).execute().data or [])
+    ]
+    if not template_ids:
+        return {"deleted": True}
+
+    submission_ids = [
+        s["id"]
+        for s in (
+            db.table("submissions")
+            .select("id")
+            .eq("user_id", user_id)
+            .in_("template_id", template_ids)
+            .execute()
+            .data
+            or []
+        )
+    ]
+    if not submission_ids:
+        return {"deleted": True}
+
+    generated_docs = (
+        db.table("generated_documents")
+        .select("file_path")
+        .in_("submission_id", submission_ids)
+        .execute()
+        .data
+        or []
+    )
+    gen_paths = [g["file_path"] for g in generated_docs if g.get("file_path")]
+    db.table("generated_documents").delete().in_("submission_id", submission_ids).execute()
+    if gen_paths:
+        try:
+            gcs.from_(GENERATED_BUCKET).remove(gen_paths)
+        except Exception:
+            pass
+
+    db.table("submission_values").delete().in_("submission_id", submission_ids).execute()
+    db.table("submissions").delete().in_("id", submission_ids).execute()
+
+    return {"deleted": True}
+
+
 @app.delete("/admin/businesses/{business_id}")
 def delete_business(business_id: str, authorization: str | None = Header(None)):
     """지원사업(공고) 자체를 삭제한다. 서식 파일만 지우는 게 아니라, 연결된 서식/제출
@@ -6747,17 +6797,23 @@ def _generate_detail(
     return {"images": images, "copy": {"captions": captions}}
 
 
+MARKETING_IMAGES_RECENT_LIMIT = 9
+
+
 @app.get("/marketing/images")
 def list_marketing_images(authorization: str | None = Header(None)):
-    """이 사용자가 지금까지 만든 마케팅 이미지를 생성 회차(gen_id)별로 묶어서 최신순으로
-    돌려준다. 업로드 경로 자체가 marketing-images/{user_id}/{gen_id}/{slot}.ext 구조라 별도
-    DB 테이블 없이도 GCS 목록만으로 사용자별 이력을 재구성할 수 있다 — 그래서 브라우저를
-    새로고침하거나 다른 기기에서 다시 로그인해도 예전에 만든 이미지를 계속 볼 수 있다."""
+    """이 사용자가 만든 마케팅 이미지 중 최근 9장 + 북마크된 것들만 서명 URL을 만들어 돌려준다.
+    사용자가 이미지를 계속 만들수록 GCS 오브젝트가 무한정 쌓이는데, 예전엔 전부 매번 서명 URL을
+    새로 만들어서(건당 GCS API 호출 1번) 목록을 새로고침할 때마다 부담이 계속 커졌다 — 최근
+    9장으로 캡을 걸고, 그 밖에서 보고 싶은 건 북마크로 남기게 바꿨다. 북마크 여부는 별도 DB
+    테이블 없이 GCS 오브젝트의 커스텀 메타데이터(bookmarked=true)로 저장한다 - 업로드 경로 자체가
+    marketing-images/{user_id}/{gen_id}/{slot}.ext 구조라 목록 자체도 이미 DB 없이 GCS만으로
+    재구성하고 있어서 같은 방식을 그대로 따른다."""
     user_id = require_user(authorization)
     prefix = f"marketing-images/{user_id}/"
     bucket = _gcs_client.bucket(GENERATED_BUCKET)
 
-    generations: dict[str, dict] = {}
+    all_images = []
     for blob in _gcs_client.list_blobs(bucket, prefix=prefix):
         rel = blob.name[len(prefix):]
         parts = rel.split("/")
@@ -6765,19 +6821,53 @@ def list_marketing_images(authorization: str | None = Header(None)):
             continue
         gen_id, filename = parts
         slot = filename.rsplit(".", 1)[0]
-        entry = generations.setdefault(gen_id, {"gen_id": gen_id, "created_at": blob.time_created, "images": []})
-        if blob.time_created and (entry["created_at"] is None or blob.time_created < entry["created_at"]):
-            entry["created_at"] = blob.time_created
-        signed = gcs.from_(GENERATED_BUCKET).create_signed_url(blob.name, 3600)
-        entry["images"].append({"slot": slot, "path": blob.name, "url": signed.get("signedURL")})
+        all_images.append({
+            "gen_id": gen_id,
+            "slot": slot,
+            "path": blob.name,
+            "created_at": blob.time_created,
+            "bookmarked": bool((blob.metadata or {}).get("bookmarked")),
+        })
 
-    ordered = sorted(
-        generations.values(), key=lambda g: g["created_at"] or datetime.min, reverse=True
-    )
-    for g in ordered:
-        g["created_at"] = g["created_at"].isoformat() if g["created_at"] else None
+    all_images.sort(key=lambda i: i["created_at"] or datetime.min, reverse=True)
 
-    return {"generations": ordered}
+    recent = all_images[:MARKETING_IMAGES_RECENT_LIMIT]
+    bookmarked_extra = [i for i in all_images[MARKETING_IMAGES_RECENT_LIMIT:] if i["bookmarked"]]
+    included = recent + bookmarked_extra
+
+    for img in included:
+        img["created_at"] = img["created_at"].isoformat() if img["created_at"] else None
+        signed = gcs.from_(GENERATED_BUCKET).create_signed_url(img["path"], 3600)
+        img["url"] = signed.get("signedURL")
+
+    return {"images": included}
+
+
+class SetMarketingImageBookmarkRequest(BaseModel):
+    path: str
+    bookmarked: bool
+
+
+@app.post("/marketing/images/bookmark")
+def set_marketing_image_bookmark(req: SetMarketingImageBookmarkRequest, authorization: str | None = Header(None)):
+    """마케팅 이미지 하나를 북마크하거나 해제한다. /marketing/images와 동일하게 별도 DB 테이블
+    없이 GCS 오브젝트 커스텀 메타데이터로 상태를 저장한다."""
+    user_id = require_user(authorization)
+    prefix = f"marketing-images/{user_id}/"
+    if not req.path.startswith(prefix):
+        raise HTTPException(status_code=403, detail="본인이 만든 이미지만 북마크할 수 있습니다.")
+
+    bucket = _gcs_client.bucket(GENERATED_BUCKET)
+    blob = bucket.blob(req.path)
+    blob.reload()
+    meta = dict(blob.metadata or {})
+    if req.bookmarked:
+        meta["bookmarked"] = "true"
+    else:
+        meta.pop("bookmarked", None)
+    blob.metadata = meta
+    blob.patch()
+    return {"bookmarked": req.bookmarked}
 
 
 @app.post("/marketing/generate")

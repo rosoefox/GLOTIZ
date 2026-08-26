@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Card, Button } from "../components/ui";
 import Icon from "../components/Icon";
@@ -72,10 +72,6 @@ function matchesRegion(business, region) {
   const haystack = matchHaystack(business);
   if (haystack.includes(region)) return true;
   return !gs.filters.regions.some((r) => haystack.includes(r));
-}
-
-function wizardStorageKey(userId) {
-  return `jbxport:gov-support:wizard:${userId || "guest"}`;
 }
 
 // 등록된 지원사업 공고는 대부분 특정 품목을 가리지 않는 범용 수출지원사업이라, 품목은
@@ -375,20 +371,24 @@ export default function GovSupport() {
   const [loadingAnnouncements, setLoadingAnnouncements] = useState(true);
 
   // "맞춤 추천" 마법사: 지역 선택 → 품목 선택 → 결과. 홈 화면 "수출 시작하기"나 상단 네비게이션
-  // "수출지원사업"을 눌렀을 때는 항상 이 마법사부터 시작한다. 다만 사용자가 예전에 이미 마법사를
-  // 완료했으면(아래 useEffect가 localStorage를 읽어 감지) 매번 다시 태우지 않고 바로 전체 목록
-  // (browse-all)으로 건너뛴다. 매칭은 AI 호출 없이 각 공고의 지역/품목 키워드를 즉시 대조해서
-  // 계산하고, 결과는 별도 화면이 아니라 browse-all 화면에 강조 표시로 합쳐서 보여준다.
-  // "지원사업 목록으로"/"목록으로"(skipAutoMatch)로 돌아온 경우는 전체 목록(browse-all)에서
-  // 바로 시작한다 — 이게 없으면, 마법사를 한 번도 완료하지 않고 "전체 공고 보기"로 건너뛴
-  // 사용자가 공고를 봤다가 뒤로 돌아왔을 때 저장된 지역/품목 선택이 없어서 마법사 1단계로
-  // 다시 떨어지는 문제가 있었다.
+  // "수출지원사업"/"맞춤 공고 확인"을 누르면 매번 지역 선택(1단계)부터 새로 시작한다 — 예전엔
+  // 선택했던 지역/품목을 localStorage에 저장해뒀다가 다음에 미리 체크해줬는데, 이제는 그 선택을
+  // 아예 저장하지 않는다(재방문해도 항상 빈 상태로 시작). 매칭 자체는 AI 호출 없이 각 공고의
+  // 지역/품목 키워드를 즉시 대조해서 계산한다.
+  //
+  // 네비 아코디언의 "맞춤 공고 확인"과 "전체 공고 확인"은 둘 다 같은 경로("/gov-support")라서
+  // React Router가 컴포넌트를 다시 마운트하지 않는다 — location.state만 바뀐다. 그래서 모드
+  // 판단을 마운트 시 한 번만 도는 useState 초기값/useEffect가 아니라, 매 네비게이션마다 값이
+  // 바뀌는 location.key를 의존성으로 둔 아래 useEffect에서 매번 다시 계산해야, 이미 페이지가
+  // 떠 있는 상태에서 두 메뉴를 번갈아 눌러도 실제로 다른 화면이 나온다.
   const [mode, setMode] = useState(() =>
     location.state?.skipAutoMatch ? "browse-all" : "wizard-region"
   ); // wizard-region | wizard-category | browse-all
   const [wizardRegions, setWizardRegions] = useState([]);
   const [wizardCategories, setWizardCategories] = useState([]);
-  const [matchedIds, setMatchedIds] = useState(null);
+  // true면 지역/품목이 저장돼 있어도 강조 없이 전체 목록을 보여준다 — "전체 공고 확인" 메뉴,
+  // "전체 공고 보기" 버튼, 마법사의 "전체 공고 보기" 건너뛰기 링크가 이걸 켠다.
+  const [explicitAll, setExplicitAll] = useState(() => Boolean(location.state?.skipAutoMatch));
 
   const [selectedRegions, setSelectedRegions] = useState([]);
   const [selectedCategories, setSelectedCategories] = useState([]);
@@ -430,47 +430,42 @@ export default function GovSupport() {
     };
   }, [user?.id, session?.access_token, announcements]);
 
+  // 네비/홈 화면 등에서 이 페이지로 "다시" 들어올 때마다(경로는 같고 location.state만 달라도)
+  // 마법사 단계인지, 저장된 맞춤 결과로 바로 갈지, 강조 없는 전체 목록으로 갈지 새로 판단한다.
+  // location.key는 같은 경로라도 매 네비게이션마다 값이 바뀌므로, 이미 마운트된 상태에서
+  // "맞춤 공고 확인" ↔ "전체 공고 확인"을 번갈아 눌러도 이 effect가 매번 다시 실행된다.
   useEffect(() => {
-    // 홈 화면 "수출 시작하기"로 들어온 경우는 예전에 마법사를 완료해서 저장된 선택이 있어도
-    // "맞춤 추천 다시 받기"를 누른 것과 똑같이 처음부터 다시 받게 한다 — 저장된 값을 복원하지
-    // 않고 마법사(1단계)부터 시작한다.
-    if (location.state?.forceWizard) return;
-    const raw = localStorage.getItem(wizardStorageKey(user?.id));
-    if (!raw) return;
-    try {
-      const saved = JSON.parse(raw);
-      if (Array.isArray(saved.regions)) setWizardRegions(saved.regions);
-      if (Array.isArray(saved.categories)) setWizardCategories(saved.categories);
-      if ((saved.regions || []).length || (saved.categories || []).length) {
-        setMode("browse-all");
-      }
-    } catch {
-      // 저장된 추천 정보가 깨졌으면 무시하고 새로 시작한다.
+    if (location.state?.forceWizard) {
+      // 홈 화면 "수출 시작하기": 저장된 선택이 있어도 "맞춤 추천 다시 받기"처럼 처음부터.
+      setWizardRegions([]);
+      setWizardCategories([]);
+      setExplicitAll(false);
+      setMode("wizard-region");
+      return;
     }
+    if (location.state?.skipAutoMatch) {
+      // "전체 공고 확인" / "지원사업 목록으로": 강조 없이 전체 목록.
+      setExplicitAll(true);
+      setMode("browse-all");
+      return;
+    }
+    // "맞춤 공고 확인": 매번 지역 선택 마법사 1단계부터 빈 상태로 다시 시작한다 — 예전 선택은
+    // 저장하지 않는다.
+    setWizardRegions([]);
+    setWizardCategories([]);
+    setExplicitAll(false);
+    setMode("wizard-region");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id]);
+  }, [location.key, user?.id]);
 
-  useEffect(() => {
-    localStorage.setItem(
-      wizardStorageKey(user?.id),
-      JSON.stringify({ regions: wizardRegions, categories: wizardCategories })
-    );
-  }, [user?.id, wizardRegions, wizardCategories]);
-
-  // 위 복원 effect는 지역/품목 "선택값"만 되돌려놓을 뿐, 실제 맞춤 공고 하이라이트(matchedIds)는
-  // 계산해두지 않는다. 공고 목록(announcements)이 비동기로 늦게 로딩되기 때문에, 둘 다 준비되면
-  // 한 번만 자동으로 매칭을 계산해서 "맞춤 공고" 화면이 새로고침/재방문 후에도 그대로 보이게 한다.
-  // (사용자가 "전체 공고 보기"로 matchedIds를 직접 지운 뒤에는 다시 끼어들지 않도록 최초 1회만 동작.)
-  // "지원사업 목록으로"/"목록으로"처럼 전체 목록을 보려고 명시적으로 돌아온 경우(location.state.
-  // skipAutoMatch)는 이 자동 복원을 건너뛴다 — 안 그러면 항상 맞춤 공고 화면으로 되돌아가버린다.
-  const restoredMatchRef = useRef(Boolean(location.state?.skipAutoMatch));
-  useEffect(() => {
-    if (restoredMatchRef.current) return;
-    if (announcements.length === 0) return;
-    if (wizardRegions.length === 0 || wizardCategories.length === 0) return;
-    if (matchedIds !== null) return;
-    restoredMatchRef.current = true;
-    const ids = new Set(
+  // 실제 맞춤 공고 하이라이트는 지역/품목 선택값에서 그때그때 다시 계산한다(별도 state로
+  // 들고 있다가 "한 번만 계산" 식으로 관리하면, 위 effect가 매 네비게이션마다 선택값을 다시
+  // 세팅해도 갱신이 안 되는 문제가 생긴다).
+  const matchedIds = useMemo(() => {
+    if (explicitAll) return null;
+    if (wizardRegions.length === 0 || wizardCategories.length === 0) return null;
+    if (announcements.length === 0) return null;
+    return new Set(
       announcements
         .filter(
           (b) =>
@@ -479,8 +474,7 @@ export default function GovSupport() {
         )
         .map((b) => b.id)
     );
-    setMatchedIds(ids);
-  }, [announcements, wizardRegions, wizardCategories, matchedIds]);
+  }, [explicitAll, wizardRegions, wizardCategories, announcements]);
 
   useEffect(() => {
     async function loadAnnouncements() {
@@ -612,28 +606,19 @@ export default function GovSupport() {
 
   const selectedCategoryObjs = dashboard.itemCategories.filter((c) => wizardCategories.includes(c.id));
 
-  // AI 호출 없이, 선택한 지역/품목 키워드가 각 공고의 제목·설명·기본정보에 실제로
-  // 들어있는지만 보고 즉시 판단한다 — 네트워크 대기 없이 바로 결과가 나온다.
+  // 선택한 지역/품목은 이미 wizardRegions/wizardCategories에 들어있으니, matchedIds는 그 값들로
+  // 자동으로 다시 계산된다(위 useMemo) — 여기선 강조 표시를 켜고(explicitAll 해제) 결과 화면으로
+  // 넘어가기만 하면 된다. 결과는 별도 화면이 아니라 수출지원사업 목록 화면에 강조 표시로 보여준다.
   const handleCheckPrograms = () => {
     if (wizardRegions.length === 0 || selectedCategoryObjs.length === 0) return;
-    const ids = new Set(
-      announcements
-        .filter(
-          (b) =>
-            wizardRegions.some((r) => matchesRegion(b, r)) &&
-            wizardCategories.some((c) => matchesCategory(b, c))
-        )
-        .map((b) => b.id)
-    );
-    setMatchedIds(ids);
-    // 결과는 별도 화면이 아니라 수출지원사업 목록 화면에 강조 표시로 보여준다.
+    setExplicitAll(false);
     setMode("browse-all");
   };
 
   const restartWizard = () => {
     setWizardRegions([]);
     setWizardCategories([]);
-    setMatchedIds(null);
+    setExplicitAll(false);
     setMode("wizard-region");
   };
 
@@ -653,7 +638,10 @@ export default function GovSupport() {
         title="14개 시군 중 사업자에 해당되는 시군을 선택해주세요."
         subtitle="선택하신 지역의 맞춤 지원사업과 정보를 안내해 드립니다."
         onBack={() => navigate("/")}
-        onSkipAll={() => setMode("browse-all")}
+        onSkipAll={() => {
+          setExplicitAll(true);
+          setMode("browse-all");
+        }}
         footer={
           <Button onClick={() => setMode("wizard-category")} disabled={wizardRegions.length === 0}>
             다음
@@ -684,7 +672,10 @@ export default function GovSupport() {
         title="수출을 원하는 제품을 선택해주세요."
         subtitle="선택하신 제품을 기반으로 맞춤형 해외 판로 지원 정보를 안내해 드립니다."
         onBack={() => setMode("wizard-region")}
-        onSkipAll={() => setMode("browse-all")}
+        onSkipAll={() => {
+          setExplicitAll(true);
+          setMode("browse-all");
+        }}
         footer={
           <Button onClick={handleCheckPrograms} disabled={wizardCategories.length === 0}>
             {wizardCategories.length > 0 ? "공고 확인하기" : "다음"}
@@ -711,15 +702,27 @@ export default function GovSupport() {
   // mode === "browse-all"
 
   return (
-    <div className="mx-auto flex max-w-6xl flex-col px-4 py-6 sm:px-8 sm:py-8">
-      <div className="overflow-hidden rounded-3xl border border-brand-100 bg-gradient-to-br from-brand-50 via-white to-brand-50">
-        <div className="flex flex-wrap items-center justify-between gap-6 px-5 py-8 sm:px-10 sm:py-10">
+    <div className="mx-auto flex max-w-6xl flex-col overflow-x-hidden px-4 py-6 sm:px-8 sm:py-8">
+      {/* "박스"로 안 보이게, 페이지의 좌우 여백(max-w-6xl 안쪽)을 뚫고 나가 뷰포트 전체 폭으로
+          꽉 채운다(고전적인 full-bleed 트릭: 100vw + 음수 마진으로 부모의 max-width를 무시).
+          아래쪽 페이드도 훨씬 길게 늘려서 필터 바로 위까지 사진이 옅어지며 자연스럽게 흰
+          배경과 이어지게 한다 — 사진 비율은 여전히 안쪽 글 padding이 만드는 높이에 맞춰
+          object-cover로 잘린다(사진 크기가 박스를 정하지 않는다). */}
+      <div className="relative left-1/2 right-1/2 -ml-[50vw] -mr-[50vw] w-screen overflow-hidden">
+        <img
+          src="/gov-support-hero.jpg"
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+        <div className="absolute inset-0 bg-gradient-to-r from-white/70 via-white/25 to-transparent" />
+        <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-white via-white/70 to-transparent sm:h-56" />
+        <div className="relative mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-6 px-5 py-8 sm:px-10 sm:py-14">
           <div>
             <h1 className="text-2xl font-extrabold text-slate-900 sm:text-4xl">
               {matchedIds ? "맞춤 공고" : gs.allProgramsHeading}
             </h1>
-            <p className="mt-2 text-sm text-slate-500">{gs.subtitle}</p>
-            <div className="mt-6 inline-flex items-center gap-2 rounded-xl border border-brand-100 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm">
+            <p className="mt-2 text-sm text-slate-700 sm:text-base">{gs.subtitle}</p>
+            <div className="mt-6 inline-flex w-fit items-center gap-2 rounded-xl border border-brand-100 bg-white/90 px-4 py-2.5 text-sm text-slate-600 shadow-sm backdrop-blur-sm">
               <Icon name="home" className="w-5 h-5 text-slate-500" />
               {matchedIds ? (
                 <>
@@ -735,20 +738,16 @@ export default function GovSupport() {
             <button
               type="button"
               onClick={restartWizard}
-              className="mt-4 flex items-center gap-1.5 text-sm font-semibold text-brand-600 hover:underline"
+              className="mt-4 flex w-fit items-center gap-1.5 text-sm font-semibold text-brand-700 hover:underline"
             >
               <Icon name="sparkle" className="w-5 h-5" />
               맞춤 추천 다시 받기
             </button>
           </div>
-
-          <div className="flex w-full shrink-0 items-center justify-center sm:w-auto">
-            <Icon name="documents" className="h-24 w-24 text-brand-600" />
-          </div>
         </div>
       </div>
 
-      <Card className="mt-6 flex flex-col gap-3 p-4">
+      <Card className="relative -mt-6 flex flex-col gap-3 p-4 sm:-mt-10">
         <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2.5">
           <FilterDropdown
@@ -813,7 +812,7 @@ export default function GovSupport() {
             </span>{" "}
             조건에 맞는 맞춤 공고 {visibleAnnouncements.length}건을 보여드리고 있어요.
           </span>
-          <button type="button" onClick={() => setMatchedIds(null)} className="font-semibold hover:underline">
+          <button type="button" onClick={() => setExplicitAll(true)} className="font-semibold hover:underline">
             전체 공고 보기
           </button>
         </div>
