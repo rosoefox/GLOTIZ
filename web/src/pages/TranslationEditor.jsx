@@ -15,7 +15,7 @@ function Field({ label, children, aiBadge }) {
         )}
       </div>
       <div
-        className={`rounded-lg border px-3 py-2 text-sm ${
+        className={`rounded-none border px-3 py-2 text-sm ${
           aiBadge ? "border-amber-200 bg-amber-50" : "border-slate-200 bg-slate-50"
         }`}
       >
@@ -84,7 +84,7 @@ export default function TranslationEditor() {
             </Field>
             <div>
               <span className="mb-1 block text-xs font-medium text-slate-500">품목</span>
-              <div className="overflow-hidden rounded-lg border border-slate-200">
+              <div className="overflow-hidden rounded-none border border-slate-200">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-slate-50 text-slate-500">
                     <tr>
@@ -133,7 +133,7 @@ export default function TranslationEditor() {
             </Field>
             <div>
               <span className="mb-1 block text-xs font-medium text-slate-500">품목</span>
-              <div className="overflow-hidden rounded-lg border border-slate-200">
+              <div className="overflow-hidden rounded-none border border-slate-200">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-slate-50 text-slate-500">
                     <tr>

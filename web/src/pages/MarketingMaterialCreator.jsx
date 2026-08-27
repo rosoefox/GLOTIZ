@@ -6,6 +6,7 @@ import { marketingMaterialCreator as mc } from "../data/mockData";
 import { useMarketingImages } from "../context/MarketingImagesContext";
 import { useMarketingGeneration } from "../context/MarketingGenerationContext";
 import { useAuth } from "../context/AuthContext";
+import { useNavVariant } from "../context/NavThemeContext";
 import { readErrorMessage } from "../lib/apiError";
 import { convertFromKrw, EXCHANGE_RATE_PER_KRW } from "../lib/currency";
 import { parseSpecLines } from "../lib/spec";
@@ -86,6 +87,32 @@ function findImage(images, slot) {
   return images?.find((img) => img.slot === slot)?.url;
 }
 
+// 카드뉴스는 스크롤 가능한 가로 목록(overflow-x-auto)이라, html-to-image로 미리보기 영역을
+// 통째로 캡처하면 화면에 보이는 부분만(카드 1장) 잘려서 찍힌다 — 4장이 한 장으로 뭉개지는
+// 원인. 카드뉴스는 각 카드가 이미 Gemini가 완성한 독립된 실제 이미지라 화면을 캡처할 필요가
+// 없으므로, GCS에서 그 4장을 각각 그대로 내려받아 별도 파일로 저장한다(버킷 CORS는
+// setup_gcs_cors.py로 이미 열려있어 fetch가 가능하다).
+async function downloadImageUrl(url, filename) {
+  const res = await fetch(url);
+  const blob = await res.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = objectUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(objectUrl);
+}
+
+async function downloadCardNewsImages(images, baseName) {
+  for (const img of images || []) {
+    if (!img.url) continue;
+    const cardNumber = img.slot?.replace("card-", "") || "";
+    await downloadImageUrl(img.url, `${baseName}_카드${cardNumber}.png`);
+  }
+}
+
 // AI가 방금 채운 필드를 은은한 브랜드 컬러로 표시해서 눈에 띄게 한다 — emptyFieldClass와
 // 같은 방식으로 border-slate-300/bg-white를 통째로 치환해야 우선순위 문제 없이 실제로 반영된다.
 function aiFilledFieldClass(isAiFilled) {
@@ -145,7 +172,7 @@ function TemplateThumb({ layout, templateId, aspectRatio }) {
     return (
       <div className={`relative ${aspectClass} w-full overflow-hidden bg-gradient-to-b from-rose-200 via-orange-100 to-amber-50`}>
         <div className="absolute inset-x-4 top-3 h-1 rounded-full bg-white/80" />
-        <div className="absolute inset-x-6 top-1/2 h-2.5 -translate-y-1/2 rounded bg-white/90" />
+        <div className="absolute inset-x-6 top-1/2 h-2.5 -translate-y-1/2 rounded-none bg-white/90" />
         <div className="absolute inset-x-9 bottom-4 h-1 rounded-full bg-white/70" />
       </div>
     );
@@ -153,18 +180,18 @@ function TemplateThumb({ layout, templateId, aspectRatio }) {
   if (layout === "card-news") {
     return (
       <div className={`flex ${aspectClass} w-full items-stretch gap-1 bg-slate-100 p-2.5`}>
-        <div className="flex-1 rounded bg-sky-200" />
-        <div className="flex-1 rounded bg-violet-200" />
-        <div className="flex-1 rounded bg-teal-200" />
+        <div className="flex-1 rounded-none bg-sky-200" />
+        <div className="flex-1 rounded-none bg-violet-200" />
+        <div className="flex-1 rounded-none bg-teal-200" />
       </div>
     );
   }
   return (
     <div className={`flex ${aspectClass} w-full flex-col gap-1 bg-slate-100 p-2.5`}>
-      <div className="h-2/5 rounded bg-slate-300" />
+      <div className="h-2/5 rounded-none bg-slate-300" />
       <div className="flex flex-1 gap-1">
-        <div className="flex-1 rounded bg-slate-200" />
-        <div className="flex-1 rounded bg-slate-200" />
+        <div className="flex-1 rounded-none bg-slate-200" />
+        <div className="flex-1 rounded-none bg-slate-200" />
       </div>
     </div>
   );
@@ -182,7 +209,7 @@ function PosterPreview({ images, aspectRatio = "4:5" }) {
   const ratioClass = aspectRatio === "9:16" ? "aspect-[9/16]" : "aspect-[4/5]";
   return (
     <div
-      className={`relative mx-auto ${ratioClass} w-full max-w-sm overflow-hidden rounded-2xl shadow-lg`}
+      className={`relative mx-auto ${ratioClass} w-full max-w-sm overflow-hidden rounded-none shadow-lg`}
     >
       {url && <img src={url} alt="포스터" className="absolute inset-0 h-full w-full object-cover" />}
     </div>
@@ -202,7 +229,7 @@ function CardNewsPreview({ images }) {
         return (
           <div
             key={slot}
-            className="relative aspect-square w-full max-w-sm shrink-0 snap-center overflow-hidden rounded-2xl shadow-lg"
+            className="relative aspect-square w-full max-w-sm shrink-0 snap-center overflow-hidden rounded-none shadow-lg"
           >
             {url && <img src={url} alt={slot} className="absolute inset-0 h-full w-full object-cover" />}
           </div>
@@ -219,8 +246,10 @@ function CardNewsPreview({ images }) {
 // 그라디언트 배경 — 참고 디자인들의 배경이 단색이 아니라 은은한 빛·번짐·베인 결이 있는 것처럼, 그
 // 질감을 CSS 그라디언트만으로 흉내낸다. page는 사진과 나란히 있는 구간(특징 행/스펙/하단 문구)에
 // 쓰는 차분한 단색 — 사진이 이미 시각적 밀도를 담당하므로 그 옆 글자 배경은 단순하게 둔다.
-// 헤딩 폰트는 4종 템플릿 모두 Bebas Neue로 통일한다 — 한글에는 이 폰트에 글자가 없어서 자동으로
-// Pretendard로 대체되므로, 영어 문구에만 적용된 것처럼 보인다.
+// 헤딩 폰트는 4종 템플릿 모두 Bebas Neue로 통일한다 — 한글에는 이 폰트에 글자가 없어서 브라우저가
+// 글자 단위로 자동 폴백하지만(Pretendard로), 영어·숫자(오버라인 태그, 섹션 숫자, SPEC 라벨 등)는
+// 실제로 Bebas Neue로 렌더링된다. 그래서 헤딩뿐 아니라 오버라인/숫자/라벨처럼 영문·숫자가 많이
+// 섞이는 자리에도 이 폰트 클래스를 적용해야 Bebas Neue가 눈에 띄게 드러난다.
 const DETAIL_HEADING_FONT = "font-['Bebas_Neue','Pretendard_Variable',sans-serif]";
 
 const DETAIL_THEMES = {
@@ -240,6 +269,8 @@ const DETAIL_THEMES = {
     body: "text-[#5c5648]",
     divider: "border-[#ddd2b8]",
     disclaimer: "text-[#a89d84]",
+    accent: "#b08d4f",
+    hoverBorder: "hover:border-[#b08d4f]",
   },
   // 02_premium_dark.png: 거의 검정 배경, 헤딩·섹션 타이틀은 골드, 본문/캡션은 아이보리·웜그레이.
   "tpl-detail-premium": {
@@ -257,6 +288,8 @@ const DETAIL_THEMES = {
     body: "text-[#b7ad9c]",
     divider: "border-[#332c1c]",
     disclaimer: "text-[#6f6a5c]",
+    accent: "#caa24d",
+    hoverBorder: "hover:border-[#caa24d]",
   },
   // 03_natural_organic.png: 웜베이지 배경, 짙은 포레스트 그린 헤딩, 우드톤 본문.
   "tpl-detail-natural": {
@@ -274,6 +307,8 @@ const DETAIL_THEMES = {
     body: "text-[#5c5440]",
     divider: "border-[#ddd0ac]",
     disclaimer: "text-[#9b9276]",
+    accent: "#5c7a45",
+    hoverBorder: "hover:border-[#5c7a45]",
   },
   // 04_trendy_pop.png: 라벤더 -> 핑크 그라디언트 배경, 비비드 바이올렛 헤딩/본문.
   "tpl-detail-trendy": {
@@ -291,6 +326,8 @@ const DETAIL_THEMES = {
     body: "text-[#6b5f7c]",
     divider: "border-[#e2d2f4]",
     disclaimer: "text-[#a698b8]",
+    accent: "#a24fc0",
+    hoverBorder: "hover:border-[#a24fc0]",
   },
 };
 
@@ -302,30 +339,81 @@ const DEFAULT_DETAIL_THEME = {
   heading: "font-serif text-slate-900",
   eyebrow: "text-slate-400",
   body: "text-slate-500",
-  divider: "border-slate-100",
+  divider: "border-slate-200",
   disclaimer: "text-slate-400",
+  accent: "#94a3b8",
+  hoverBorder: "hover:border-[#94a3b8]",
 };
+
+// 오버라인 태그(예: "PRODUCT DETAIL")를 양옆 가는 선으로 감싸는 장식 라벨 — 매거진 에디토리얼
+// 상세페이지에서 흔히 쓰는 패턴으로, Bebas Neue + 넓은 자간을 실제로 눈에 띄게 만드는 자리다.
+function DetailOverline({ children, accent, className = "" }) {
+  return (
+    <div className={`flex items-center justify-center gap-3 ${className}`}>
+      <span className="h-px w-6 opacity-50" style={{ backgroundColor: accent }} />
+      <span
+        className={`${DETAIL_HEADING_FONT} text-[11px] font-normal uppercase tracking-[0.35em]`}
+        style={{ color: accent }}
+      >
+        {children}
+      </span>
+      <span className="h-px w-6 opacity-50" style={{ backgroundColor: accent }} />
+    </div>
+  );
+}
+
+// 큰 섹션 사이를 그냥 이어붙이지 않고, 가운데 작은 점 장식이 있는 가는 구분선으로 매듭지어
+// "디자인된" 느낌을 준다.
+function DetailSectionDivider({ accent, dividerClass }) {
+  return (
+    <div className={`relative border-t ${dividerClass}`}>
+      <span
+        className="absolute left-1/2 top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full"
+        style={{ backgroundColor: accent }}
+      />
+    </div>
+  );
+}
 
 function DetailPreview({ images, copy, preview, specLines, templateId }) {
   const heroUrl = findImage(images, "hero");
   const captions = copy?.captions || [];
   const theme = DETAIL_THEMES[templateId] || DEFAULT_DETAIL_THEME;
   const angles = [
-    { slot: "angle-front", label: "정면" },
-    { slot: "angle-back", label: "후면" },
-    { slot: "angle-top", label: "위" },
+    { slot: "angle-front", label: "FRONT · 정면" },
+    { slot: "angle-back", label: "BACK · 후면" },
+    { slot: "angle-top", label: "TOP · 위" },
   ];
 
   return (
-    <div className={`w-full overflow-hidden rounded-2xl shadow-lg ${theme.page}`}>
-      <div className="py-12 text-center" style={{ background: theme.headerBg }}>
-        <h2 className={`text-3xl font-semibold tracking-tight ${theme.heading}`}>{preview.productName}</h2>
+    <div className={`w-full overflow-hidden rounded-none border ${theme.divider} ${theme.page}`}>
+      {/* 카드 맨 위 얇은 브랜드 컬러 스트립 — 자간 넓은 오버라인·번호와 함께 Bebas Neue를
+          실제로 눈에 띄게 만드는 시그니처 디테일. */}
+      <div className="h-1.5 w-full" style={{ backgroundColor: theme.accent }} />
+
+      <div className="px-8 py-16 text-center" style={{ background: theme.headerBg }}>
+        <DetailOverline accent={theme.accent}>Product Detail</DetailOverline>
+        <h2 className={`mt-4 text-4xl font-semibold leading-tight tracking-tight ${theme.heading}`}>
+          {preview.productName}
+        </h2>
         {preview.tagline && (
-          <p className={`mt-3 text-sm font-medium tracking-wide ${theme.eyebrow}`}>{preview.tagline}</p>
+          <p className={`mx-auto mt-4 max-w-md text-sm font-medium leading-relaxed tracking-wide ${theme.eyebrow}`}>
+            {preview.tagline}
+          </p>
+        )}
+        {preview.price && (
+          <div
+            className={`${DETAIL_HEADING_FONT} mt-6 inline-flex items-center gap-2 rounded-full border px-5 py-1.5 text-sm tracking-wider`}
+            style={{ borderColor: theme.accent, color: theme.accent }}
+          >
+            {preview.price}
+          </div>
         )}
       </div>
 
       {heroUrl && <img src={heroUrl} alt="히어로" className="aspect-[16/9] w-full object-cover" />}
+
+      <DetailSectionDivider accent={theme.accent} dividerClass={theme.divider} />
 
       {[0, 1, 2].map((i) => {
         const url = findImage(images, `feature-${i + 1}`);
@@ -335,28 +423,63 @@ function DetailPreview({ images, copy, preview, specLines, templateId }) {
             key={i}
             className={`flex flex-col items-center gap-0 md:flex-row ${theme.page} ${i === 1 ? "md:flex-row-reverse" : ""}`}
           >
-            <div className="aspect-square w-full md:w-1/2">
-              {url && <img src={url} alt={caption.heading} className="h-full w-full object-cover" />}
+            <div className="aspect-square w-full overflow-hidden md:w-1/2">
+              {url && (
+                <img
+                  src={url}
+                  alt={caption.heading}
+                  className="h-full w-full object-cover transition-transform duration-500 ease-out hover:scale-105"
+                />
+              )}
             </div>
-            <div className="w-full space-y-2.5 px-8 py-10 md:w-1/2">
-              <p className={`text-[11px] font-semibold tracking-[0.25em] ${theme.eyebrow}`}>{caption.eyebrow}</p>
-              <h3 className={`text-xl font-semibold ${theme.heading}`}>{caption.heading}</h3>
-              <p className={`text-sm leading-relaxed ${theme.body}`}>{caption.description}</p>
+            <div className="w-full px-8 py-12 md:w-1/2">
+              <span
+                className={`${DETAIL_HEADING_FONT} block text-5xl leading-none opacity-30`}
+                style={{ color: theme.accent }}
+              >
+                {String(i + 1).padStart(2, "0")}
+              </span>
+              <p className={`mt-3 text-[11px] font-semibold tracking-[0.25em] ${theme.eyebrow}`}>
+                {caption.eyebrow}
+              </p>
+              <h3 className={`mt-1.5 text-xl font-semibold ${theme.heading}`}>{caption.heading}</h3>
+              <p className={`mt-2.5 text-sm leading-relaxed ${theme.body}`}>{caption.description}</p>
             </div>
           </div>
         );
       })}
 
-      <div className="py-12 text-center" style={{ background: theme.altSectionBg }}>
-        <h3 className={`text-lg font-semibold ${theme.heading}`}>
+      <DetailSectionDivider accent={theme.accent} dividerClass={theme.divider} />
+
+      <div className="py-16 text-center" style={{ background: theme.altSectionBg }}>
+        <DetailOverline accent={theme.accent}>Multi Angle</DetailOverline>
+        <h3 className={`mt-4 text-lg font-semibold ${theme.heading}`}>
           {copy?.angleTitle || "다양한 각도에서 확인하세요"}
         </h3>
-        <div className="mt-6 grid grid-cols-3 gap-3 px-6">
-          {angles.map(({ slot, label }) => {
+        {/* 3장을 나란한 3등분 카드 대신 벤토 그리드(큰 카드 1 + 작은 카드 2)로 배치 — 정면
+            사진에 시선이 먼저 가는 비대칭 구성이 획일적인 3단 카드보다 자연스럽게 보인다. */}
+        <div className="mt-8 grid aspect-[5/4] grid-cols-2 grid-rows-2 gap-4 px-8">
+          {angles.map(({ slot, label }, i) => {
             const url = findImage(images, slot);
             return (
-              <div key={slot} className={`aspect-square overflow-hidden rounded-xl ${theme.divider} border`}>
-                {url && <img src={url} alt={label} className="h-full w-full object-cover" />}
+              <div
+                key={slot}
+                className={`group relative overflow-hidden rounded-none border ${theme.divider} ${theme.hoverBorder} ${
+                  i === 0 ? "row-span-2" : ""
+                } transition-colors duration-300`}
+              >
+                {url && (
+                  <img
+                    src={url}
+                    alt={label}
+                    className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
+                  />
+                )}
+                <p
+                  className={`${DETAIL_HEADING_FONT} absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/55 to-transparent px-3 py-2 text-left text-[10px] tracking-[0.2em] text-white`}
+                >
+                  {label}
+                </p>
               </div>
             );
           })}
@@ -364,25 +487,35 @@ function DetailPreview({ images, copy, preview, specLines, templateId }) {
       </div>
 
       {specLines.length > 0 && (
-        <div className={`px-8 py-10 ${theme.page}`}>
-          <h3 className={`mb-4 text-lg font-semibold tracking-wide ${theme.heading}`}>SPEC</h3>
-          <div className={`overflow-hidden rounded-xl border ${theme.divider}`}>
-            {specLines.map((row, i) => (
-              <div
-                key={row.label + i}
-                className={`flex ${i > 0 ? `border-t ${theme.divider}` : ""}`}
-              >
-                <div className={`w-28 shrink-0 px-4 py-3 text-sm font-semibold ${theme.labelBg} ${theme.body}`}>
-                  {row.label}
+        <>
+          <DetailSectionDivider accent={theme.accent} dividerClass={theme.divider} />
+          <div className={`px-8 py-14 ${theme.page}`}>
+            <DetailOverline accent={theme.accent} className="mb-4">
+              Specification
+            </DetailOverline>
+            <h3 className={`${DETAIL_HEADING_FONT} mb-5 text-center text-2xl tracking-wide ${theme.heading}`}>
+              SPEC
+            </h3>
+            <div className={`overflow-hidden rounded-none border ${theme.divider}`}>
+              {specLines.map((row, i) => (
+                <div
+                  key={row.label + i}
+                  className={`flex ${i > 0 ? `border-t ${theme.divider}` : ""}`}
+                >
+                  <div className={`${DETAIL_HEADING_FONT} w-28 shrink-0 px-4 py-3 text-sm tracking-wide ${theme.labelBg} ${theme.body}`}>
+                    {row.label}
+                  </div>
+                  <div className={`px-4 py-3 text-sm ${theme.body}`}>{row.value}</div>
                 </div>
-                <div className={`px-4 py-3 text-sm ${theme.body}`}>{row.value}</div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
+        </>
       )}
 
-      <p className={`pb-8 text-center text-xs ${theme.disclaimer} ${theme.page}`}>
+      <DetailSectionDivider accent={theme.accent} dividerClass={theme.divider} />
+
+      <p className={`py-6 text-center text-xs ${theme.disclaimer} ${theme.page}`}>
         {copy?.disclaimer || "※ 이미지는 연출된 예시이며 실제 상품과 다를 수 있습니다."}
       </p>
     </div>
@@ -403,7 +536,7 @@ function LayoutPreview({ layout, images, copy, preview, specLines, templateId, a
 // 연필이 테두리를 따라 그려나가는 듯한 스케치 애니메이션으로 표현한다.
 function PencilDrawingLoader({ label }) {
   return (
-    <div className="relative flex min-h-[520px] flex-col items-center justify-center gap-5 overflow-hidden rounded-md border border-slate-200 bg-slate-900 p-8 text-center">
+    <div className="relative flex min-h-[520px] flex-col items-center justify-center gap-5 overflow-hidden rounded-none border border-slate-200 bg-slate-900 p-8 text-center">
       <div className="absolute inset-0 bg-gradient-to-b from-slate-900/70 via-slate-900/30 to-slate-900/70" />
       <div className="pointer-events-none absolute inset-0 animate-shimmer bg-[length:200%_100%] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
 
@@ -478,14 +611,14 @@ function TranslateMenu({ activeLang, translating, onTranslate, disabled }) {
         <Icon name="chevronDown" className={`w-5 h-5 transition-transform ${open ? "rotate-180" : ""}`} />
       </Button>
       {open && !disabled && (
-        <div className="absolute right-0 top-full z-10 mt-2 w-48 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg">
+        <div className="absolute right-0 top-full z-10 mt-2 w-48 rounded-none border border-slate-200 bg-white p-1.5 shadow-lg">
           <button
             type="button"
             onClick={() => {
               onTranslate("ko");
               setOpen(false);
             }}
-            className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+            className="flex w-full items-center justify-between rounded-none px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
           >
             한국어(원본)
             {activeLang === null && <Icon name="check" className="w-5 h-5 text-brand-600" />}
@@ -498,7 +631,7 @@ function TranslateMenu({ activeLang, translating, onTranslate, disabled }) {
                 onTranslate(lang.code);
                 setOpen(false);
               }}
-              className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+              className="flex w-full items-center justify-between rounded-none px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
             >
               {lang.label}
               {activeLang === lang.code && <Icon name="check" className="w-5 h-5 text-brand-600" />}
@@ -511,6 +644,9 @@ function TranslateMenu({ activeLang, translating, onTranslate, disabled }) {
 }
 
 export default function MarketingMaterialCreator() {
+  // "전체 공고 확인" 페이지 상단과 같은 남색 헤더 — 그 화면에 있는 동안은 네비게이션도 같은
+  // 남색으로 맞춘다.
+  useNavVariant("navy");
   // "setup" = 1~3단계로 사진/정보/템플릿을 채우는 화면, "result" = 생성된 이미지를 보고
   // 프롬프트로 다듬거나 저장하는 화면. 이 화면과 생성 진행 상태(generating/결과)는 페이지
   // 이동으로 사라지면 안 되므로 앱 최상단 컨텍스트에 둔다 — 생성 도중 다른 페이지에 갔다
@@ -658,6 +794,18 @@ export default function MarketingMaterialCreator() {
   ]);
 
   const handleSaveImage = async () => {
+    if (generatedResult?.layout === "card-news") {
+      setSavingImage(true);
+      setSaveError("");
+      try {
+        await downloadCardNewsImages(generatedResult.images, `마케팅이미지_${preview.productName || "이미지"}`);
+      } catch {
+        setSaveError("이미지 저장에 실패했습니다. 잠시 후 다시 시도해주세요.");
+      } finally {
+        setSavingImage(false);
+      }
+      return;
+    }
     if (!previewRef.current) return;
     setSavingImage(true);
     setSaveError("");
@@ -682,6 +830,20 @@ export default function MarketingMaterialCreator() {
   };
 
   const handleSaveVersionImage = async () => {
+    if (viewingVersion?.layout === "card-news") {
+      setSavingVersionImage(true);
+      try {
+        await downloadCardNewsImages(
+          viewingVersion.images,
+          `마케팅이미지_${preview.productName || "이미지"}_${viewingVersion?.label || ""}`
+        );
+      } catch {
+        // 저장 실패는 조용히 무시 — 다시 눌러보게 버튼은 그대로 둔다.
+      } finally {
+        setSavingVersionImage(false);
+      }
+      return;
+    }
     if (!historyPreviewRef.current) return;
     setSavingVersionImage(true);
     try {
@@ -1174,16 +1336,26 @@ export default function MarketingMaterialCreator() {
     : null;
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-8 sm:px-8">
-      <h1 className="text-2xl font-bold text-slate-900">{mc.title}</h1>
-      <p className="mt-1 text-sm text-slate-500">{mc.subtitle}</p>
+    <div className="flex flex-col">
+      {/* 구분선 위쪽 배경 — "전체 공고 확인" 페이지 상단과 같은 남색. main에 폭 제약이 없어
+          w-full만으로 좌우 끝까지 닿는다. */}
+      <div className="w-full border-b border-slate-200 bg-[#122955]">
+        <div className="mx-auto max-w-6xl px-6 py-8 sm:px-8">
+          <h1 className="text-2xl font-bold" style={{ color: "#e6f5f0" }}>
+            {mc.title}
+          </h1>
+          <p className="mt-1 text-sm text-slate-300">{mc.subtitle}</p>
+        </div>
+      </div>
+
+      <div className="mx-auto w-full max-w-6xl px-6 py-8 sm:px-8">
 
       {translateError && <p className="mt-4 text-xs font-medium text-red-500">{translateError}</p>}
 
       {stage === "setup" && (
         <>
           {(generatedResult || generating) && (
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-md border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-700">
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-none border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-700">
               <span>{generating ? "이미지를 생성하고 있어요." : "이미 생성해둔 이미지가 있어요."}</span>
               <Button variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => setStage("result")}>
                 <Icon name="eye" className="w-3.5 h-3.5" />
@@ -1193,14 +1365,14 @@ export default function MarketingMaterialCreator() {
           )}
 
           {generateError && (
-            <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+            <div className="mt-4 rounded-none border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
               {generateError}
             </div>
           )}
 
           {/* 좌: 1단계 사진 업로드(작게) → 중: 2단계 템플릿(넓게) → 우: 3단계 상품 정보 — 세 단계 모두 처음부터 한 번에 보여준다. */}
           <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[0.8fr_1.4fr_1fr]">
-            <div className="rounded-lg border border-slate-200 bg-white">
+            <div>
               <SectionCardHeader step={1} title="생성할 상품 사진을 넣으세요" />
               <div className="p-4">
                 <p className="mb-2 text-xs font-semibold text-slate-500">1-1) 상품의 이미지를 넣으세요</p>
@@ -1208,7 +1380,7 @@ export default function MarketingMaterialCreator() {
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="flex w-full flex-col items-center justify-center overflow-hidden rounded-md border-2 border-dashed border-brand-300 bg-brand-50/40 px-3 py-5 text-center hover:border-brand-400 hover:bg-brand-50"
+                    className="flex w-full flex-col items-center justify-center overflow-hidden rounded-none border-2 border-dashed border-brand-300 bg-brand-50/40 px-3 py-5 text-center hover:border-brand-400 hover:bg-brand-50"
                     style={{ minHeight: "6rem" }}
                   >
                     <Icon name="upload" className="mb-2 w-4 h-4 text-brand-500" />
@@ -1218,7 +1390,7 @@ export default function MarketingMaterialCreator() {
                 ) : (
                   <div className="grid grid-cols-2 gap-2">
                     {uploadedImages.map((img, i) => (
-                      <div key={i} className="relative aspect-square overflow-hidden rounded-md border border-slate-200 bg-slate-50">
+                      <div key={i} className="relative aspect-square overflow-hidden rounded-none border border-slate-200 bg-slate-50">
                         <img src={img} alt={`상품 사진 ${i + 1}`} className="h-full w-full object-cover" />
                         <button
                           type="button"
@@ -1234,7 +1406,7 @@ export default function MarketingMaterialCreator() {
                       <button
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
-                        className="flex aspect-square flex-col items-center justify-center gap-1 rounded-md border-2 border-dashed border-brand-300 bg-brand-50/40 text-center hover:border-brand-400 hover:bg-brand-50"
+                        className="flex aspect-square flex-col items-center justify-center gap-1 rounded-none border-2 border-dashed border-brand-300 bg-brand-50/40 text-center hover:border-brand-400 hover:bg-brand-50"
                       >
                         <Icon name="upload" className="w-4 h-4 text-brand-500" />
                         <span className="text-[11px] font-medium text-slate-600">사진 추가</span>
@@ -1263,7 +1435,7 @@ export default function MarketingMaterialCreator() {
                   <button
                     type="button"
                     onClick={() => logoInputRef.current?.click()}
-                    className="flex w-full flex-col items-center justify-center overflow-hidden rounded-md border-2 border-dashed border-brand-300 bg-brand-50/40 px-3 py-5 text-center hover:border-brand-400 hover:bg-brand-50"
+                    className="flex w-full flex-col items-center justify-center overflow-hidden rounded-none border-2 border-dashed border-brand-300 bg-brand-50/40 px-3 py-5 text-center hover:border-brand-400 hover:bg-brand-50"
                     style={{ minHeight: "6rem" }}
                   >
                     <Icon name="upload" className="mb-2 w-4 h-4 text-brand-500" />
@@ -1271,7 +1443,7 @@ export default function MarketingMaterialCreator() {
                     <p className="mt-1 text-[11px] text-slate-400">선택 사항이에요</p>
                   </button>
                 ) : (
-                  <div className="relative aspect-square w-1/2 overflow-hidden rounded-md border border-slate-200 bg-slate-50">
+                  <div className="relative aspect-square w-1/2 overflow-hidden rounded-none border border-slate-200 bg-slate-50">
                     <img src={logoImage} alt="기업 로고" className="h-full w-full object-contain" />
                     <button
                       type="button"
@@ -1293,7 +1465,7 @@ export default function MarketingMaterialCreator() {
               </div>
             </div>
 
-            <div className="rounded-lg border border-slate-200 bg-white">
+            <div>
                   <div className="flex items-center gap-2 border-b border-slate-200 px-6 py-4">
                     <span className="text-xs font-bold uppercase tracking-wide text-brand-600">Step 2</span>
                     <h2 className="text-sm font-bold text-slate-900">템플릿을 선택하세요</h2>
@@ -1350,7 +1522,7 @@ export default function MarketingMaterialCreator() {
                     )}
                     {activeCategoryLayout && LAYOUT_INFO[activeCategoryLayout] && (
                       <>
-                        <div className="mb-3 flex items-start gap-2 rounded-md border border-brand-100 bg-brand-50 px-3 py-2.5 text-xs text-brand-800">
+                        <div className="mb-3 flex items-start gap-2 rounded-none border border-brand-100 bg-brand-50 px-3 py-2.5 text-xs text-brand-800">
                           <Icon name="info" className="mt-0.5 w-3.5 h-3.5 shrink-0 text-brand-500" />
                           <p>
                             선택한 컨셉으로 {LAYOUT_INFO[activeCategoryLayout].noun}가 생성됩니다.
@@ -1359,7 +1531,7 @@ export default function MarketingMaterialCreator() {
                             {LAYOUT_INFO[activeCategoryLayout].noun} {LAYOUT_INFO[activeCategoryLayout].count}장 생성
                           </p>
                         </div>
-                        <div className="mb-3 flex items-center justify-between gap-2 rounded-md border border-slate-200 px-3 py-2.5">
+                        <div className="mb-3 flex items-center justify-between gap-2 rounded-none border border-slate-200 px-3 py-2.5">
                           <span className="text-xs font-medium text-slate-600">
                             AI 모델 적용
                             <span className="ml-1 font-normal text-slate-400">(사람이 상품을 사용하는 장면으로 연출)</span>
@@ -1389,7 +1561,7 @@ export default function MarketingMaterialCreator() {
                           <button
                             key={t.id}
                             onClick={() => handleTemplateSelect(t.id)}
-                            className={`overflow-hidden rounded-md border-2 text-left transition-all duration-300 ease-spring ${
+                            className={`overflow-hidden rounded-none border-2 text-left transition-all duration-300 ease-spring ${
                               activeTemplate === t.id
                                 ? "border-brand-500 ring-4 ring-brand-100 scale-[1.02]"
                                 : "border-slate-200 hover:scale-[1.02] hover:border-brand-300 hover:ring-4 hover:ring-slate-100"
@@ -1425,7 +1597,7 @@ export default function MarketingMaterialCreator() {
                   </div>
               </div>
 
-            <div className="rounded-lg border border-slate-200 bg-white">
+            <div>
                 <SectionCardHeader step={3} title="상품정보를 입력하세요" />
                   <div className="p-4">
                     <div className="space-y-3">
@@ -1596,14 +1768,14 @@ export default function MarketingMaterialCreator() {
           </div>
 
           {generateError && (
-            <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+            <div className="mt-4 rounded-none border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
               {generateError}
             </div>
           )}
 
           <div className="mt-4 grid grid-cols-1 gap-6 lg:grid-cols-[360px_1fr] lg:items-start">
             <div className="space-y-6">
-              <div className="rounded-lg border border-slate-200 bg-white">
+              <div className="rounded-none border border-slate-200 bg-white">
                 <div className="border-b border-slate-200 px-5 py-3">
                   <h2 className="text-sm font-bold text-slate-900">변경 프롬프트</h2>
                   <p className="mt-0.5 text-xs text-slate-400">
@@ -1631,7 +1803,7 @@ export default function MarketingMaterialCreator() {
                 </div>
               </div>
 
-              <div className="rounded-lg border border-slate-200 bg-white">
+              <div className="rounded-none border border-slate-200 bg-white">
                 <div className="border-b border-slate-200 px-5 py-3">
                   <h2 className="text-sm font-bold text-slate-900">이전에 만든 이미지</h2>
                 </div>
@@ -1655,7 +1827,7 @@ export default function MarketingMaterialCreator() {
                             type="button"
                             onClick={() => setViewingVersion(v)}
                             title={v.label}
-                            className="group relative h-16 w-16 shrink-0 overflow-hidden rounded-md border border-slate-200 hover:border-brand-400"
+                            className="group relative h-16 w-16 shrink-0 overflow-hidden rounded-none border border-slate-200 hover:border-brand-400"
                           >
                             {thumbUrl ? (
                               <img src={thumbUrl} alt={v.label} className="h-full w-full object-cover" />
@@ -1691,7 +1863,7 @@ export default function MarketingMaterialCreator() {
                 </div>
               </div>
 
-              <div className="rounded-lg border border-slate-200 bg-white">
+              <div className="rounded-none border border-slate-200 bg-white">
                 <div className="border-b border-slate-200 px-5 py-3">
                   <h2 className="flex items-center gap-1.5 text-sm font-bold text-slate-900">
                     <Icon name="bookmark" filled className="w-3.5 h-3.5 text-amber-400" />
@@ -1707,7 +1879,7 @@ export default function MarketingMaterialCreator() {
                         <div
                           key={img.id}
                           title={img.name}
-                          className="group relative h-16 w-16 shrink-0 overflow-hidden rounded-md border border-slate-200"
+                          className="group relative h-16 w-16 shrink-0 overflow-hidden rounded-none border border-slate-200"
                         >
                           <img src={img.url} alt={img.name} className="h-full w-full object-cover" />
                           <button
@@ -1726,7 +1898,7 @@ export default function MarketingMaterialCreator() {
               </div>
             </div>
 
-            <div className="rounded-lg border border-slate-200 bg-white lg:sticky lg:top-6">
+            <div className="rounded-none border border-slate-200 bg-white lg:sticky lg:top-6">
               <div className="flex items-center justify-between gap-2 border-b border-slate-200 px-6 py-4">
                 <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900">
                   <Icon name="eye" className="w-5 h-5" />
@@ -1790,7 +1962,7 @@ export default function MarketingMaterialCreator() {
                 )}
 
                 {!isBusy && !generatedResult && (
-                  <div className="flex min-h-[320px] items-center justify-center rounded-md border border-dashed border-slate-200 text-sm text-slate-400">
+                  <div className="flex min-h-[320px] items-center justify-center rounded-none border border-dashed border-slate-200 text-sm text-slate-400">
                     아직 생성된 이미지가 없어요.
                   </div>
                 )}
@@ -1808,7 +1980,7 @@ export default function MarketingMaterialCreator() {
           onClick={() => setViewingVersion(null)}
         >
           <div
-            className="relative flex max-h-[88vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+            className="relative flex max-h-[88vh] w-full max-w-lg flex-col overflow-hidden rounded-none bg-white shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
@@ -1875,7 +2047,7 @@ export default function MarketingMaterialCreator() {
           onClick={() => setShowPreviousContent(false)}
         >
           <div
-            className="relative flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+            className="relative flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-none bg-white shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
@@ -1906,7 +2078,7 @@ export default function MarketingMaterialCreator() {
               {uploadedImages.length > 0 && (
                 <div className="grid grid-cols-3 gap-2">
                   {uploadedImages.map((img, i) => (
-                    <div key={i} className="overflow-hidden rounded-lg border border-slate-200">
+                    <div key={i} className="overflow-hidden rounded-none border border-slate-200">
                       <img
                         src={img}
                         alt={`업로드한 상품 사진 ${i + 1}`}
@@ -1936,6 +2108,7 @@ export default function MarketingMaterialCreator() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

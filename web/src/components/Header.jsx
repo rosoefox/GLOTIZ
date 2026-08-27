@@ -4,17 +4,31 @@ import Icon from "./Icon";
 import NavUserMenu from "./NavUserMenu";
 import { brand, nav, login } from "../data/mockData";
 import { useAuth } from "../context/AuthContext";
+import { useNavTheme } from "../context/NavThemeContext";
 import { api } from "../lib/api";
 import logoImage from "../../로고최종1.png";
+
+// variant별 "불투명해졌을 때" 배경 — 현재 페이지/섹션 배경색에 네비게이션을 맞춘다.
+// light를 제외한 나머지는 전부 밝은 배경 위 흰 글자(logoInvert)를 쓴다. "#rrggbb" 형태를
+// 그대로 넘기면(예: 홈 화면 섹션마다 다른 커스텀 색) 정해진 이름 대신 그 색을 그대로 쓴다 —
+// 아래 named variant들은 페이지 전체에 자주 쓰는 색만 이름 붙여둔 것.
+const VARIANT_BG_CLASS = {
+  light: "border-slate-100 bg-white/95",
+  dark: "border-slate-800 bg-slate-900/90",
+  brand: "border-brand-800 bg-brand-700/90",
+  navy: "border-[#0d1f40] bg-[#122955]/90",
+};
 
 // 홈 화면을 포함한 모든 페이지가 공유하는 단일 상단 네비게이션.
 // (예전엔 홈만 상단 가로 메뉴, 나머지 페이지는 왼쪽 사이드바를 썼는데 전부 이걸로 통일한다.)
 //
 // overlay=true (홈 화면 히어로 전용): 처음엔 투명한 배경으로 이미지 위에 떠 있다가,
 // 스크롤(scrolled prop)하거나 마우스를 올리면 부드럽게 불투명+블러 배경으로 전환된다.
-// 다른 페이지는 overlay를 안 넘기므로 기존과 동일하게 항상 불투명한 흰 배경을 쓴다.
+// 불투명해진 뒤의 색은 NavThemeContext의 variant를 따른다 — 홈 화면은 섹션마다, 다른
+// 페이지는 페이지마다 useNavVariant로 이 값을 지정해서 네비게이션이 그 배경과 맞춰진다.
 export default function Header({ overlay = false, scrolled = false }) {
   const { isLoggedIn, session } = useAuth();
+  const { variant } = useNavTheme();
   const navigate = useNavigate();
   const location = useLocation();
   const [hovered, setHovered] = useState(false);
@@ -28,7 +42,19 @@ export default function Header({ overlay = false, scrolled = false }) {
   const [hasApplied, setHasApplied] = useState(false);
 
   const solid = !overlay || scrolled || hovered || mobileOpen;
-  const transparent = overlay && !solid;
+  // 완전히 투명한 건 overlay 히어로 맨 위(스크롤 전)일 때뿐이고, 그 외 불투명 상태에서는
+  // variant가 색을 결정한다. light가 아닌 variant는 전부 밝은 텍스트(흰 글자·반전 로고)를 쓴다.
+  const isTransparent = overlay && !solid;
+  const isHexVariant = variant.startsWith("#");
+  const transparent = isTransparent || variant !== "light";
+  const bgClass = isTransparent
+    ? "border-transparent bg-transparent"
+    : isHexVariant
+      ? "border-white/10"
+      : VARIANT_BG_CLASS[variant] || VARIANT_BG_CLASS.light;
+  // 8자리 hex(RRGGBBAA)로 배경색+투명도(약 90%)를 한 번에 지정 — 다른 variant들의 bg-*/90과
+  // 같은 정도의 투명도를 커스텀 색에도 동일하게 준다.
+  const bgStyle = !isTransparent && isHexVariant ? { backgroundColor: `${variant}e6` } : undefined;
 
   useEffect(() => {
     if (!isLoggedIn || !session?.access_token) {
@@ -77,13 +103,10 @@ export default function Header({ overlay = false, scrolled = false }) {
     <header
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      className={`flex h-16 shrink-0 items-center justify-between px-4 transition-all duration-300 sm:px-6 ${
+      className={`flex h-16 shrink-0 items-center justify-between border-b px-4 transition-all duration-300 sm:px-6 ${
         overlay ? "fixed inset-x-0 top-0 z-40" : "relative"
-      } ${
-        solid
-          ? "border-b border-slate-100 bg-white/95 backdrop-blur-md shadow-sm"
-          : "border-b border-transparent bg-transparent"
-      }`}
+      } ${bgClass} ${isTransparent ? "" : "backdrop-blur-md shadow-sm"}`}
+      style={bgStyle}
     >
       <Link to="/" className="flex min-w-0 shrink-0 items-center" onClick={() => setMobileOpen(false)}>
         {/* brand.logo(정사각 캔버스, 위아래 여백이 커서 작게 보임) 대신 이 헤더 전용으로 꽉 차게
@@ -114,7 +137,7 @@ export default function Header({ overlay = false, scrolled = false }) {
                   {item.label}
                 </button>
                 {openDropdown === item.path && (
-                  <div className="absolute left-1/2 top-full z-50 mt-2 w-48 -translate-x-1/2 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg">
+                  <div className="absolute left-1/2 top-full z-50 mt-2 w-48 -translate-x-1/2 rounded-none border border-slate-200 bg-white p-1.5 shadow-lg">
                     {item.children.map((child) => {
                       const childLocked = child.requiresAuth && !isLoggedIn;
                       if (childLocked) {
@@ -126,7 +149,7 @@ export default function Header({ overlay = false, scrolled = false }) {
                               setOpenDropdown(null);
                               goToLogin();
                             }}
-                            className="flex w-full items-center justify-between gap-1.5 rounded-lg px-3 py-2 text-left text-sm font-medium text-slate-400 hover:bg-slate-50"
+                            className="flex w-full items-center justify-between gap-1.5 rounded-none px-3 py-2 text-left text-sm font-medium text-slate-400 hover:bg-slate-50"
                           >
                             {child.label}
                             <Icon name="lock" className="w-3.5 h-3.5" />
@@ -139,7 +162,7 @@ export default function Header({ overlay = false, scrolled = false }) {
                           to={child.path}
                           state={child.state}
                           onClick={() => setOpenDropdown(null)}
-                          className={`block rounded-lg px-3 py-2 text-sm font-medium ${
+                          className={`block rounded-none px-3 py-2 text-sm font-medium ${
                             isChildActive(child) ? "bg-brand-50 text-brand-700" : "text-slate-600 hover:bg-slate-50"
                           }`}
                         >
@@ -199,7 +222,7 @@ export default function Header({ overlay = false, scrolled = false }) {
           onClick={() => setMobileOpen((v) => !v)}
           aria-label={mobileOpen ? "메뉴 닫기" : "메뉴 열기"}
           aria-expanded={mobileOpen}
-          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors md:hidden ${
+          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-none transition-colors md:hidden ${
             transparent ? "text-white hover:bg-white/10" : "text-slate-700 hover:bg-slate-100"
           }`}
         >
@@ -235,7 +258,7 @@ export default function Header({ overlay = false, scrolled = false }) {
                                 key={child.label}
                                 type="button"
                                 onClick={goToLogin}
-                                className="flex items-center gap-1.5 rounded-lg px-2 py-2 text-left text-sm font-medium text-slate-400"
+                                className="flex items-center gap-1.5 rounded-none px-2 py-2 text-left text-sm font-medium text-slate-400"
                               >
                                 {child.label}
                                 <Icon name="lock" className="w-3.5 h-3.5" />
@@ -248,7 +271,7 @@ export default function Header({ overlay = false, scrolled = false }) {
                               to={child.path}
                               state={child.state}
                               onClick={() => setMobileOpen(false)}
-                              className={`rounded-lg px-2 py-2 text-sm font-medium ${
+                              className={`rounded-none px-2 py-2 text-sm font-medium ${
                                 isChildActive(child) ? "text-brand-700" : "text-slate-600"
                               }`}
                             >

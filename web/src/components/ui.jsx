@@ -3,7 +3,7 @@ import Icon from "./Icon";
 
 // 서류 작성류(폼) 화면 전반에서 공유하는 인풋 스타일 — 필(pill) 형태 대신 슬림한 사각 테두리로 통일한다.
 export const CONTROL_CLASS =
-  "w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-50";
+  "w-full rounded-none border border-slate-300 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-50";
 
 // 아직 안 채운 필수 입력창을 은은한 브랜드 컬러 글로우로 표시한다. CONTROL_CLASS에 그냥
 // border-brand-* 클래스를 덧붙이면 border-slate-300과 같은 우선순위(단일 클래스 선택자)라
@@ -36,7 +36,7 @@ export const Card = forwardRef(function Card({ children, className = "", interac
   return (
     <div
       ref={ref}
-      className={`rounded-md border border-slate-200 bg-white shadow-sm ${
+      className={`rounded-none border border-slate-200 bg-white shadow-sm ${
         interactive ? "cursor-pointer transition-colors duration-150 hover:border-slate-400" : ""
       } ${className}`}
       {...props}
@@ -75,7 +75,7 @@ export function Button({ children, variant = "primary", className = "", ...props
   };
   return (
     <button
-      className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors disabled:opacity-50 ${variants[variant]} ${className}`}
+      className={`inline-flex items-center justify-center gap-2 rounded-none px-4 py-2.5 text-sm font-semibold transition-colors disabled:opacity-50 ${variants[variant]} ${className}`}
       {...props}
     >
       {children}

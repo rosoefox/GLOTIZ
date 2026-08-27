@@ -91,13 +91,13 @@ export default function Login() {
           <h1 className="text-2xl font-extrabold tracking-tight text-slate-900">다시 만나서 반가워요</h1>
           <p className="mt-1.5 text-sm text-slate-500">계정 정보를 입력하고 계속 진행해주세요.</p>
 
-          <div className="mt-7 grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1">
+          <div className="mt-7 grid grid-cols-2 gap-2 rounded-none bg-slate-100 p-1">
             {login.accountTypes.map((t) => (
               <button
                 key={t.id}
                 type="button"
                 onClick={() => setAccountType(t.id)}
-                className={`rounded-lg py-2 text-sm font-semibold transition-colors ${
+                className={`rounded-none py-2 text-sm font-semibold transition-colors ${
                   accountType === t.id ? "bg-white text-brand-700 shadow-sm" : "text-slate-500 hover:text-slate-700"
                 }`}
               >
@@ -119,7 +119,7 @@ export default function Login() {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-3.5 text-sm placeholder:text-slate-400 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
+                  className="w-full rounded-none border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-3.5 text-sm placeholder:text-slate-400 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
                   placeholder={login.fields.idPlaceholder}
                 />
               </div>
@@ -137,7 +137,7 @@ export default function Login() {
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-10 text-sm placeholder:text-slate-400 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
+                  className="w-full rounded-none border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-10 text-sm placeholder:text-slate-400 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
                   placeholder={login.fields.passwordPlaceholder}
                 />
                 <button
@@ -152,10 +152,10 @@ export default function Login() {
             </label>
 
             {error && (
-              <p className="rounded-lg bg-red-50 px-3.5 py-2.5 text-xs font-medium text-red-600">{error}</p>
+              <p className="rounded-none bg-red-50 px-3.5 py-2.5 text-xs font-medium text-red-600">{error}</p>
             )}
 
-            <Button type="submit" className="w-full justify-center rounded-xl py-3" disabled={submitting}>
+            <Button type="submit" className="w-full justify-center rounded-none py-3" disabled={submitting}>
               {submitting ? "로그인 중..." : login.submitLabel}
             </Button>
           </form>

@@ -58,7 +58,7 @@ export default function FloatingChatbot() {
     <div className="fixed bottom-6 right-10 z-50 flex flex-col items-end">
       {open && (
         <div
-          className={`mb-3 flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl transition-all duration-200 ${
+          className={`mb-3 flex flex-col overflow-hidden rounded-none border border-slate-200 bg-white shadow-xl transition-all duration-200 ${
             expanded ? "h-[80vh] w-[36rem] max-w-[90vw]" : "h-[420px] w-80"
           }`}
         >
@@ -82,11 +82,11 @@ export default function FloatingChatbot() {
           </div>
 
           <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto bg-slate-50 p-4">
-            <div className="max-w-[85%] rounded-2xl rounded-tl-sm bg-white px-3 py-2 text-sm text-slate-700 shadow-sm">
+            <div className="max-w-[85%] rounded-none rounded-tl-none bg-white px-3 py-2 text-sm text-slate-700 shadow-sm">
               {fc.greeting}
             </div>
 
-            <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+            <div className="rounded-none border border-slate-200 bg-white p-3 shadow-sm">
               <div className="mb-2 flex items-center justify-between gap-2">
                 <p className="text-xs font-bold text-slate-400">{fc.suggestionsLabel}</p>
                 <span className="text-[11px] text-slate-400">항상 표시</span>
@@ -96,7 +96,7 @@ export default function FloatingChatbot() {
                   <button
                     key={f.question}
                     onClick={() => ask(f.question)}
-                    className="block w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-left text-sm text-slate-600 shadow-sm hover:border-brand-300 hover:bg-brand-50"
+                    className="block w-full rounded-none border border-slate-200 bg-slate-50 px-3 py-2 text-left text-sm text-slate-600 shadow-sm hover:border-brand-300 hover:bg-brand-50"
                   >
                     {f.question}
                   </button>
@@ -107,10 +107,10 @@ export default function FloatingChatbot() {
             {messages.map((turn, i) => (
               <div
                 key={i}
-                className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-3 py-2 text-sm leading-relaxed shadow-sm ${
+                className={`max-w-[85%] whitespace-pre-wrap rounded-none px-3 py-2 text-sm leading-relaxed shadow-sm ${
                   turn.role === "user"
-                    ? "ml-auto rounded-tr-sm bg-brand-600 text-white"
-                    : "rounded-tl-sm bg-white text-slate-700"
+                    ? "ml-auto rounded-tr-none bg-brand-600 text-white"
+                    : "rounded-tl-none bg-white text-slate-700"
                 }`}
               >
                 {turn.message}
@@ -118,7 +118,7 @@ export default function FloatingChatbot() {
             ))}
 
             {loading && (
-              <div className="max-w-[85%] rounded-2xl rounded-tl-sm bg-white px-3 py-2 text-sm text-slate-400 shadow-sm">
+              <div className="max-w-[85%] rounded-none rounded-tl-none bg-white px-3 py-2 text-sm text-slate-400 shadow-sm">
                 답변을 생성하는 중...
               </div>
             )}

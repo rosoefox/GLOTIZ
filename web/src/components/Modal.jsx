@@ -27,13 +27,13 @@ export default function Modal({ title, onClose, children, width = "max-w-md" }) 
 
   return (
     <div
-      className={`fixed left-1/2 top-1/2 w-full ${width} -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200`}
+      className={`fixed left-1/2 top-1/2 w-full ${width} -translate-x-1/2 -translate-y-1/2 rounded-none bg-white shadow-2xl ring-1 ring-slate-200`}
       style={{ zIndex: z, transform: `translate(calc(-50% + ${pos.x}px), calc(-50% + ${pos.y}px))` }}
       onMouseDown={bringToFront}
     >
       <div
         onMouseDown={startDrag}
-        className="flex cursor-move select-none items-center justify-between rounded-t-2xl border-b border-slate-100 px-6 py-4"
+        className="flex cursor-move select-none items-center justify-between rounded-t-none border-b border-slate-100 px-6 py-4"
       >
         <h2 className="text-lg font-bold text-slate-900">{title}</h2>
         <button

@@ -103,7 +103,7 @@ function DocSlot({ docType, label, session }) {
       </div>
       <div className="flex shrink-0 items-center gap-2">
         <label
-          className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 ${
+          className={`inline-flex cursor-pointer items-center gap-1.5 rounded-none border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 ${
             uploading ? "opacity-50" : ""
           }`}
         >

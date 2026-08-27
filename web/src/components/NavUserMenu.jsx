@@ -73,7 +73,7 @@ export default function NavUserMenu({ light = false, mobile = false, onNavigate 
         <button
           type="button"
           onClick={handleMyApplicationsClick}
-          className={`flex items-center gap-1.5 rounded-lg px-3 py-2.5 text-left text-sm font-semibold ${mobileLinkCls}`}
+          className={`flex items-center gap-1.5 rounded-none px-3 py-2.5 text-left text-sm font-semibold ${mobileLinkCls}`}
         >
           나의 지원사업 현황
           {needsRevisionDot}
@@ -81,7 +81,7 @@ export default function NavUserMenu({ light = false, mobile = false, onNavigate 
         <button
           type="button"
           onClick={handleMyPageClick}
-          className={`relative rounded-lg px-3 py-2.5 text-left text-sm font-semibold ${mobileLinkCls}`}
+          className={`relative rounded-none px-3 py-2.5 text-left text-sm font-semibold ${mobileLinkCls}`}
         >
           마이페이지
         </button>
@@ -107,9 +107,9 @@ export default function NavUserMenu({ light = false, mobile = false, onNavigate 
 
   const linkCls = light ? "hover:text-white" : "hover:text-slate-900";
   const actionCls =
-    "inline-flex w-[6.5rem] items-center justify-center rounded-lg px-2.5 py-1 text-[13px] font-semibold leading-none transition-colors whitespace-nowrap";
+    "inline-flex w-[6.5rem] items-center justify-center rounded-none px-2.5 py-1 text-[13px] font-semibold leading-none transition-colors whitespace-nowrap";
   const authCls =
-    "inline-flex w-[4.8rem] items-center justify-center rounded-lg border px-2 py-1 text-[13px] font-semibold leading-none transition-colors whitespace-nowrap";
+    "inline-flex w-[4.8rem] items-center justify-center rounded-none border px-2 py-1 text-[13px] font-semibold leading-none transition-colors whitespace-nowrap";
 
   return (
     <div className={`flex items-center gap-1.5 text-sm font-semibold transition-colors ${light ? "text-white/90" : "text-slate-600"}`}>

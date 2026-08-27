@@ -4047,7 +4047,7 @@ Maintain this design structure for EVERY product:
 │   HUGE EDITORIAL HERO WORD    │
 │   ─────────────────────────   │
 │                               │
-│ BENEFIT        DESCRIPTION    │
+│ BENEFIT                       │
 │                               │
 │          HERO PRODUCT         │
 │                               │
@@ -4112,22 +4112,11 @@ Typeface: clean modern sans-serif (see 14), small, understated. Maximum 2–3 sh
 {{product_benefit}} is empty, omit this entire element (heading included) rather than showing an
 empty label.
 
-13. RIGHT LABEL — PRODUCT DESCRIPTION
-Position:
-X = approximately 70–95%
-Y = approximately 38–52%
-Render a small heading "PRODUCT DESCRIPTION" followed by:
-{{product_description}}
-Typeface: clean modern sans-serif (see 14), small, understated. Maximum 3–4 short lines — condense
-the supplied description if it is longer, preserving factual meaning. If empty, omit this entire
-element.
-
 13B. BOTTOM BLOCK — TAGLINE / PRODUCT NAME / PRICE / CTA
 Reserve the bottom ~20–28% of the canvas as a grounded surface (matches the reflective-surface zone
 in section 24) and render this stacked block, left-aligned, on top of it:
 1. A one-line marketing tagline in small tracked uppercase (may reuse {{tagline}} again or a short
-   restatement of {{product_benefit}}/{{product_description}} if {{tagline}} was already used in
-   zone 08 — keep it brief).
+   restatement of {{product_benefit}} if {{tagline}} was already used in zone 08 — keep it brief).
 2. {{product_name}} — the PRODUCT NAME — in the BEBAS NEUE typeface (see 14), large, bold, single
    line whenever possible.
 3. {{price}} directly below the product name, in a warm gold/amber accent color, bold, smaller than
@@ -4145,8 +4134,8 @@ Visual direction: Didot / Bodoni / Cormorant-inspired — high stroke contrast, 
 hairlines, refined kerning, sophisticated luxury-magazine character.
 
 TYPE B — MODERN CLEAN SANS-SERIF
-Used for: the "PRODUCT BENEFITS" / "PRODUCT DESCRIPTION" labels and their content (12, 13), the
-small tracked tagline inside the bottom block (13B), and the CTA (13B).
+Used for: the "PRODUCT BENEFITS" label and its content (12), the small tracked tagline inside the
+bottom block (13B), and the CTA (13B).
 Visual direction: Helvetica Neue / Neue Haas Grotesk-inspired — clean, neutral, restrained.
 
 TYPE C — BEBAS NEUE (bottom product-name headline)
@@ -4163,7 +4152,6 @@ Across different products, do NOT move typography to arbitrary positions. Mainta
 TOP LEFT → editorial copy (08)
 UPPER BACKGROUND, BEHIND PRODUCT → giant hero word (09)
 CENTER LEFT → product benefit label (12)
-CENTER RIGHT → product description label (13)
 BOTTOM, GROUNDED BLOCK → tagline / product name (Bebas Neue) / price / CTA (13B)
 Typography size may adapt slightly for word length, but position and hierarchy stay consistent.
 
@@ -4177,8 +4165,6 @@ UPPER BACKGROUND
 → giant hero word
 CENTER LEFT
 → benefit
-CENTER RIGHT
-→ description
 BOTTOM RIGHT
 → CTA
 Typography size may adapt slightly for word length.
@@ -4417,8 +4403,10 @@ illegible.
 
 28. DO NOT GENERATE UNSUPPLIED TEXT
 Every rendered word must come from one of the supplied fields in section 03 (tagline, hero word,
-product benefit, product description, product name, price, CTA) or the fixed labels "PRODUCT
-BENEFITS" / "PRODUCT DESCRIPTION". Do NOT add fake English descriptions, decorative sentences,
+product benefit, product name, price, CTA) or the fixed label "PRODUCT BENEFITS". Do NOT render
+{{product_description}} as on-image text — it is factual context only, not typography; use it (if
+needed) only to help choose the hero word (09), never to render as its own text block. Do NOT add
+fake English descriptions, decorative sentences,
 invented product claims, fake scientific terminology, random numbers, or random certifications.
 Less text is better than inaccurate text.
 
@@ -4492,7 +4480,6 @@ ALWAYS KEEP:
 ● oversized serif hero word
 ● central product
 ● left benefit label
-● right description label
 ● lower reflective surface
 ● bottom, grounded tagline/product-name(Bebas Neue)/price/CTA block
 ● restrained information density
@@ -4556,8 +4543,6 @@ OVERSIZED HIGH-CONTRAST SERIF HERO WORD BEHIND THE PRODUCT (09)
 CENTRAL HERO PRODUCT (11)
 with
 LEFT "PRODUCT BENEFITS" LABEL (12)
-and
-RIGHT "PRODUCT DESCRIPTION" LABEL (13)
 ↓
 CURATED PRODUCT-RELATED INGREDIENTS / PROPS
 ↓
@@ -4667,9 +4652,10 @@ Render the actual supplied values for:
 {{company_logo}}
 {{product_name}}
 {{company_slogan_or_tagline}}
-{{product_description}}
 {{price}}
 {{promotion_price}}
+Do NOT render {{product_description}} as on-image text — it is factual context only, never its own
+typography block.
 Render every text field's ACTUAL supplied value exactly as given — do not paraphrase, translate loosely,
 or invent wording. Every rendered text field must be written in {{target_language}} only — never mix in
 Korean or any other language, even if the source data looks like it could be Korean. Keep every line of
@@ -4701,7 +4687,6 @@ Design intentional editorial zones for:
 COMPANY LOGO
 LARGE PRODUCT NAME
 TAGLINE
-SHORT PRODUCT DESCRIPTION
 PRICE / PROMOTIONAL PRICE
 These zones must feel like part of the advertising composition, exactly as in the reference image.
 
@@ -4732,12 +4717,6 @@ Reserve an area immediately above or below the product name.
 The tagline should feel like supporting campaign copy.
 Use enough space for approximately:
 1-2 lines.
-
-PRODUCT DESCRIPTION
-Reserve a secondary information area for a short product description.
-The description should visually remain subordinate to the product name.
-Do not create an excessively large blank rectangle specifically for description text.
-Integrate the description area naturally into the composition.
 
 PRICE
 Price must be treated as a strong commercial element.
@@ -4897,7 +4876,7 @@ MIDDLE 35-45%
 SIDE OR LOWER-MIDDLE
 -> price / promotion area
 BOTTOM
--> product description or supporting visual environment
+-> supporting visual environment
 The composition should remain visually complete from top to bottom.
 Do NOT leave the lower 30-50% empty.
 
@@ -4917,7 +4896,7 @@ CENTER
 CENTER-LOWER
 -> supporting photographic environment
 LOWER
--> product description + price / promotional price
+-> price / promotional price
 BOTTOM
 -> subtle campaign finishing area / environmental continuation
 Use the entire vertical canvas intentionally.
@@ -4935,7 +4914,6 @@ Recompose:
 product scale
 headline zone
 price zone
-description zone
 background elements
 for each ratio.
 
@@ -4964,7 +4942,6 @@ PRODUCT NAME
 PRODUCT IMAGE
 PROMOTIONAL PRICE / PRICE
 TAGLINE
-PRODUCT DESCRIPTION
 LOGO
 The photographic background supports this hierarchy rather than competing with it.
 
@@ -5011,7 +4988,6 @@ The product is large and immediately recognizable.
 The background is a full commercial photographic environment.
 The product name has a LARGE typography-safe zone.
 The tagline has a clear supporting zone.
-Product description space exists.
 Price / promotional price has a strong dedicated zone.
 Logo space exists.
 The product packaging is preserved.
@@ -5086,9 +5062,10 @@ values for:
 {{company_logo}}
 {{product_name}}
 {{company_slogan_or_tagline}}
-{{product_description}}
 {{price}}
 {{promotion_price}}
+Do NOT render {{product_description}} as on-image text — it is factual context only, never its own
+typography block.
 Render every text field's ACTUAL supplied value exactly as given — do not paraphrase, translate loosely,
 or invent wording. Every rendered text field must be written in {{target_language}} only — never mix in
 Korean or any other language, even if the source data looks like it could be Korean. Keep every line of
@@ -5323,7 +5300,6 @@ HERO PRODUCT
 PROMOTIONAL PRICE
 BOLD COLOR COMBINATION
 TAGLINE
-PRODUCT DESCRIPTION
 LOGO
 The overall impression should be:
 LOUD BUT DESIGNED.
@@ -5517,7 +5493,7 @@ UPPER TO CENTER
 CENTER
 -> emotional lifestyle image + product interaction
 LOWER-MIDDLE
--> tagline / product description area
+-> tagline area
 LOWER
 -> price area
 Use the entire frame intentionally.
@@ -5543,7 +5519,7 @@ UPPER-MIDDLE / CENTER
 CENTER
 -> hero product
 LOWER-MIDDLE
--> tagline + product description
+-> tagline
 LOWER
 -> price / promotional price
 BOTTOM
@@ -5578,9 +5554,10 @@ Render the actual supplied values for:
 {{company_logo}}
 {{product_name}}
 {{company_slogan_or_tagline}}
-{{product_description}}
 {{price}}
 {{promotion_price}}
+Do NOT render {{product_description}} as on-image text — it is factual context only, never its own
+typography block.
 Render every text field's ACTUAL supplied value exactly as given — do not paraphrase, translate loosely,
 or invent wording. Every rendered text field must be written in {{target_language}} only — never mix in
 Korean or any other language, even if the source data looks like it could be Korean. Keep every line of
@@ -5617,11 +5594,9 @@ The final composition must render:
 Very large and visually dominant.
 2. TAGLINE
 Emotional supporting message.
-3. PRODUCT DESCRIPTION
-Short secondary copy.
-4. PRICE / PROMOTIONAL PRICE
+3. PRICE / PROMOTIONAL PRICE
 Clear commercial information.
-5. COMPANY LOGO
+4. COMPANY LOGO
 Small but independent brand signature.
 
 PRODUCT NAME AREA — CRITICAL
@@ -5865,18 +5840,9 @@ TAGLINE AREA
 Render the actual supplied value for:
 {{company_slogan_or_tagline}}
 The tagline should feel emotional and aspirational.
-It should appear smaller than the product name but larger than the product description.
+It should appear smaller than the product name.
 Provide enough space for approximately:
 1-2 lines.
-
-PRODUCT DESCRIPTION AREA
-Render the actual supplied value for:
-{{product_description}}
-The description should be visually secondary.
-Provide enough readable space for approximately:
-2-4 short lines.
-Do not create a huge empty rectangle for it.
-Integrate the area naturally into the editorial composition.
 
 PRICE AREA
 Render the actual supplied value for:
@@ -5910,7 +5876,7 @@ OPTION A — EDITORIAL PORTRAIT
 Large human portrait fills the background.
 Oversized product-name area integrated around the face.
 Product placed prominently near center.
-Tagline and description lower.
+Tagline lower.
 Price subtly placed.
 OPTION B — INTIMATE PRODUCT + MODEL
 Close crop of model skin / hand / face.
@@ -5971,7 +5937,6 @@ Warm editorial color grading is present.
 Human models look realistic when used.
 Product-name space is large and dramatic.
 Tagline space is clearly available.
-Product-description space is available.
 Price space is clearly available.
 Logo space is available.
 No fake advertising typography is generated.
@@ -5991,7 +5956,7 @@ SOPHISTICATED PRICE PLACEMENT
 CINEMATIC COLOR GRADING
 STRONG BRAND MOOD
 The final poster should feel intimate, stylish, warm, memorable, and professionally art-directed — with
-PRODUCT NAME + TAGLINE + PRODUCT DESCRIPTION + PRICE + LOGO already rendered directly in the image, in
+PRODUCT NAME + TAGLINE + PRICE + LOGO already rendered directly in the image, in
 {{target_language}} only."""
 
 
@@ -6084,9 +6049,10 @@ Render the actual supplied values for:
 {{company_logo}}
 {{product_name}}
 {{company_slogan_or_tagline}}
-{{product_description}}
 {{price}}
 {{promotion_price}}
+Do NOT render {{product_description}} as on-image text — it is factual context only, never its own
+typography block.
 Render every text field's ACTUAL supplied value exactly as given — do not paraphrase, translate loosely,
 or invent wording. Every rendered text field must be written in {{target_language}} only — never mix in
 Korean or any other language, even if the source data looks like it could be Korean. Keep every line of
@@ -6290,18 +6256,6 @@ directly beneath the headline
 beside the product
 inside a contrasting rectangular block
 
-PRODUCT DESCRIPTION AREA
-Render the actual supplied value for:
-{{product_description}}
-Target:
-2-4 short lines.
-Place it in a clearly defined information module such as:
-bottom-left block
-dark horizontal strip
-side column
-contrasting rectangle
-The description must feel deliberately designed as part of the grid.
-
 PRICE AREA — CRITICAL
 Render the actual supplied value for:
 {{price}}
@@ -6371,7 +6325,6 @@ CENTER 40-45%
 -> geometric pattern
 LOWER 25-30%
 -> tagline
--> product description
 -> strong rectangular price module
 The entire canvas must feel filled and intentional.
 Do NOT leave an empty lower region.
@@ -6392,7 +6345,6 @@ CENTER 30-35%
 LOWER-MIDDLE 15%
 -> checker / geometric rhythm
 BOTTOM 15-20%
--> description module
 -> strong rectangular price block
 The bottom must visually complete the design.
 Do NOT leave the bottom dark, empty, or photographic.
@@ -6484,7 +6436,6 @@ The product is large and offset rather than small and centered.
 The product overlaps or crosses geometric elements.
 The typography-safe zone is extremely large.
 The tagline zone is visible.
-The description zone is integrated into a graphic module.
 The price zone is a strong rectangular or geometric module.
 The logo zone is clearly defined.
 No large accidental blank area exists.

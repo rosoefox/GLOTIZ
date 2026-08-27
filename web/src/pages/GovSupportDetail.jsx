@@ -122,7 +122,7 @@ export default function GovSupportDetail() {
             <iframe
               title="기본서류 미리보기"
               src={`${BACKEND_URL}/businesses/${business.id}/reference-doc/preview-pdf`}
-              className="h-[420px] w-full rounded-md border border-slate-200 sm:h-[600px] lg:h-[900px]"
+              className="h-[420px] w-full rounded-none border border-slate-200 sm:h-[600px] lg:h-[900px]"
             />
           ) : (
             <p className="text-sm text-slate-400">{gs.previewUnavailable}</p>

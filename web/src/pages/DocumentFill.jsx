@@ -721,13 +721,13 @@ export default function DocumentFill() {
       <h1 className="text-2xl font-bold text-slate-900">{templateName || "서류 작성하기"}</h1>
       {businessName && <p className="mt-1 text-sm text-slate-500">{businessName}</p>}
       {businessClosed && (
-        <div className="mt-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">
+        <div className="mt-5 rounded-none border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">
           접수 마감된 지원사업입니다. 서류 작성, 임시 저장, 제출을 진행할 수 없습니다.
         </div>
       )}
 
       {!loading && fields.length > 0 && (
-        <div className="mt-6 rounded-lg border border-slate-200 bg-white px-5 py-4">
+        <div className="mt-6 rounded-none border border-slate-200 bg-white px-5 py-4">
           <StepIndicator steps={stepLabels} activeIndex={activeStep} />
         </div>
       )}
@@ -775,7 +775,7 @@ export default function DocumentFill() {
       </div>
 
       {error && (
-        <div className="mt-5 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>
+        <div className="mt-5 rounded-none border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>
       )}
 
       {loading ? (
@@ -790,7 +790,7 @@ export default function DocumentFill() {
                 key={group.name}
                 ref={registerSection}
                 data-step-index={groupIdx}
-                className="rounded-lg border border-slate-200 bg-white"
+                className="rounded-none border border-slate-200 bg-white"
               >
                 <SectionCardHeader step={groupIdx + 1} title={group.name} />
                 <div className="grid grid-cols-1 gap-x-6 gap-y-5 p-6 sm:grid-cols-2">
@@ -822,7 +822,7 @@ export default function DocumentFill() {
           </div>
 
           <aside className="lg:sticky lg:top-24 lg:self-start">
-            <div className="rounded-lg border border-slate-200 bg-white p-5">
+            <div className="rounded-none border border-slate-200 bg-white p-5">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">작성 현황</p>
               <p className="mt-1.5 flex items-baseline gap-1">
                 <span className="text-2xl font-bold text-slate-900">{filledCount}</span>
@@ -931,7 +931,7 @@ export default function DocumentFill() {
                 href={generatedDocUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="mt-4 flex w-full items-center justify-center gap-1.5 rounded-xl border border-brand-200 bg-brand-50 py-2.5 text-sm font-semibold text-brand-700 hover:bg-brand-100"
+                className="mt-4 flex w-full items-center justify-center gap-1.5 rounded-none border border-brand-200 bg-brand-50 py-2.5 text-sm font-semibold text-brand-700 hover:bg-brand-100"
               >
                 <Icon name="download" className="w-5 h-5" />
                 완성된 서류 PDF 다운로드

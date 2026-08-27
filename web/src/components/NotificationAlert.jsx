@@ -99,7 +99,7 @@ export default function NotificationAlert() {
       {toasts.map((t) => (
         <div
           key={t.id}
-          className="flex items-start gap-3 rounded-xl border border-red-200 bg-white p-4 shadow-xl"
+          className="flex items-start gap-3 rounded-none border border-red-200 bg-white p-4 shadow-xl"
         >
           <Icon name="bell" className="mt-0.5 w-5 h-5 shrink-0 text-slate-500" />
           <div className="min-w-0 flex-1">

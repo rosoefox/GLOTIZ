@@ -21,7 +21,7 @@ function ProgramMultiSelect({ businesses, selected, onToggle }) {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
+        className="flex w-full items-center justify-between rounded-none border border-slate-300 bg-white px-3.5 py-2.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
       >
         <span className={selected.length ? "text-slate-900" : "text-slate-400"}>
           {selected.length ? `${selected.length}개 선택됨` : "지원사업 공고를 선택하세요"}
@@ -33,20 +33,20 @@ function ProgramMultiSelect({ businesses, selected, onToggle }) {
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full z-10 mt-2 max-h-56 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
+        <div className="absolute left-0 top-full z-10 mt-2 max-h-56 w-full overflow-y-auto rounded-none border border-slate-200 bg-white p-2 shadow-lg">
           {businesses.length === 0 ? (
             <p className="px-3 py-2 text-sm text-slate-400">등록된 지원사업이 없습니다.</p>
           ) : (
             businesses.map((b) => (
               <label
                 key={b.id}
-                className="flex cursor-pointer items-start gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                className="flex cursor-pointer items-start gap-2 rounded-none px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
               >
                 <input
                   type="checkbox"
                   checked={selected.includes(b.id)}
                   onChange={() => onToggle(b.id)}
-                  className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                  className="mt-0.5 h-4 w-4 shrink-0 rounded-none border-slate-300 text-brand-600 focus:ring-brand-500"
                 />
                 {b.name}
               </label>
@@ -70,7 +70,7 @@ function BasicInfoForm({ item, businesses, onSave, onCancel }) {
   };
 
   return (
-    <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-5">
+    <div className="mt-4 rounded-none border border-slate-200 bg-slate-50 p-5">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <TextField
           label="품목 이름"
@@ -85,7 +85,7 @@ function BasicInfoForm({ item, businesses, onSave, onCancel }) {
           <select
             value={destination}
             onChange={(e) => setDestination(e.target.value)}
-            className="w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
+            className="w-full rounded-none border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
           >
             {f.destinationCountryOptions.map((c) => (
               <option key={c}>{c}</option>
@@ -177,7 +177,7 @@ function ProgressPanel({ businessId, token }) {
   const percent = totalFields ? Math.round((filledFields / totalFields) * 100) : 0;
 
   return (
-    <div className="mt-3 rounded-xl border border-slate-200 bg-white p-5">
+    <div className="mt-3 rounded-none border border-slate-200 bg-white p-5">
       {loading ? (
         <p className="text-sm text-slate-400">불러오는 중...</p>
       ) : total === 0 ? (
@@ -205,7 +205,7 @@ function ProgressPanel({ businessId, token }) {
               return (
                 <div
                   key={t.id}
-                  className={`flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3.5 py-2.5 text-sm ${PROGRESS_STATUS_STYLES[statusKey]}`}
+                  className={`flex flex-wrap items-center justify-between gap-2 rounded-none border px-3.5 py-2.5 text-sm ${PROGRESS_STATUS_STYLES[statusKey]}`}
                 >
                   <span className="font-semibold">{t.name}</span>
                   <span className="text-xs font-bold">
@@ -226,7 +226,7 @@ function ProgramBlock({ business, token }) {
   const [showProgress, setShowProgress] = useState(false);
 
   return (
-    <div className="rounded-xl border border-brand-100 bg-brand-50/50 p-4">
+    <div className="rounded-none border border-brand-100 bg-brand-50/50 p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-base font-bold leading-snug text-brand-800">
           {business ? business.name : "알 수 없는 공고"}
@@ -302,7 +302,7 @@ export default function MyExportItems() {
       </div>
 
       {revisionCount > 0 && (
-        <div className="mt-4 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">
+        <div className="mt-4 flex items-center gap-2 rounded-none border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">
           <Icon name="bell" className="w-5 h-5" />
           {revisionCount}
           {mi.revisionBannerLabel}

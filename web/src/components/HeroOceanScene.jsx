@@ -9,6 +9,8 @@ const kiteImage = new URL("../../낙하산1.png", import.meta.url).href;
 // 퍼센트로 옮겨 둔 것 (배경 영상과는 무관 — 배경은 그냥 정지된 바다 질감일 뿐이다).
 const KITE_PIVOT = { x: 52, y: 55 }; // 로프가 이물에 묶이는 지점 — 카이트가 이 점을 축으로 흔들린다.
 
+const SHIP_OFFSET_X = "-0.5%"; // 원래 자리에서 아주 살짝만 왼쪽으로 이동
+
 const MAX_SWING_DEG = 10; // 좌우 스윙 최대 각도
 const MAX_TILT_DEG = 6; // 상하 틸트 최대 각도
 const LERP_FACTOR = 0.07; // 값이 작을수록 더 느리고 부드럽게 목표치를 따라간다
@@ -70,18 +72,25 @@ export default function HeroOceanScene() {
         playsInline
       />
 
-      {/* 배: 커서와 무관하게, 정해진 자리 안에서 스스로 앞으로 나아갔다가 제자리로 돌아오는 루프. */}
-      <div className="absolute inset-0 animate-ship-cruise motion-reduce:animate-none">
-        <img src={shipImage} alt="" className="absolute inset-0 h-full w-full object-cover" />
+      {/* 배+카이트를 원래 자리에서 아주 살짝 왼쪽으로만 옮기는 고정 오프셋. */}
+      <div className="absolute inset-0" style={{ transform: `translateX(${SHIP_OFFSET_X})` }}>
+        {/* 배: 커서와 무관하게, 정해진 자리 안에서 스스로 앞으로 나아갔다가 제자리로 돌아오는 루프. */}
+        <div className="absolute inset-0 animate-ship-cruise motion-reduce:animate-none">
+          <img
+            src={shipImage}
+            alt=""
+            className="absolute inset-0 h-full w-full object-cover saturate-150 brightness-95 contrast-105"
+          />
 
-        {/* 카이트: 마우스 위치에 lerp로 부드럽게 따라가며 스윙 + 틸트 (배와 달리 커서를 따라 움직인다) */}
-        <img
-          ref={kiteRef}
-          src={kiteImage}
-          alt=""
-          className="absolute inset-0 h-full w-full object-cover will-change-transform"
-          style={{ transformOrigin: `${KITE_PIVOT.x}% ${KITE_PIVOT.y}%` }}
-        />
+          {/* 카이트: 마우스 위치에 lerp로 부드럽게 따라가며 스윙 + 틸트 (배와 달리 커서를 따라 움직인다) */}
+          <img
+            ref={kiteRef}
+            src={kiteImage}
+            alt=""
+            className="absolute inset-0 h-full w-full object-cover will-change-transform"
+            style={{ transformOrigin: `${KITE_PIVOT.x}% ${KITE_PIVOT.y}%` }}
+          />
+        </div>
       </div>
     </div>
   );

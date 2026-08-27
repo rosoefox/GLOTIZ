@@ -6,6 +6,7 @@ import { govSupport as gs, dashboard, govAnnouncementDetails, login } from "../d
 import { displayPeriod, isClosed, periodEndDate, periodStartDate } from "../lib/period";
 import { api, idsParam } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
+import { useNavVariant } from "../context/NavThemeContext";
 
 const PAGE_SIZE = 6;
 
@@ -109,12 +110,7 @@ function AnnouncementCard({ business, highlighted, inProgress, bookmarked, close
             : ""
       }`}
     >
-      {closed && (
-        <div
-          className="absolute inset-0 z-10 rounded-2xl bg-slate-200/50"
-          aria-hidden="true"
-        />
-      )}
+      {closed && <div className="absolute inset-0 z-10 rounded-none bg-slate-200/50" aria-hidden="true" />}
       <div className="mb-3 flex items-start justify-between gap-2">
         <span className="inline-block w-fit rounded-full bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-700">
           {orgNameFor(business)}
@@ -192,7 +188,7 @@ function CheckboxRow({ label, checked, onChange }) {
         type="checkbox"
         checked={checked}
         onChange={onChange}
-        className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+        className="h-4 w-4 rounded-none border-slate-300 text-brand-600 focus:ring-brand-500"
       />
       {label}
     </label>
@@ -207,7 +203,7 @@ function FilterDropdown({ label, count, isOpen, onToggle, children }) {
       <button
         type="button"
         onClick={onToggle}
-        className={`flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-colors ${
+        className={`flex items-center gap-2 rounded-none border px-4 py-2.5 text-sm font-semibold transition-colors ${
           count > 0
             ? "border-brand-300 bg-brand-50 text-brand-700"
             : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
@@ -222,7 +218,7 @@ function FilterDropdown({ label, count, isOpen, onToggle, children }) {
         <Icon name="chevronDown" className={`w-5 h-5 transition-transform ${isOpen ? "rotate-180" : ""}`} />
       </button>
       {isOpen && (
-        <div className="absolute left-0 top-full z-10 mt-2 w-56 rounded-xl border border-slate-200 bg-white p-4 shadow-lg">
+        <div className="absolute left-0 top-full z-10 mt-2 w-56 rounded-none border border-slate-200 bg-white p-4 shadow-lg">
           <div className="flex flex-col gap-2.5">{children}</div>
         </div>
       )}
@@ -239,13 +235,13 @@ function SortDropdown({ value, options, onChange }) {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+        className="flex items-center gap-2 rounded-none border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
       >
         {current.label}
         <Icon name="chevronDown" className={`w-5 h-5 text-slate-500 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
-        <div className="absolute right-0 top-full z-10 mt-2 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white py-1.5 shadow-lg">
+        <div className="absolute right-0 top-full z-10 mt-2 w-44 overflow-hidden rounded-none border border-slate-200 bg-white py-1.5 shadow-lg">
           {options.map((o) => (
             <button
               key={o.id}
@@ -288,7 +284,7 @@ function Pagination({ page, totalPages, onChange }) {
         type="button"
         onClick={() => onChange(Math.max(1, page - 1))}
         disabled={page === 1}
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40"
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-none border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40"
         aria-label="이전 페이지"
       >
         <Icon name="arrowLeft" className="w-5 h-5" />
@@ -303,7 +299,7 @@ function Pagination({ page, totalPages, onChange }) {
             key={p}
             type="button"
             onClick={() => onChange(p)}
-            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-sm font-semibold ${
+            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-none text-sm font-semibold ${
               p === page ? "bg-brand-600 text-white" : "text-slate-600 hover:bg-slate-100"
             }`}
           >
@@ -315,7 +311,7 @@ function Pagination({ page, totalPages, onChange }) {
         type="button"
         onClick={() => onChange(Math.min(totalPages, page + 1))}
         disabled={page === totalPages}
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40"
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-none border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-40"
         aria-label="다음 페이지"
       >
         <Icon name="arrowRight" className="w-5 h-5" />
@@ -325,7 +321,7 @@ function Pagination({ page, totalPages, onChange }) {
 }
 
 const STEP_BOX_BASE =
-  "flex flex-col items-center justify-center gap-2 rounded-2xl border-2 px-4 py-6 text-center text-sm font-semibold transition-colors";
+  "flex flex-col items-center justify-center gap-2 rounded-none border-2 px-4 py-6 text-center text-sm font-semibold transition-colors";
 const STEP_BOX_SELECTED = "border-brand-600 bg-brand-50 text-brand-700";
 const STEP_BOX_IDLE = "border-slate-200 bg-white text-slate-700 hover:border-brand-300 hover:bg-brand-50/40";
 
@@ -352,7 +348,7 @@ function WizardShell({ title, subtitle, onBack, backLabel, onSkipAll, children, 
         <button
           type="button"
           onClick={onBack}
-          className="rounded-xl border border-slate-300 px-5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          className="rounded-none border border-slate-300 px-5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
         >
           {backLabel || "뒤로가기"}
         </button>
@@ -384,6 +380,9 @@ export default function GovSupport() {
   const [mode, setMode] = useState(() =>
     location.state?.skipAutoMatch ? "browse-all" : "wizard-region"
   ); // wizard-region | wizard-category | browse-all
+  // "전체 공고 확인" 화면 상단은 남색(#122955) 배경이라, 그 화면에 있는 동안만 네비게이션도
+  // 같은 남색으로 맞춘다. 마법사 단계(지역/품목 선택)는 배경이 그냥 흰색이라 기본값 그대로.
+  useNavVariant(mode === "browse-all" ? "navy" : "light");
   const [wizardRegions, setWizardRegions] = useState([]);
   const [wizardCategories, setWizardCategories] = useState([]);
   // true면 지역/품목이 저장돼 있어도 강조 없이 전체 목록을 보여준다 — "전체 공고 확인" 메뉴,
@@ -702,52 +701,39 @@ export default function GovSupport() {
   // mode === "browse-all"
 
   return (
-    <div className="mx-auto flex max-w-6xl flex-col overflow-x-hidden px-4 py-6 sm:px-8 sm:py-8">
-      {/* "박스"로 안 보이게, 페이지의 좌우 여백(max-w-6xl 안쪽)을 뚫고 나가 뷰포트 전체 폭으로
-          꽉 채운다(고전적인 full-bleed 트릭: 100vw + 음수 마진으로 부모의 max-width를 무시).
-          아래쪽 페이드도 훨씬 길게 늘려서 필터 바로 위까지 사진이 옅어지며 자연스럽게 흰
-          배경과 이어지게 한다 — 사진 비율은 여전히 안쪽 글 padding이 만드는 높이에 맞춰
-          object-cover로 잘린다(사진 크기가 박스를 정하지 않는다). */}
-      <div className="relative left-1/2 right-1/2 -ml-[50vw] -mr-[50vw] w-screen overflow-hidden">
-        <img
-          src="/gov-support-hero.jpg"
-          alt=""
-          className="absolute inset-0 h-full w-full object-cover"
-        />
-        <div className="absolute inset-0 bg-gradient-to-r from-white/70 via-white/25 to-transparent" />
-        <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-white via-white/70 to-transparent sm:h-56" />
-        <div className="relative mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-6 px-5 py-8 sm:px-10 sm:py-14">
-          <div>
-            <h1 className="text-2xl font-extrabold text-slate-900 sm:text-4xl">
-              {matchedIds ? "맞춤 공고" : gs.allProgramsHeading}
-            </h1>
-            <p className="mt-2 text-sm text-slate-700 sm:text-base">{gs.subtitle}</p>
-            <div className="mt-6 inline-flex w-fit items-center gap-2 rounded-xl border border-brand-100 bg-white/90 px-4 py-2.5 text-sm text-slate-600 shadow-sm backdrop-blur-sm">
-              <Icon name="home" className="w-5 h-5 text-slate-500" />
-              {matchedIds ? (
-                <>
-                  선택하신 조건에 맞는{" "}
-                  <span className="font-bold text-brand-700">{visibleAnnouncements.length}</span>개의 맞춤 공고가 있습니다.
-                </>
-              ) : (
-                <>
-                  총 <span className="font-bold text-brand-700">{announcements.length}</span>개의 지원사업이 등록되어 있습니다.
-                </>
-              )}
-            </div>
-            <button
-              type="button"
-              onClick={restartWizard}
-              className="mt-4 flex w-fit items-center gap-1.5 text-sm font-semibold text-brand-700 hover:underline"
-            >
-              <Icon name="sparkle" className="w-5 h-5" />
-              맞춤 추천 다시 받기
-            </button>
-          </div>
+    <div className="flex flex-col">
+      {/* 구분선 위쪽 배경 — main에 폭 제약이 없어 w-full만으로 좌우 끝까지 닿는다. */}
+      <div className="w-full border-b border-slate-200 bg-[#122955]">
+        <div className="mx-auto max-w-6xl px-4 py-6 sm:px-8 sm:py-8">
+          <h1 className="text-2xl font-extrabold sm:text-4xl" style={{ color: "#e6f5f0" }}>
+            {matchedIds ? "맞춤 공고" : gs.allProgramsHeading}
+          </h1>
+          <p className="mt-2 text-sm text-slate-300">{gs.subtitle}</p>
+          <p className="mt-6 text-sm text-slate-200">
+            {matchedIds ? (
+              <>
+                선택하신 조건에 맞는{" "}
+                <span className="font-bold text-brand-300">{visibleAnnouncements.length}</span>개의 맞춤 공고가 있습니다.
+              </>
+            ) : (
+              <>
+                총 <span className="font-bold text-brand-300">{announcements.length}</span>개의 지원사업이 등록되어 있습니다.
+              </>
+            )}
+          </p>
+          <button
+            type="button"
+            onClick={restartWizard}
+            className="mt-4 flex items-center gap-1.5 text-sm font-semibold text-brand-300 hover:underline"
+          >
+            <Icon name="sparkle" className="w-5 h-5" />
+            맞춤 추천 다시 받기
+          </button>
         </div>
       </div>
 
-      <Card className="relative -mt-6 flex flex-col gap-3 p-4 sm:-mt-10">
+      <div className="mx-auto flex w-full max-w-6xl flex-col px-4 py-6 sm:px-8 sm:py-8">
+        <div className="mt-6 flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2.5">
           <FilterDropdown
@@ -800,10 +786,10 @@ export default function GovSupport() {
           )}
         </div>
         </div>
-      </Card>
+      </div>
 
       {matchedIds && (
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-700">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-none border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-700">
           <span className="flex items-center gap-1.5 font-medium">
             <Icon name="sparkle" className="w-5 h-5" />
             <span className="font-bold text-brand-900">{wizardRegions.join(", ")}</span> ·{" "}
@@ -842,6 +828,7 @@ export default function GovSupport() {
             <Pagination page={page} totalPages={totalPages} onChange={setPage} />
           </>
         )}
+      </div>
       </div>
     </div>
   );

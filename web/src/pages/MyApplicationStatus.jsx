@@ -291,7 +291,7 @@ export default function MyApplicationStatus() {
       <p className="mt-2 mb-8 text-sm text-slate-500">{mas.subtitle}</p>
 
       {needsRevisionCount > 0 && (
-        <div className="mb-8 flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">
+        <div className="mb-8 flex items-center gap-3 rounded-none border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">
           <Icon name="bell" className="w-5 h-5 shrink-0" />
           {mas.needsRevisionAlert.replace("{count}", needsRevisionCount)}
         </div>

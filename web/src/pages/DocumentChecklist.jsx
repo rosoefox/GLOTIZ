@@ -11,7 +11,7 @@ import { readDraft } from "../lib/draft";
 import { isClosed } from "../lib/period";
 
 const SECONDARY_BUTTON_CLASS =
-  "inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50";
+  "inline-flex items-center justify-center gap-2 rounded-none border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50";
 
 // 진행률이 낮으면 노란색, 다 채워질수록 초록색이 되도록 두 색을 선형으로 보간한다.
 function progressColor(percent) {
@@ -235,7 +235,7 @@ function ProgramCard({ business, progress, onClick }) {
         closed ? "cursor-not-allowed grayscale" : complete ? "ring-2 ring-emerald-300" : "ring-2 ring-amber-300"
       }`}
     >
-      {closed && <div className="absolute inset-0 z-10 rounded-2xl bg-slate-200/50" aria-hidden="true" />}
+      {closed && <div className="absolute inset-0 z-10 rounded-none bg-slate-200/50" aria-hidden="true" />}
       <div>
         <div className="mb-2 flex items-center justify-between gap-2">
           <Badge tone="brand">모집 공고</Badge>
@@ -607,7 +607,7 @@ export default function DocumentChecklist() {
             </button>
           </div>
           {selectedBusinessClosed && (
-            <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">
+            <div className="mb-4 rounded-none border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">
               접수 마감된 지원사업입니다. 서류 작성, 업로드, 가져오기를 진행할 수 없습니다.
             </div>
           )}
@@ -672,7 +672,7 @@ export default function DocumentChecklist() {
                   <CardFooter>
                     <Link
                       to="/marketing"
-                      className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-brand-700"
+                      className="flex w-full items-center justify-center gap-1.5 rounded-none bg-brand-600 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-brand-700"
                     >
                       <Icon name="sparkle" className="w-5 h-5" />
                       마케팅을 위한 AI 이미지 생성하러 가기

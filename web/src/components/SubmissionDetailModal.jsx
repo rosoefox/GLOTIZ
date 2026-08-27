@@ -37,7 +37,7 @@ export default function SubmissionDetailModal({ submissionId, templateId, templa
       ) : fields.length === 0 ? (
         <p className="text-sm text-slate-400">등록된 입력 필드가 없습니다.</p>
       ) : (
-        <dl className="divide-y divide-slate-100 rounded-xl border border-slate-200">
+        <dl className="divide-y divide-slate-100 rounded-none border border-slate-200">
           {fields.map((field) => (
             <div key={field.id} className="flex items-start justify-between gap-4 px-4 py-2.5 text-sm">
               <dt className="shrink-0 text-slate-500">{field.field_label}</dt>

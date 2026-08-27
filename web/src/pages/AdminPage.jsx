@@ -72,7 +72,7 @@ function SubmissionRow({
           <button
             type="button"
             onClick={() => onSetReviewStatus(applicant, item, "needs_revision")}
-            className="flex w-[5.5rem] items-center justify-center gap-1 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-red-700"
+            className="flex w-[5.5rem] items-center justify-center gap-1 rounded-none bg-red-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-red-700"
           >
             <Icon name="x" className="w-5 h-5" />
             {ap.markNeedsRevisionLabel}
@@ -82,7 +82,7 @@ function SubmissionRow({
           <button
             type="button"
             onClick={() => onSetReviewStatus(applicant, item, "approved")}
-            className="flex w-[5.5rem] items-center justify-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-700"
+            className="flex w-[5.5rem] items-center justify-center gap-1 rounded-none bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-700"
           >
             <Icon name="check" className="w-5 h-5" />
             {ap.markApprovedLabel}
@@ -181,7 +181,7 @@ function ProgramRow({
             const applicantExpanded = expandedApplicantKey === key;
             const isDeleting = deletingApplicantKey === key;
             return (
-              <div key={key} className="overflow-hidden rounded-xl border border-slate-200">
+              <div key={key} className="overflow-hidden rounded-none border border-slate-200">
                 <button
                   type="button"
                   onClick={() => onToggleApplicant(key)}
@@ -206,7 +206,7 @@ function ProgramRow({
                           if (!isDeleting) onDeleteApplicant(program, applicant);
                         }}
                         onKeyDown={(e) => e.key === "Enter" && e.stopPropagation()}
-                        className={`flex items-center gap-1 rounded-lg border border-red-200 px-2 py-1 text-xs font-semibold text-red-600 transition-colors hover:bg-red-50 ${
+                        className={`flex items-center gap-1 rounded-none border border-red-200 px-2 py-1 text-xs font-semibold text-red-600 transition-colors hover:bg-red-50 ${
                           isDeleting ? "pointer-events-none opacity-50" : ""
                         }`}
                       >
@@ -300,7 +300,7 @@ function NewBusinessModal({ session, onClose, onCreated }) {
               type="file"
               accept=".pdf,.docx,.hwp,.jpg,.jpeg,.png"
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-50 file:px-3.5 file:py-2 file:text-sm file:font-medium file:text-brand-600 hover:file:bg-brand-100"
+              className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-none file:border-0 file:bg-brand-50 file:px-3.5 file:py-2 file:text-sm file:font-medium file:text-brand-600 hover:file:bg-brand-100"
             />
             <p className="mt-1.5 text-xs text-slate-400">{bf.referenceDocHint}</p>
           </label>
@@ -408,14 +408,14 @@ function NewTemplateModal({ session, business, onClose, onCreated }) {
                   className="w-full text-sm text-slate-600"
                 />
               </label>
-              <p className="rounded-lg bg-slate-50 px-3.5 py-2.5 text-xs leading-relaxed text-slate-500">
+              <p className="rounded-none bg-slate-50 px-3.5 py-2.5 text-xs leading-relaxed text-slate-500">
                 {tf.docxHint}
               </p>
             </>
           )}
           {userUploadRequired && (
             <>
-              <p className="rounded-lg bg-slate-50 px-3.5 py-2.5 text-xs leading-relaxed text-slate-500">
+              <p className="rounded-none bg-slate-50 px-3.5 py-2.5 text-xs leading-relaxed text-slate-500">
                 {tf.userUploadHint}
               </p>
               <label className="block">
@@ -446,7 +446,7 @@ function NewTemplateModal({ session, business, onClose, onCreated }) {
                   className="w-full text-sm text-slate-600"
                 />
               </label>
-              <p className="rounded-lg bg-slate-50 px-3.5 py-2.5 text-xs leading-relaxed text-slate-500">
+              <p className="rounded-none bg-slate-50 px-3.5 py-2.5 text-xs leading-relaxed text-slate-500">
                 {tf.referenceHint}
               </p>
             </>
@@ -638,7 +638,7 @@ function NewFieldsModal({ session, template, onClose, onSaved }) {
         <form onSubmit={handleSubmit}>
           <div className="space-y-3">
             {rows.map((row, i) => (
-              <div key={i} className="rounded-xl border border-slate-200 p-3">
+              <div key={i} className="rounded-none border border-slate-200 p-3">
                 <div className="grid grid-cols-2 gap-2">
                   <TextField
                     placeholder={ff.fieldKeyPlaceholder}
@@ -655,7 +655,7 @@ function NewFieldsModal({ session, template, onClose, onSaved }) {
                   <select
                     value={row.field_type}
                     onChange={(e) => updateRow(i, { field_type: e.target.value })}
-                    className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
+                    className="w-full rounded-none border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
                   >
                     {FIELD_TYPE_OPTIONS.map((t) => (
                       <option key={t} value={t}>
@@ -953,7 +953,7 @@ function BusinessManager({ session, reloadKey }) {
                             if (e.key === "Escape") cancelEditBusinessName();
                           }}
                           disabled={savingName}
-                          className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-sm font-bold text-slate-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
+                          className="rounded-none border border-slate-300 bg-white px-2.5 py-1 text-sm font-bold text-slate-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
                         />
                         <button
                           type="button"
@@ -1017,7 +1017,7 @@ function BusinessManager({ session, reloadKey }) {
                       onDragEnd={() => setDragIndex(null)}
                       aria-label="꾹 눌러서 끌면 순서 변경"
                       title="꾹 눌러서 끌면 순서 변경"
-                      className="flex h-8 w-8 cursor-grab items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-600 active:cursor-grabbing"
+                      className="flex h-8 w-8 cursor-grab items-center justify-center rounded-none text-slate-400 hover:bg-slate-100 hover:text-slate-600 active:cursor-grabbing"
                     >
                       <Icon name="grip" className="w-4 h-4" />
                     </button>
@@ -1059,7 +1059,7 @@ function BusinessManager({ session, reloadKey }) {
                                 <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-black">
                                   {bm.referenceGroupLabel}
                                 </p>
-                                <div className="divide-y divide-slate-100 rounded-xl border border-slate-200">
+                                <div className="divide-y divide-slate-100 rounded-none border border-slate-200">
                                   {referenceTemplates.map((t) => renderTemplateRow(t))}
                                 </div>
                               </div>
@@ -1069,7 +1069,7 @@ function BusinessManager({ session, reloadKey }) {
                                 <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-emerald-600">
                                   {bm.userUploadGroupLabel}
                                 </p>
-                                <div className="divide-y divide-slate-100 rounded-xl border border-slate-200">
+                                <div className="divide-y divide-slate-100 rounded-none border border-slate-200">
                                   {uploadTemplates.map((t) => renderTemplateRow(t))}
                                 </div>
                               </div>
@@ -1079,7 +1079,7 @@ function BusinessManager({ session, reloadKey }) {
                                 <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-black">
                                   {bm.formTemplateGroupLabel}
                                 </p>
-                                <div className="divide-y divide-slate-100 rounded-xl border border-slate-200">
+                                <div className="divide-y divide-slate-100 rounded-none border border-slate-200">
                                   {formTemplates.map((t) => renderTemplateRow(t))}
                                 </div>
                               </div>
@@ -1464,7 +1464,7 @@ export default function AdminPage() {
         <button
           type="button"
           onClick={handleLogout}
-          className="inline-flex min-w-[5.5rem] items-center justify-center rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+          className="inline-flex min-w-[5.5rem] items-center justify-center rounded-none border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
         >
           로그아웃
         </button>
@@ -1474,7 +1474,7 @@ export default function AdminPage() {
         <h1 className="text-2xl font-bold text-slate-900">{ap.title}</h1>
         <p className="mt-1 mb-6 text-sm text-slate-500">{ap.subtitle}</p>
 
-        <div className="mb-6 grid grid-cols-3 divide-x divide-slate-100 rounded-md border border-slate-200 bg-white shadow-sm">
+        <div className="mb-6 grid grid-cols-3 divide-x divide-slate-100 rounded-none border border-slate-200 bg-white shadow-sm">
           <div className="px-6 py-4">
             <p className="text-sm text-slate-500">{ap.summaryLabels.applicants}</p>
             <p className="mt-1 text-2xl font-bold text-brand-700">{summary.applicants}</p>
@@ -1490,11 +1490,11 @@ export default function AdminPage() {
         </div>
 
         <div className="mb-6 flex items-center justify-between gap-3">
-          <div className="inline-flex gap-2 rounded-lg bg-slate-100 p-1">
+          <div className="inline-flex gap-2 rounded-none bg-slate-100 p-1">
             <button
               type="button"
               onClick={() => setActiveTab("submissions")}
-              className={`rounded-md px-4 py-2 text-sm font-semibold transition-colors ${
+              className={`rounded-none px-4 py-2 text-sm font-semibold transition-colors ${
                 activeTab === "submissions" ? "bg-white text-brand-700 shadow-sm" : "text-slate-500 hover:text-slate-700"
               }`}
             >
@@ -1503,7 +1503,7 @@ export default function AdminPage() {
             <button
               type="button"
               onClick={() => setActiveTab("businesses")}
-              className={`rounded-md px-4 py-2 text-sm font-semibold transition-colors ${
+              className={`rounded-none px-4 py-2 text-sm font-semibold transition-colors ${
                 activeTab === "businesses" ? "bg-white text-brand-700 shadow-sm" : "text-slate-500 hover:text-slate-700"
               }`}
             >

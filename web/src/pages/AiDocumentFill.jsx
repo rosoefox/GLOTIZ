@@ -18,7 +18,7 @@ function toOptionList(options) {
 
 function FieldInput({ field, value, onChange }) {
   const inputClass =
-    "w-full rounded-lg border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100";
+    "w-full rounded-none border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100";
 
   if (field.field_type === "textarea") {
     return (
@@ -167,7 +167,7 @@ export default function AiDocumentFill() {
           <p className="mt-1 text-sm text-slate-500">제출 ID: {submissionId}</p>
 
           {generateError && (
-            <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+            <div className="mt-4 rounded-none border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
               {generateError}
             </div>
           )}
@@ -180,7 +180,7 @@ export default function AiDocumentFill() {
                   href={downloadUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700"
+                  className="inline-flex items-center justify-center gap-2 rounded-none bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700"
                 >
                   <Icon name="download" className="w-5 h-5" />
                   PDF 다운로드
@@ -210,7 +210,7 @@ export default function AiDocumentFill() {
       <p className="mt-1 mb-6 text-sm text-slate-500">{businessName}</p>
 
       {error && (
-        <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+        <div className="mb-6 rounded-none border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
           {error}
         </div>
       )}

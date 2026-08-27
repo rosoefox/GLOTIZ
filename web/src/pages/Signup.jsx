@@ -96,7 +96,7 @@ export default function Signup() {
   if (needsConfirmation) {
     return (
       <div className="relative flex min-h-screen items-center justify-center bg-gradient-to-br from-brand-50 via-white to-amber-50 px-4">
-        <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+        <div className="w-full max-w-md rounded-none border border-slate-200 bg-white p-8 text-center shadow-sm">
           <h2 className="text-lg font-bold text-slate-900">이메일을 확인해주세요</h2>
           <p className="mt-2 text-sm text-slate-500">
             {form.email}로 인증 메일을 보냈습니다. 메일함에서 링크를 클릭한 뒤 로그인해주세요.
@@ -113,7 +113,7 @@ export default function Signup() {
     <div className="relative flex min-h-screen items-center justify-center bg-gradient-to-br from-brand-50 via-white to-amber-50 px-4">
       <Link
         to="/login"
-        className="absolute left-4 top-4 flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-slate-500 hover:bg-white/60 hover:text-slate-800"
+        className="absolute left-4 top-4 flex items-center gap-1.5 rounded-none px-3 py-2 text-sm font-medium text-slate-500 hover:bg-white/60 hover:text-slate-800"
       >
         <Icon name="arrowLeft" className="w-5 h-5" />
         뒤로가기
@@ -125,18 +125,18 @@ export default function Signup() {
           <p className="mt-2 text-sm text-slate-500">{s.subtitle}</p>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+        <div className="rounded-none border border-slate-200 bg-white p-8 shadow-sm">
           <h2 className="mb-5 text-lg font-bold text-slate-900">{s.title}</h2>
           <form className="space-y-4" onSubmit={handleSubmit}>
             <div>
               <span className="mb-1.5 block text-sm font-medium text-slate-700">{login.accountTypeLabel}</span>
-              <div className="grid grid-cols-2 gap-2 rounded-lg bg-slate-100 p-1">
+              <div className="grid grid-cols-2 gap-2 rounded-none bg-slate-100 p-1">
                 {login.accountTypes.map((t) => (
                   <button
                     key={t.id}
                     type="button"
                     onClick={() => handleAccountTypeClick(t.id)}
-                    className={`rounded-md py-2 text-sm font-semibold transition-colors ${
+                    className={`rounded-none py-2 text-sm font-semibold transition-colors ${
                       accountType === t.id
                         ? "bg-white text-brand-700 shadow-sm"
                         : "text-slate-500 hover:text-slate-700"
@@ -211,7 +211,7 @@ export default function Signup() {
                   <select
                     value={form.categoryId}
                     onChange={update("categoryId")}
-                    className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
+                    className="w-full rounded-none border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
                   >
                     {CATEGORIES.map((c) => (
                       <option key={c.id} value={c.id}>
@@ -226,7 +226,7 @@ export default function Signup() {
                   <select
                     value={form.country}
                     onChange={update("country")}
-                    className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
+                    className="w-full rounded-none border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
                   >
                     {COUNTRIES.map((c) => (
                       <option key={c} value={c}>
@@ -260,7 +260,7 @@ export default function Signup() {
           onClick={() => setShowAdminVerify(false)}
         >
           <div
-            className="w-full max-w-xs rounded-2xl bg-white p-6 shadow-2xl"
+            className="w-full max-w-xs rounded-none bg-white p-6 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="text-base font-bold text-slate-900">관리자 인증</h3>
@@ -274,7 +274,7 @@ export default function Signup() {
                 setAdminCodeError("");
               }}
               onKeyDown={(e) => e.key === "Enter" && confirmAdminVerify()}
-              className="mt-3 w-full rounded-lg border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
+              className="mt-3 w-full rounded-none border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 focus:border-brand-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-100"
               placeholder="인증번호"
             />
             {adminCodeError && <p className="mt-2 text-xs font-medium text-red-500">{adminCodeError}</p>}

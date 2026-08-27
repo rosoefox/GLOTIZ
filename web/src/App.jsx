@@ -1,6 +1,7 @@
 import { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
+import { NavThemeProvider } from "./context/NavThemeContext";
 import { ChatbotProvider } from "./context/ChatbotContext";
 import { MarketingImagesProvider } from "./context/MarketingImagesContext";
 import { MarketingGenerationProvider } from "./context/MarketingGenerationContext";
@@ -43,39 +44,41 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <MarketingImagesProvider>
-          <MarketingGenerationProvider>
-            <ExportItemsProvider>
-              <ChatbotProvider>
-                <NotificationAlert />
-                <Suspense fallback={<PageFallback />}>
-                  <Routes>
-                    <Route path="/login" element={<Login />} />
-                    <Route path="/signup" element={<Signup />} />
-                    <Route path="/reset-password" element={<ResetPassword />} />
-                    <Route path="/" element={<Dashboard />} />
-                    <Route path="/admin" element={<RequireAdmin><AdminPage /></RequireAdmin>} />
+        <NavThemeProvider>
+          <MarketingImagesProvider>
+            <MarketingGenerationProvider>
+              <ExportItemsProvider>
+                <ChatbotProvider>
+                  <NotificationAlert />
+                  <Suspense fallback={<PageFallback />}>
+                    <Routes>
+                      <Route path="/login" element={<Login />} />
+                      <Route path="/signup" element={<Signup />} />
+                      <Route path="/reset-password" element={<ResetPassword />} />
+                      <Route path="/" element={<Dashboard />} />
+                      <Route path="/admin" element={<RequireAdmin><AdminPage /></RequireAdmin>} />
 
-                    <Route element={<Layout />}>
-                      <Route path="/gov-support" element={<GovSupport />} />
-                      <Route path="/gov-support/:businessId" element={<GovSupportDetail />} />
-                      <Route path="/help" element={<HelpAndFaq />} />
+                      <Route element={<Layout />}>
+                        <Route path="/gov-support" element={<GovSupport />} />
+                        <Route path="/gov-support/:businessId" element={<GovSupportDetail />} />
+                        <Route path="/help" element={<HelpAndFaq />} />
 
-                      <Route path="/my-items" element={<RequireAuth><MyExportItems /></RequireAuth>} />
-                      <Route path="/mypage" element={<RequireAuth><MyPage /></RequireAuth>} />
-                      <Route path="/my-applications" element={<RequireAuth><MyApplicationStatus /></RequireAuth>} />
-                      <Route path="/docs" element={<DocumentChecklist />} />
-                      <Route path="/docs/fill/:templateId" element={<RequireAuth><DocumentFill /></RequireAuth>} />
-                      <Route path="/docs/translate" element={<RequireAuth><TranslationEditor /></RequireAuth>} />
-                      <Route path="/marketing" element={<RequireAuth><MarketingMaterialCreator /></RequireAuth>} />
-                      <Route path="/shopee" element={<RequireAuth><ShopeeListing /></RequireAuth>} />
-                    </Route>
-                  </Routes>
-                </Suspense>
-              </ChatbotProvider>
-            </ExportItemsProvider>
-          </MarketingGenerationProvider>
-        </MarketingImagesProvider>
+                        <Route path="/my-items" element={<RequireAuth><MyExportItems /></RequireAuth>} />
+                        <Route path="/mypage" element={<RequireAuth><MyPage /></RequireAuth>} />
+                        <Route path="/my-applications" element={<RequireAuth><MyApplicationStatus /></RequireAuth>} />
+                        <Route path="/docs" element={<DocumentChecklist />} />
+                        <Route path="/docs/fill/:templateId" element={<RequireAuth><DocumentFill /></RequireAuth>} />
+                        <Route path="/docs/translate" element={<RequireAuth><TranslationEditor /></RequireAuth>} />
+                        <Route path="/marketing" element={<RequireAuth><MarketingMaterialCreator /></RequireAuth>} />
+                        <Route path="/shopee" element={<RequireAuth><ShopeeListing /></RequireAuth>} />
+                      </Route>
+                    </Routes>
+                  </Suspense>
+                </ChatbotProvider>
+              </ExportItemsProvider>
+            </MarketingGenerationProvider>
+          </MarketingImagesProvider>
+        </NavThemeProvider>
       </AuthProvider>
     </BrowserRouter>
   );

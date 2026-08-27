@@ -5,6 +5,7 @@ import { shopeeListing as sl } from "../data/mockData";
 import { useMarketingImages } from "../context/MarketingImagesContext";
 import { useExportItems } from "../context/ExportItemsContext";
 import { useAuth } from "../context/AuthContext";
+import { useNavVariant } from "../context/NavThemeContext";
 import { api, idsParam } from "../lib/api";
 import { readErrorMessage } from "../lib/apiError";
 import { convertFromKrw } from "../lib/currency";
@@ -78,7 +79,7 @@ function CopyButton({ copied, onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-300 text-slate-500 hover:bg-slate-50"
+      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-none border border-slate-300 text-slate-500 hover:bg-slate-50"
       aria-label={sl.copyLabel}
     >
       <Icon name={copied ? "check" : "documents"} className="w-5 h-5" />
@@ -90,7 +91,7 @@ function CopyButton({ copied, onClick }) {
 function ImageThumb({ img, onPick, onToggleBookmark }) {
   return (
     <div
-      className="group relative h-14 w-full overflow-hidden rounded-lg border border-slate-200 bg-cover bg-center"
+      className="group relative h-14 w-full overflow-hidden rounded-none border border-slate-200 bg-cover bg-center"
       style={{ backgroundImage: `url(${img.url})` }}
     >
       <button type="button" onClick={onPick} aria-label={img.name} className="absolute inset-0 hover:ring-2 hover:ring-inset hover:ring-brand-400" />
@@ -122,13 +123,13 @@ function ImagePickerButton({ onPick }) {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 rounded-lg border border-brand-300 bg-brand-50/60 px-2.5 py-1.5 text-[11px] font-semibold text-brand-700 hover:bg-brand-50"
+        className="flex items-center gap-1.5 rounded-none border border-brand-300 bg-brand-50/60 px-2.5 py-1.5 text-[11px] font-semibold text-brand-700 hover:bg-brand-50"
       >
         <Icon name="sparkle" className="w-3.5 h-3.5" />
         {sl.imagePickerLabel}
       </button>
       {open && (
-        <div className="absolute left-0 top-full z-10 mt-2 w-64 max-h-80 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
+        <div className="absolute left-0 top-full z-10 mt-2 w-64 max-h-80 overflow-y-auto rounded-none border border-slate-200 bg-white p-2 shadow-lg">
           {isEmpty ? (
             <p className="px-2 py-3 text-xs text-slate-400">{sl.imagePickerEmpty}</p>
           ) : (
@@ -216,7 +217,7 @@ function ProductImages({ images, onAdd, onRemove }) {
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
+            className="flex items-center gap-1.5 rounded-none border border-slate-300 px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
           >
             <Icon name="upload" className="w-3.5 h-3.5" />
             {sl.imageUploadLabel}
@@ -228,7 +229,7 @@ function ProductImages({ images, onAdd, onRemove }) {
         {images.map((img, idx) => (
           <div
             key={img.url + idx}
-            className="group relative h-20 w-20 overflow-hidden rounded-lg border border-slate-200 bg-cover bg-center"
+            className="group relative h-20 w-20 overflow-hidden rounded-none border border-slate-200 bg-cover bg-center"
             style={{ backgroundImage: `url(${img.url})` }}
           >
             <button
@@ -246,7 +247,7 @@ function ProductImages({ images, onAdd, onRemove }) {
             type="button"
             onClick={() => fileInputRef.current?.click()}
             title="클릭하거나 이미지를 붙여넣으세요"
-            className="flex h-20 w-20 items-center justify-center rounded-lg border-2 border-dashed border-slate-200 text-slate-300 hover:border-brand-300 hover:text-brand-400"
+            className="flex h-20 w-20 items-center justify-center rounded-none border-2 border-dashed border-slate-200 text-slate-300 hover:border-brand-300 hover:text-brand-400"
           >
             <Icon name="camera" className="w-5 h-5" />
           </button>
@@ -269,7 +270,7 @@ function PriceConverter({ krwValue, onApply }) {
         <select
           value={targetLang}
           onChange={(e) => setTargetLang(e.target.value)}
-          className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-700 focus:border-brand-600 focus:outline-none"
+          className="rounded-none border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-700 focus:border-brand-600 focus:outline-none"
         >
           {sl.translateLanguages.map((lang) => (
             <option key={lang.code} value={lang.code}>
@@ -340,6 +341,7 @@ function TranslatePanel({ values, activeLang, translating, onTranslate }) {
 }
 
 export default function ShopeeListing() {
+  useNavVariant("navy");
   const { user: authUser, profile, session } = useAuth();
   const { items: exportItems } = useExportItems();
 
@@ -503,69 +505,75 @@ export default function ShopeeListing() {
   };
 
   return (
-    <div className="mx-auto max-w-6xl px-8 py-8">
-      <div className="flex items-center gap-2">
-        <h1 className="text-2xl font-bold text-slate-900">{sl.title}</h1>
-        <span className="rounded-full bg-orange-50 px-2.5 py-1 text-xs font-bold text-orange-600">{sl.titleBadge}</span>
-      </div>
-      <p className="mt-1 mb-6 text-sm text-slate-500">{sl.subtitle}</p>
-
-      {/* Shopee 공식 입점 가이드 */}
-      <Card className="mb-6 p-6">
-        <div className="grid grid-cols-1 items-center gap-6 lg:grid-cols-2">
-          <div>
-            <span className="mb-3 inline-block rounded-full bg-orange-50 px-2.5 py-1 text-[11px] font-bold tracking-wide text-orange-600">
-              {sl.officialGuide.badge}
-            </span>
-            <h2 className="text-lg font-bold text-slate-900">{sl.officialGuide.title}</h2>
-            <p className="mt-2 text-sm leading-relaxed text-slate-500">{sl.officialGuide.description}</p>
-
-            {sl.guideVideoUrl ? (
-              <a
-                href={sl.guideVideoUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-4 inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700"
-              >
-                <Icon name="play" className="w-5 h-5" />
-                {sl.guideVideoLabel}
-                <Icon name="externalLink" className="w-5 h-5" />
-              </a>
-            ) : (
-              <span className="mt-4 inline-flex cursor-not-allowed items-center gap-2 rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-400">
-                <Icon name="play" className="w-5 h-5" />
-                {sl.guideVideoLabel}
-              </span>
-            )}
-            <p className="mt-2 flex items-center gap-1.5 text-xs text-slate-400">
-              <Icon name="help" className="w-3.5 h-3.5" />
-              {sl.guideVideoUrl ? sl.officialGuide.note : sl.guideVideoPendingNote}
-            </p>
+    <div className="flex flex-col">
+      {/* 구분선 위쪽 배경 — 제목/부제만 남색 헤더로 묶는다. */}
+      <div className="w-full border-b border-slate-200 bg-[#122955]">
+        <div className="mx-auto max-w-6xl px-8 py-8">
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold" style={{ color: "#e6f5f0" }}>
+              {sl.title}
+            </h1>
+            <span className="rounded-full bg-orange-50 px-2.5 py-1 text-xs font-bold text-orange-600">{sl.titleBadge}</span>
           </div>
-
-          <a
-            href={sl.guideVideoUrl || undefined}
-            target="_blank"
-            rel="noreferrer"
-            aria-label={sl.guideVideoLabel}
-            className={`group relative block aspect-video w-full overflow-hidden rounded-2xl bg-orange-600 text-white shadow-lg ${
-              sl.guideVideoUrl ? "" : "pointer-events-none opacity-70"
-            }`}
-          >
-            <img
-              src="/shopee-onboarding-part1.png"
-              alt="Shopee 신규 셀러 입점 교육 Part 1 썸네일"
-              className="absolute inset-0 h-full w-full object-cover"
-            />
-            <span className="absolute right-4 top-1/2 flex h-14 w-14 -translate-y-1/2 items-center justify-center rounded-full bg-black/30 transition-transform group-hover:scale-110">
-              <Icon name="play" className="w-5 h-5 text-white" />
-            </span>
-            <span className="absolute bottom-3 right-3 rounded bg-black/60 px-2 py-1 text-[11px] font-semibold">
-              {sl.officialGuide.thumbnailDuration}
-            </span>
-          </a>
+          <p className="mt-1 text-sm text-slate-300">{sl.subtitle}</p>
         </div>
-      </Card>
+      </div>
+
+      <div className="mx-auto w-full max-w-6xl px-8 py-8">
+      {/* Shopee 공식 입점 가이드 */}
+      <div className="mb-6 grid grid-cols-1 items-center gap-6 lg:grid-cols-2">
+        <div>
+          <span className="mb-3 inline-block rounded-full bg-orange-50 px-2.5 py-1 text-[11px] font-bold tracking-wide text-orange-600">
+            {sl.officialGuide.badge}
+          </span>
+          <h2 className="text-lg font-bold text-slate-900">{sl.officialGuide.title}</h2>
+          <p className="mt-2 text-sm leading-relaxed text-slate-500">{sl.officialGuide.description}</p>
+
+          {sl.guideVideoUrl ? (
+            <a
+              href={sl.guideVideoUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-4 inline-flex items-center gap-2 rounded-none bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700"
+            >
+              <Icon name="play" className="w-5 h-5" />
+              {sl.guideVideoLabel}
+              <Icon name="externalLink" className="w-5 h-5" />
+            </a>
+          ) : (
+            <span className="mt-4 inline-flex cursor-not-allowed items-center gap-2 rounded-none bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-400">
+              <Icon name="play" className="w-5 h-5" />
+              {sl.guideVideoLabel}
+            </span>
+          )}
+          <p className="mt-2 flex items-center gap-1.5 text-xs text-slate-400">
+            <Icon name="help" className="w-3.5 h-3.5" />
+            {sl.guideVideoUrl ? sl.officialGuide.note : sl.guideVideoPendingNote}
+          </p>
+        </div>
+
+        <a
+          href={sl.guideVideoUrl || undefined}
+          target="_blank"
+          rel="noreferrer"
+          aria-label={sl.guideVideoLabel}
+          className={`group relative block aspect-video w-full overflow-hidden rounded-none bg-orange-600 text-white shadow-lg ${
+            sl.guideVideoUrl ? "" : "pointer-events-none opacity-70"
+          }`}
+        >
+          <img
+            src="/shopee-onboarding-part1.png"
+            alt="Shopee 신규 셀러 입점 교육 Part 1 썸네일"
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+          <span className="absolute right-4 top-1/2 flex h-14 w-14 -translate-y-1/2 items-center justify-center rounded-full bg-black/30 transition-transform group-hover:scale-110">
+            <Icon name="play" className="w-5 h-5 text-white" />
+          </span>
+          <span className="absolute bottom-3 right-3 rounded-none bg-black/60 px-2 py-1 text-[11px] font-semibold">
+            {sl.officialGuide.thumbnailDuration}
+          </span>
+        </a>
+      </div>
 
       {/* GLOTIZ 지원 4단계 */}
       <Card className="mb-6 bg-slate-50/60 p-6">
@@ -619,7 +627,7 @@ export default function ShopeeListing() {
             <div
               ref={registerSection}
               data-step-index={0}
-              className="rounded-lg border border-slate-200 bg-white"
+              className="rounded-none border border-slate-200 bg-white"
             >
               <SectionCardHeader title="상품 이미지" />
               <div className="p-6">
@@ -640,7 +648,7 @@ export default function ShopeeListing() {
                 key={group.title}
                 ref={registerSection}
                 data-step-index={groupIdx + 1}
-                className="rounded-lg border border-slate-200 bg-white"
+                className="rounded-none border border-slate-200 bg-white"
               >
                 <SectionCardHeader title={group.title} />
                 <div className="grid grid-cols-1 gap-x-6 gap-y-5 p-6 sm:grid-cols-2">
@@ -701,7 +709,7 @@ export default function ShopeeListing() {
           </div>
 
           <aside className="lg:sticky lg:top-24 lg:self-start">
-            <div className="rounded-lg border border-slate-200 bg-white p-5">
+            <div className="rounded-none border border-slate-200 bg-white p-5">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">작성 현황</p>
               <p className="mt-1.5 flex items-baseline gap-1">
                 <span className="text-2xl font-bold text-slate-900">
@@ -774,6 +782,7 @@ export default function ShopeeListing() {
             </div>
           </aside>
         </div>
+      </div>
       </div>
     </div>
   );
