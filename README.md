@@ -30,7 +30,7 @@ GLOTIZ는 **한 번 등록한 기업 정보와 보유 서류를 바탕으로, �
 
 - **서식 빈칸 판단 모델 파인튜닝**: 기업마당 등에 실제 게시된 수출 지원사업 신청서 양식을 모아 학습·평가 데이터셋을 직접 구축하고(`backend/finetune_data/`), "이 칸이 사용자가 채워야 하는 빈칸인가"를 판단하도록 Gemini 2.5 Flash를 파인튜닝해 서비스에 적용했습니다. 엔드포인트가 없으면 기본 모델로 자동 폴백됩니다.
 - **다양한 문서 형식 처리**: HWP/HWPX/DOCX/XLSX 서식에서 텍스트와 필드를 추출하고, Document AI로 업로드 서류(사업자등록증 등)에서 정보를 읽어 옵니다.
-- **클라우드 이전**: 초기 Supabase 기반 구조에서 GCP(Cloud SQL, Cloud Storage, Pub/Sub, Secret Manager)로 데이터·파일·알림 처리를 옮겼습니다. 비밀번호·JWT 키 등은 코드나 환경 파일이 아닌 Secret Manager에서 읽어 옵니다.
+- **클라우드 이전**: 초기 Supabase 기반 구조에서 GCP(Cloud SQL, Cloud Storage, Pub/Sub, Secret Manager)로 데이터·파일·알림 처리와 로그인까지 전부 옮겼습니다. 로그인은 bcrypt + JWT 방식으로 직접 구현했습니다. 비밀번호·JWT 키 등은 코드나 환경 파일이 아닌 Secret Manager에서 읽어 옵니다.
 
 ## 기술 스택
 
@@ -39,7 +39,7 @@ GLOTIZ는 **한 번 등록한 기업 정보와 보유 서류를 바탕으로, �
 | Frontend | React 19, Vite, Tailwind CSS, React Router, GSAP |
 | Backend | Python, FastAPI, python-docx, PyMuPDF |
 | AI | Gemini 2.5 Flash (Vertex AI), Gemini 이미지 생성, 파인튜닝 모델, Google Document AI, Cloud Translation |
-| Infra | GCP Cloud SQL(PostgreSQL), Cloud Storage, Pub/Sub, Secret Manager, Supabase Auth, Docker / nginx |
+| Infra | GCP Cloud SQL(PostgreSQL), Cloud Storage, Pub/Sub, Secret Manager, Docker / nginx |
 | 개발 도구 | Claude Code, Git/GitHub |
 
 ## 프로젝트 구조
@@ -108,11 +108,9 @@ git clone https://github.com/rosoefox/GLOTIZ.git
    npm install
    ```
 
-2. `web` 폴더 안에 `.env.local` 이라는 이름으로 새 파일을 만들고, 아래 내용을 붙여넣은 뒤 `< >` 부분을 실제 값으로 바꿔주세요. (이 값들을 모르면 프로젝트 담당자에게 물어보세요)
+2. `web` 폴더 안에 `.env.local` 이라는 이름으로 새 파일을 만들고, 아래 한 줄을 붙여넣어 주세요.
 
    ```
-   VITE_SUPABASE_URL=<Supabase 프로젝트 URL>
-   VITE_SUPABASE_ANON_KEY=<Supabase anon key>
    VITE_BACKEND_URL=http://localhost:8000
    ```
 
@@ -125,31 +123,29 @@ git clone https://github.com/rosoefox/GLOTIZ.git
    pip install -r requirements.txt
    ```
 
-2. `backend` 폴더 안에 `.env` 라는 이름으로 새 파일을 만들고, 아래 내용을 채워주세요.
+2. `backend` 폴더 안의 `.env.example`을 복사해서 `.env` 파일을 만들고, `< >` 부분을 실제 값으로 채워주세요. (이 값들을 모르면 프로젝트 담당자에게 물어보세요)
 
    ```
-   SUPABASE_URL=<Supabase 프로젝트 URL>
-   SUPABASE_SERVICE_ROLE_KEY=<Supabase service role key>
    VERTEX_AI_PROJECT_ID=<GCP 프로젝트 ID>
-   GOOGLE_APPLICATION_CREDENTIALS=<Vertex AI 서비스 계정 키 JSON 경로>
+   GOOGLE_APPLICATION_CREDENTIALS=<서비스 계정 키 JSON 경로>
+   DOCUMENT_AI_PROCESSOR_ID=<Document AI 프로세서 ID>
    CLOUD_SQL_HOST=<Cloud SQL 인스턴스 공인 IP>
    CLOUD_SQL_DB=<Cloud SQL 데이터베이스 이름>
    CLOUD_SQL_USER=<Cloud SQL 사용자>
-   CLOUD_SQL_PASSWORD=<Cloud SQL 비밀번호>
    GCS_TEMPLATES_BUCKET=<templates 버킷 이름>
    GCS_GENERATED_BUCKET=<generated 버킷 이름>
+   TUNED_BLANK_CANDIDATE_MODEL=<파인튜닝 모델 엔드포인트, 없으면 비워두기>
    ```
 
-   > **아키텍처 안내**: 로그인/회원가입(Auth)과 `profiles` 테이블은 계속 Supabase를 씁니다.
-   > 그 외 실제 서비스 데이터(businesses/templates/template_fields/submissions/
-   > submission_values/generated_documents/notifications/bookmarks)는 Cloud SQL
-   > (PostgreSQL)로, 파일 저장소(템플릿 원본/생성 문서/마케팅 이미지)는 Cloud Storage로
-   > 옮겨져 있습니다. 프론트엔드는 이 테이블들을 더 이상 Supabase에 직접 쿼리하지 않고
-   > 전부 이 백엔드 API(`web/src/lib/api.js`)를 거칩니다. Supabase Realtime으로 처리하던
-   > 실시간 알림/현황 갱신은 15초 주기 폴링으로 대체되어 있습니다.
+   > Cloud SQL 비밀번호와 로그인 토큰용 JWT 키는 `.env`에 적지 않습니다. 앱이 GCP **Secret Manager**에서 직접 읽어 오므로, 위 서비스 계정에 "Secret Manager 보안 비밀 접근자" 권한만 있으면 됩니다.
+
+   > **아키텍처 안내**: 회원가입·로그인을 포함한 모든 데이터는 Cloud SQL(PostgreSQL)에,
+   > 파일(서식 원본·생성 문서·마케팅 이미지)은 Cloud Storage에 저장됩니다.
+   > 로그인은 비밀번호를 bcrypt로 암호화하고 자체 JWT 토큰을 발급하는 방식입니다.
+   > 프론트엔드는 모든 데이터를 백엔드 API(`web/src/lib/api.js`)를 통해서만 주고받습니다.
+   > (초기에는 Supabase를 썼지만 지금은 GCP로 완전히 옮겨서 Supabase는 필요 없습니다.)
    >
-   > **Cloud SQL은 처음엔 완전히 빈 상태입니다** — 관리자 페이지에서 사업/서식을 다시
-   > 등록해야 화면에 내용이 보입니다 (기존 Supabase에 있던 데이터는 옮기지 않았습니다).
+   > **Cloud SQL은 처음엔 빈 상태입니다** — 관리자 페이지에서 지원사업/서식을 등록해야 화면에 내용이 보입니다.
 
 ### 3. 실행하기 (다음부터는 이 단계만 반복하면 됩니다)
 
@@ -177,7 +173,7 @@ http://localhost:5173
 
 ### 로그인은 어떻게 하나요?
 
-아무 이메일이나 입력한다고 로그인되지 않아요. 먼저 홈페이지의 **회원가입**으로 계정을 새로 만들어야 합니다. 관리자 계정이 필요하면 Supabase에서 별도 설정이 필요하니 담당자에게 문의하세요.
+아무 이메일이나 입력한다고 로그인되지 않아요. 먼저 홈페이지의 **회원가입**으로 계정을 새로 만들어야 합니다. 관리자 계정은 DB의 `users` 테이블에서 해당 계정의 `account_type`을 `admin`으로 설정해야 하니 담당자에게 문의하세요.
 
 ### 잘 안 될 때 확인해보세요
 
@@ -185,7 +181,7 @@ http://localhost:5173
 → 터미널이 `backend` 폴더 "안"에 있는 상태에서 `uvicorn` 명령어를 실행해야 해요. `cd backend`를 먼저 입력했는지 확인하세요.
 
 **화면이 하얗게(빈 화면) 뜬다**
-→ `web/.env.local` 파일에 값을 제대로 채워 넣었는지 확인하세요. 값을 새로 바꿨다면 `npm run dev`를 껐다가(`Ctrl + C`) 다시 켜야 반영돼요.
+→ `web/.env.local` 파일에 `VITE_BACKEND_URL`을 제대로 넣었는지, 서버(backend)도 켜져 있는지 확인하세요. 값을 새로 바꿨다면 `npm run dev`를 껐다가(`Ctrl + C`) 다시 켜야 반영돼요.
 
 **"이미 사용 중인 주소입니다" 같은 오류가 뜬다 (포트 충돌)**
 → 예전에 켜둔 서버가 꺼지지 않고 남아있는 경우예요. 컴퓨터를 재시작하거나, 작업 관리자에서 관련 `python`/`node` 프로세스를 종료한 뒤 다시 실행해보세요.
